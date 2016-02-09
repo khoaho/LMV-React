@@ -2,7 +2,7 @@ module.exports = {
 
     port: process.env.PORT || process.env.NODE_PORT || 8080,
     host: '',
-    hotReloadPort: process.env.HOT_RELOAD_PORT || 3000,
+    hotReloadPort: process.env.HOT_RELOAD_PORT || 3001,
     hotReloadUrl: 'http://$(host):$(hotReloadPort)/',
 
     dbConfig:{
