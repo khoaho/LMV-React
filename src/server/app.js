@@ -34,23 +34,23 @@ async function initializeRoutes() {
 
     try {
 
-        var lmv = new Lmv({
-            credentials: {
-                ConsumerKey: process.env.LMV_CONSUMERKEY,
-                ConsumerSecret: process.env.LMV_CONSUMERSECRET
-            }});
-
-        await lmv.initialize();
-
-        var dbSvc = new DbSvc(dbConfig);
-
-        var db = await dbSvc.connect();
-
-        app.use(host + '/api/lmv',
-            require('./api/lmv')(lmv));
-
-        app.use(host + '/api/models',
-            require('./api/models')(db));
+        //var lmv = new Lmv({
+        //    credentials: {
+        //        ConsumerKey: process.env.LMV_CONSUMERKEY,
+        //        ConsumerSecret: process.env.LMV_CONSUMERSECRET
+        //    }});
+        //
+        //await lmv.initialize();
+        //
+        //var dbSvc = new DbSvc(dbConfig);
+        //
+        //var db = await dbSvc.connect();
+        //
+        //app.use(host + '/api/lmv',
+        //    require('./api/lmv')(lmv));
+        //
+        //app.use(host + '/api/models',
+        //    require('./api/models')(db));
 
         app.use(host, express.static(
             path.join(__dirname, '../../public')));
