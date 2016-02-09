@@ -30,9 +30,9 @@
 }
 
 .home-container {
-
+    overflow: hidden;
     width: 100vw;
-    height: 400px;
+    height: calc(100vh - 65px);
 }
 
 .animated-background-output {

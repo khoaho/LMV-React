@@ -56905,14 +56905,14 @@
 	                width: 1.25,
 	                height: 1.25,
 	                depth: 2,
-	                segments: 15,
-	                slices: 15,
+	                segments: 20,
+	                slices: 20,
 	                xRange: 0.2,
 	                yRange: 0.2,
 	                zRange: 1.0,
 	                ambient: '#3566CC',
 	                diffuse: '#deff3b',
-	                speed: 0.0003
+	                speed: 0.0005
 	            };
 
 	            //------------------------------
