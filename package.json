@@ -9,7 +9,7 @@
     "start-dev": "npm run start-wds & npm run nodemon",
     "build": "webpack --config webpack.config.prod --progress --colors -p",
     "prestart": "npm run build",
-    "postinstall": "webpack --config ./webpack.config.prod.js --progress --colors",
+    "postinstall": "webpack --config webpack.config.prod --progress --colors",
     "start": "node bin/runServer.js"
   },
   "repository": {
