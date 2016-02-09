@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+    <link rel='shortcut icon' type='image/x-icon' href='assets/adsk/adsk-32x32-32.png'/>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <title>{{title}}</title>
+
+    <!--<link rel="stylesheet" type="text/css" href="https://autodeskviewer.com/viewers/2.1/style.css">-->
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="css/react-treeview.css">
+    <link rel="stylesheet" type="text/css" href="css/dock-panel.css">
+    <link rel="stylesheet" type="text/css" href="css/app.css">
+    <link rel="stylesheet" type="text/css" href="{{mainCSS}}">
+
+</head>
+<body>
+
+    <div id="app">{{appString|safe}}</div>
+
+    <!--<script>window.__snapshot__ = {{snapshot|json_encode|safe}};</script>-->
+    <!--<script src="{{mainJS}}" type="text/javascript" async defer></script>-->
+    <script src="build/app.js" type="text/javascript" async defer></script>
+
+    <!--<script src="https://autodeskviewer.com/viewers/2.1/viewer3D.min.js"></script>-->
+
+</body>
+</html>

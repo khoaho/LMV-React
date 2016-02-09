@@ -1,0 +1,63 @@
+{
+  "name": "LMV-React",
+  "version": "1.0.0",
+  "description": "LMV + React (0.13.x) + Flux (Flummox) + ReactRouter (0.13.x) + Server Rendering",
+  "main": "bin/runServer.js",
+  "scripts": {
+    "nodemon": "nodemon -w ./src bin/runServer -e js,jsx,json",
+    "start-wds": "node bin/runWebpackDevServer",
+    "start-dev": "npm run start-wds & npm run nodemon",
+    "build": "webpack --config webpack.config.prod --progress --colors -p",
+    "prestart": "npm run build",
+    "start": "webpack --config webpack.config.prod && node bin/runServer"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leefsmp/lmv-react.git"
+  },
+  "author": "Philippe Leefsma <philippe.leefsma@gmail.com>, boiler plate by Dmitri Voronianski <dmitri.voronianski@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://viewer.autodesk.io/node/lmv-react",
+  "dependencies": {
+    "Base64": "^0.3.0",
+    "babel": "^5.5.8",
+    "bootstrap": "3.3.6",
+    "c0nfig": "^0.2.2",
+    "compression": "^1.5.0",
+    "cookie-parser": "^1.3.5",
+    "es5-shim": "^4.1.6",
+    "express": "^4.12.4",
+    "flummox": "^3.5.2",
+    "griddle-react": "0.2.13",
+    "jquery": "*",
+    "moment": "^2.10.3",
+    "mongodb": "^2.1.4",
+    "morgan": "^1.6.0",
+    "network-address": "^1.0.0",
+    "react": "^0.13.3",
+    "react-bootstrap": "0.26.x",
+    "react-dock": "0.2.3",
+    "react-router": "^0.13.3",
+    "react-treeview": "0.4.2",
+    "serve-favicon": "^2.3.0",
+    "superagent": "^1.2.0",
+    "swig": "^1.4.2",
+    "underscore": "1.6.0",
+    "versionify-assets": "^0.1.3",
+    "view-and-data": "^1.0.6"
+  },
+  "devDependencies": {
+    "babel-core": "^5.5.8",
+    "babel-loader": "^5.1.4",
+    "babel-runtime": "^5.5.8",
+    "css-loader": "^0.14.5",
+    "envify": "^3.4.0",
+    "node-libs-browser": "^0.5.2",
+    "nodemon": "^1.3.7",
+    "react-hot-loader": "^1.2.7",
+    "style-loader": "^0.12.3",
+    "uglify-js": "^2.4.23",
+    "webpack": "^1.9.11",
+    "webpack-dev-server": "^1.9.0"
+  }
+}

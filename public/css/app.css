@@ -1,0 +1,42 @@
+
+
+.navbar-brand > img {
+
+    margin-right: 10px;
+    display:inline-block;
+    vertical-align: middle;
+}
+
+.navbar {
+    border-radius: 0;
+    margin-bottom: 0px;
+    border-bottom: 2px solid rgba(21, 121, 128, 0.75);
+}
+
+.navbar-inner {
+    min-height: 0px;
+}
+
+.navbar-brand,
+.navbar-nav li a {
+    line-height: 60px;
+    height: 65px;
+    padding-top: 0;
+}
+
+.dropdown-menu > li > a {
+    height: 40px;
+    line-height: 40px;
+}
+
+.home-container {
+
+    width: 100vw;
+    height: 400px;
+}
+
+.animated-background-output {
+
+    width: 100vw;
+    height: 100vh;
+}
