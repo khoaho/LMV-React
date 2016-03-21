@@ -25,11 +25,20 @@ export default class ViewerPage extends React.Component {
   /////////////////////////////////////////////////////////////////
   async componentDidMount() {
 
-    var urn = 'dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6YWRuLTMwLjA3LjIwMTUtMTUuNTIuNTIvTEhDLmR3Zng=';
+    const { id } = getUrlParams();
 
-    var pathCollection = await getViewablePathFromUrn(urn, '/api/lmv/token');
+    var model = await getModel(id);
+
+    var LMVDocument = await loadDocument(
+      model.urn,
+      () => getTokenSync('/api/lmv/token'));
+
+    var pathCollection = await getViewablePath(
+      LMVDocument);
+
     var path = pathCollection[0].path;
-    this.loadViewable(path);
+
+    this.loadViewable(model, path);
 
     //var path = '/models/prelude/prelude.svf';
     //Autodesk.Viewing.Initializer ({env: 'Local'}, ()=> {
@@ -41,7 +50,7 @@ export default class ViewerPage extends React.Component {
   //
   //
   /////////////////////////////////////////////////////////////////
-  async loadViewable(path) {
+  async loadViewable(model, path) {
 
     var viewer = new Autodesk.Viewing.Private.GuiViewer3D(
       this.viewerContainer);
@@ -51,22 +60,13 @@ export default class ViewerPage extends React.Component {
     var viewerToolbar = viewer.getToolbar(true);
 
     var ctrlGroup =  new Autodesk.Viewing.UI.ControlGroup(
-      'Prelude');
+      'LMV-React');
 
     viewerToolbar.addControl(ctrlGroup);
 
     var enabledExtensions = [
       '_Viewing.Extension.ControlSelector'
     ];
-
-    var defaultOptions = {
-
-      '_Viewing.Extension.ControlSelector': {
-        waitEvents: [Autodesk.Viewing.GEOMETRY_LOADED_EVENT],
-        storageKey: 'prelude',
-        Lockr: Lockr
-      }
-    }
 
     var url = '/api/extensions/script/_Viewing.Extension.ExtensionManager';
 
@@ -76,15 +76,16 @@ export default class ViewerPage extends React.Component {
         waitEventsList: [
           Autodesk.Viewing.GEOMETRY_LOADED_EVENT
         ],
-        defaultOptions: defaultOptions,
         enabledList: enabledExtensions,
-        parentControl: ctrlGroup,
+
         showHidden: env == 'development',
-        visible: env == 'development',
+        parentControl: ctrlGroup,
+        visible: true,
         apiUrl: '/api',
+        model: model,
         storage:{
           key: 'ExtensionManager.' + this.props.user.login,
-          enabled: true,
+          enabled: false,
           Lockr:  Lockr
         }
       });
@@ -101,7 +102,7 @@ export default class ViewerPage extends React.Component {
 //
 //
 /////////////////////////////////////////////////////////////////
-function getViewablePathFromUrn(urn, tokenUrl) {
+function loadDocument(urn, tokenFunc) {
 
   var promise = new Promise((resolve, reject)=> {
 
@@ -109,20 +110,17 @@ function getViewablePathFromUrn(urn, tokenUrl) {
 
      var options = {
        env: 'AutodeskProduction',
-       refreshToken: ()=> {return getTokenSync(tokenUrl)},
-       getAccessToken: ()=> {return getTokenSync(tokenUrl)}
+       refreshToken: tokenFunc,
+       getAccessToken: tokenFunc
      };
 
      Autodesk.Viewing.Initializer (options, ()=> {
 
        Autodesk.Viewing.Document.load(
-         'urn:' + urn,
+         (urn.indexOf('urn:') == 0 ? '' : 'urn:') + urn,
          (LMVDocument)=> {
 
-           var patchCollection = getViewablePath(
-             LMVDocument);
-
-           return resolve(patchCollection);
+           return resolve(LMVDocument);
          });
      });
    }
@@ -196,4 +194,42 @@ function getTokenSync(url) {
     xhr.responseText);
 
   return response.access_token;
+}
+
+///////////////////////////////////////////////////////////////////
+//
+//
+///////////////////////////////////////////////////////////////////
+function getUrlParams() {
+
+  var params = {};
+
+  window.location.search.replace(/[?&]+([^=&]+)=([^&]*)/gi,
+    function (str, key, value) {
+      params[key] = value;
+    });
+
+  return params;
+}
+
+///////////////////////////////////////////////////////////////////
+//
+//
+///////////////////////////////////////////////////////////////////
+function getModel(id){
+
+  return new Promise((resolve, reject)=> {
+
+    try {
+
+      $.get(`/api/models/${id}`, (model)=>{
+
+        return resolve(model);
+      });
+    }
+    catch(ex){
+
+      reject(ex);
+    }
+  });
 }

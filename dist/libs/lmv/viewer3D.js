@@ -38,6 +38,8 @@ AutodeskNamespace("Autodesk.Viewing.Extensions");
 AutodeskNamespace("Autodesk.Viewing.Shaders");
 
 AutodeskNamespace('Autodesk.Viewing.UI');
+
+AutodeskNamespace('Autodesk.LMVTK');
 ;var _isIE11 = !!navigator.userAgent.match(/Trident\/7\./);
 
 // fix IE events
@@ -121,7 +123,14 @@ function exitFullscreen() {
 
 // Determines if the browser is in full screen
 function inFullscreen(){
-return (document.fullscreenEnabled || document.mozFullScreenElement || document.webkitIsFullScreen || document.msFullscreenElement) ? true : false
+
+    // Special case for Ms-Edge that has webkitIsFullScreen with correct value
+    // and fullscreenEnabled with wrong value (thanks MS)
+    if ("webkitIsFullScreen" in document) return document.webkitIsFullScreen;
+    return !!(document.mozFullScreenElement ||
+        document.msFullscreenElement ||
+        document.fullscreenEnabled || // Check last-ish because it is true in Ms-Edge
+        document.querySelector(".viewer-fill-browser")); // Fallback for iPad
 }
 
 function fullscreenElement() {
@@ -165,6 +174,36 @@ function isMobileDevice() {
     return isIOSDevice() || isAndroidDevice();
 }
 
+function isSafari() {
+    var _ua = navigator.userAgent.toLowerCase();
+    return (_ua.indexOf("safari") !== -1) && (_ua.indexOf("chrome") === -1);
+}
+
+var rescueFromPolymer = (function() {
+
+    if (isSafari()) {
+
+        return function(object) {
+
+            if (!window.Polymer)
+                return object;
+
+            for (var p in object) {
+                if (p.indexOf("__impl") !== -1) {
+                    return object[p];
+                }
+            }
+            return object;
+        };
+
+    } else {
+
+        return function(o) { return o; };
+
+    }
+
+})();
+
 /**
  * Detects if WebGL is enabled.
  *
@@ -183,6 +222,7 @@ function detectWebGL()
         for (var i = 0; i < 4; i++) {
             try {
                 context = canvas.getContext(names[i]);
+                context = rescueFromPolymer(context);
                 if (context && typeof context.getParameter === "function") {
                     // WebGL is enabled.
                     //
@@ -4124,20 +4164,23 @@ av.ScreenMode = {kNormal: 0, kFullBrowser: 1, kFullScreen: 2};
  * @constructor
  * @param {Autodesk.Viewing.Viewer} viewer
  * @memberof Autodesk.Viewing
+ * @alias Autodesk.Viewing.ScreenModeDelegate
  */
-av.ScreenModeDelegate = function (viewer) {
+function ScreenModeDelegate(viewer) {
     this.viewer = viewer;
     this.bindFullscreenEventListener = this.fullscreenEventListener.bind(this);
 
     if (this.getMode() === av.ScreenMode.kFullScreen) {
         addListener(this.bindFullscreenEventListener);
     }
-};
+}
+
+av.ScreenModeDelegate = ScreenModeDelegate;
 
 /**
  * Perform any cleanup required for a ScreenModeDelegate instance
  */
-av.ScreenModeDelegate.prototype.uninitialize = function () {
+ScreenModeDelegate.prototype.uninitialize = function () {
 
     removeListener(this.bindFullscreenEventListener);
     this.viewer = null;
@@ -4149,7 +4192,7 @@ av.ScreenModeDelegate.prototype.uninitialize = function () {
  * @param {Autodesk.Viewing.ScreenMode} mode
  * @returns {boolean} true if screen mode is supported
  */
-av.ScreenModeDelegate.prototype.isModeSupported = function (mode) {
+ScreenModeDelegate.prototype.isModeSupported = function (mode) {
     return true;
 };
 
@@ -4158,7 +4201,7 @@ av.ScreenModeDelegate.prototype.isModeSupported = function (mode) {
  * @param {Autodesk.Viewing.ScreenMode} mode - New screen mode
  * @returns {boolean} true if screen mode was changed
  */
-av.ScreenModeDelegate.prototype.setMode = function (mode) {
+ScreenModeDelegate.prototype.setMode = function (mode) {
     var currentMode = this.getMode();
     if ((mode !== currentMode) && this.isModeSupported(mode)) {
         this.doScreenModeChange(currentMode, mode);
@@ -4172,7 +4215,7 @@ av.ScreenModeDelegate.prototype.setMode = function (mode) {
  * Override this method to get the current screen mode
  * @returns {Autodesk.Viewing.ScreenMode} Current screen mode
  */
-av.ScreenModeDelegate.prototype.getMode = function () {
+ScreenModeDelegate.prototype.getMode = function () {
     throw 'Implement getMode() in derived class';
 };
 
@@ -4181,7 +4224,7 @@ av.ScreenModeDelegate.prototype.getMode = function () {
  * Depending upon isModeSupported(), this may be a toggle or a 3-state
  * @returns {Autodesk.Viewing.ScreenMode|undefined} Next screen mode in sequence or undefined if no change
  */
-av.ScreenModeDelegate.prototype.getNextMode = function () {
+ScreenModeDelegate.prototype.getNextMode = function () {
     var currentMode = this.getMode(),
         newMode;
 
@@ -4224,7 +4267,7 @@ av.ScreenModeDelegate.prototype.getNextMode = function () {
  * Return new screen mode on escape
  * @returns {Autodesk.Viewing.ScreenMode|undefined} New screen mode or undefined if no change
  */
-av.ScreenModeDelegate.prototype.getEscapeMode = function () {
+ScreenModeDelegate.prototype.getEscapeMode = function () {
     return (this.getMode() !== av.ScreenMode.kNormal) ?
         av.ScreenMode.kNormal : undefined;
 };
@@ -4232,7 +4275,7 @@ av.ScreenModeDelegate.prototype.getEscapeMode = function () {
 /**
  * Full screen event listener.
  */
-av.ScreenModeDelegate.prototype.fullscreenEventListener = function () {
+ScreenModeDelegate.prototype.fullscreenEventListener = function () {
     if (inFullscreen()) {
         this.viewer.resize();
     } else {
@@ -4247,7 +4290,7 @@ av.ScreenModeDelegate.prototype.fullscreenEventListener = function () {
  * @param {Autodesk.Viewing.ScreenMode} oldMode - Old screen mode
  * @param {Autodesk.Viewing.ScreenMode} newMode - New screen mode
  */
-av.ScreenModeDelegate.prototype.doScreenModeChange = function (oldMode, newMode) {
+ScreenModeDelegate.prototype.doScreenModeChange = function (oldMode, newMode) {
     throw 'Implement doScreenModeChange() in derived class';
 };
 
@@ -4256,7 +4299,7 @@ av.ScreenModeDelegate.prototype.doScreenModeChange = function (oldMode, newMode)
  * @param {Autodesk.Viewing.ScreenMode} oldMode - Old screen mode
  * @param {Autodesk.Viewing.ScreenMode} newMode - New screen mode
  */
-av.ScreenModeDelegate.prototype.onScreenModeChanged = function (oldMode, newMode) {
+ScreenModeDelegate.prototype.onScreenModeChanged = function (oldMode, newMode) {
     if (oldMode === av.ScreenMode.kFullScreen) {
         removeListener(this.bindFullscreenEventListener);
     } else if (newMode === av.ScreenMode.kFullScreen) {
@@ -4278,6 +4321,8 @@ av.ScreenModeDelegate.prototype.onScreenModeChanged = function (oldMode, newMode
  * the viewer.
  * @constructor
  * @extends Autodesk.Viewing.ScreenModeDelegate
+ * @memberof Autodesk.Viewing
+ * @alias Autodesk.Viewing.ApplicationScreenModeDelegate
  * @param {Autodesk.Viewing.Viewer} viewer
  */
 av.ApplicationScreenModeDelegate = function (viewer) {
@@ -4315,6 +4360,8 @@ av.ApplicationScreenModeDelegate.prototype.doScreenModeChange = function (oldMod
  * No full screen functionality.
  * @constructor
  * @extends Autodesk.Viewing.ScreenModeDelegate
+ * @memberof Autodesk.Viewing
+ * @alias Autodesk.Viewing.NullScreenModeDelegate
  * @param {Autodesk.Viewing.Viewer} viewer
  */
 av.NullScreenModeDelegate = function (viewer) {
@@ -4564,17 +4611,26 @@ Model.prototype.getUnitScale = function()
         unit = this.getMetadata('page_dimensions', 'model_units', null)
     }
 
+    if (unit)
+        unit = unit.toLowerCase();
+
     //Why are translators not using standard strings for those?!?!?!?
     switch (unit) {
         case 'meter'      :
+        case 'meters'     :
         case 'm'          : return 1.0;
+        case 'feet and inches':
         case 'foot'       :
+        case 'feet'       :
         case 'ft'         : return 0.3048;
         case 'inch'       :
+        case 'inches'     :
         case 'in'         : return 0.0254;
         case 'centimeter' :
+        case 'centimeters':
         case 'cm'         : return 0.01;
         case 'millimeter' :
+        case 'millimeters':
         case 'mm'         : return 0.001;
         default: return 1.0;
     }
@@ -4590,7 +4646,13 @@ Model.prototype.getUnitString = function() {
     var unit;
 
     if (!this.is2d()) {
-        unit = this.getMetadata('distance unit', 'value', null);
+        // Check if there's an overridden model units in bubble.json (this happens in Revit 3D files)
+        if (this.myData && this.myData.overriddenUnits) {
+            unit = this.myData.overriddenUnits;
+        }
+        else {
+            unit = this.getMetadata('distance unit', 'value', null);
+        }
     }
     else {
         //We use paper units instead of model units here, because in 2D we measure in paper space
@@ -4598,44 +4660,69 @@ Model.prototype.getUnitString = function() {
         unit = this.getMetadata('page_dimensions', 'page_units', null);
     }
 
+    if (unit)
+        unit = unit.toLowerCase();
+
     //Why are translators not using standard strings for those?!?!?!?
     switch (unit) {
         case 'meter'      :
+        case 'meters'     :
         case 'm'          : return ModelUnits.METER;
+        case 'feet and inches':
         case 'foot'       :
+        case 'feet'       :
         case 'ft'         : return ModelUnits.FOOT;
         case 'inch'       :
+        case 'inches'     :
         case 'in'         : return ModelUnits.INCH;
         case 'centimeter' :
+        case 'centimeters':
         case 'cm'         : return ModelUnits.CENTIMETER;
         case 'millimeter' :
+        case 'millimeters':
         case 'mm'         : return ModelUnits.MILLIMETER;
         default: return null;
     }
 };
 
 /**
- * Returns a standard string representation of the 2D model's distance unit.
+ * Returns a standard string representation of the model's display unit.
  *
- * @returns {String?} - Standard representation of 2D model's unit distance or null if it is not known.
- */
-Model.prototype.getUnitString2d = function() {
-
+ * @returns {String?} - Standard representation of model's display unit or null if it is not known.
+*/
+Model.prototype.getDisplayUnit = function() {
     var unit;
 
-    unit = this.getMetadata('page_dimensions', 'model_units', null);
+    if (!this.is2d()) {
+
+        unit = this.getMetadata('distance unit', 'value', null);
+    }
+    else {
+
+        // When model units is not set, it should be assumed to be the same as paper units.
+        unit = this.getMetadata('page_dimensions', 'model_units', null) || this.getMetadata('page_dimensions', 'page_units', null);
+    }
+
+    if (unit)
+        unit = unit.toLowerCase();
 
     //Why are translators not using standard strings for those?!?!?!?
     switch (unit) {
         case 'meter'      :
+        case 'meters'     :
         case 'm'          : return ModelUnits.METER;
+        case 'feet and inches':
         case 'foot'       :
+        case 'feet'       :
         case 'ft'         : return ModelUnits.FOOT;
         case 'inch'       :
+        case 'inches'     :
         case 'in'         : return ModelUnits.INCH;
         case 'centimeter' :
+        case 'centimeters':
         case 'cm'         : return ModelUnits.CENTIMETER;
         case 'millimeter' :
+        case 'millimeters':
         case 'mm'         : return ModelUnits.MILLIMETER;
         default: return null;
     }
@@ -4831,7 +4918,8 @@ Model.prototype.getProperties = function( dbId, onSuccessCallback, onErrorCallba
  * Returns properties for multiple objects with an optional filter on which properties to retrieve.
  *
  *  @param {int[]} dbIds - ids of the nodes to return the properties for.
- *  @param {int[]?} propFilter -- Array of propety names to return values for.
+ *  @param {string[]?} propFilter -- Array of property names to return values for. Use null for no filtering.
+ *                                   Filter applies to "name" and "externalId" fields also.
  *  @param {function} onSuccessCallback - this method that is called when request for property db succeeds.
  *  @param {function} onErrorCallback - this method that is called when request for property db fails.
  */
@@ -6536,10 +6624,12 @@ function Logger(options) {
         touch: isTouchDevice(),
         env: avp.env,
         referer: window.location.href, //Referer header is not sent by the browser in case of WebSocket HTTP Upgrade request, so do it manually
-        version: LMV_VIEWER_VERSION
+        version: LMV_VIEWER_VERSION,
+        patch: LMV_VIEWER_PATCH,
+        build_type: LMV_BUILD_TYPE
     };
     this.log(startEvent);
-};
+}
 
 Logger.prototype.setupWS = function () {
 
@@ -7483,7 +7573,7 @@ var Autocam = Autocam || function(camera, navApi) {
 
         var tMax = shotParams.destinationPercent;
         unitTime =  Math.easeClamp( cam.elapsedTime / shotParams.duration, 0.0, tMax );
-        oneMinusTime = 1.0 - unitTime;
+        var oneMinusTime = 1.0 - unitTime;
         cam.elapsedTime += deltaTime/500;
 
         var center = (cam.center.clone().multiplyScalar(oneMinusTime)).add( destination.center.clone().multiplyScalar( unitTime ));
@@ -9637,6 +9727,8 @@ var Autocam = Autocam || function(camera, navApi) {
  * */
 Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath ) {
 
+    var avp = Autodesk.Viewing.Private;
+
     var self = this;
     var cam = autocam;
     var camera = autocam.camera;
@@ -10199,7 +10291,12 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
      */
     var loadTexture = function(url) {
         var image = new Image();
-        image.crossOrigin = "anonymous";
+        var useCredentials = auth && (url.indexOf('://') === -1 || url.indexOf(window.location.host) !== -1);
+        if (useCredentials) {
+            image.crossOrigin = "use-credentials";
+        } else {
+            image.crossOrigin = "anonymous";
+        }
         var texture = new THREE.Texture(image);
         image.onload = function() {
             texture.needsUpdate = true;
@@ -10579,17 +10676,26 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
                 // into account and makes a gross assumption about the menu entry size.
                 var menuItemNumber = Math.floor(((y-5) - cam.menuOrigin.y)/25);
 
+                var log = function(action) {
+                    if (avp.logger) {
+                        avp.logger.log({category: 'navigation', name: action});
+                    }
+                };
+
                 // stderr("HIT ITEM: " + menuItemNumber + " Y=" + coords.clientY + " Menu Y=" + cam.menuOrigin.y);
 
                 switch(menuItemNumber){
                     case 0:                 //home
+                        log('home');
                         cam.goHome();
                         break;
                     case 1:                 //orthographic
+                        log('setortho');
                         cam.setOrthographicFaces(false);
                         cam.toOrthographic();
                         break;
                     case 2:                 //perspective
+                        log('setpersp');
                         cam.setOrthographicFaces(false);
                         cam.toPerspective();
                         break;
@@ -10601,18 +10707,23 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
                             cam.toPerspective();
                         break;
                     case 4:                 //set current view as home
+                        log('sethome');
                         cam.setCurrentViewAsHome(false);
                         break;
                     case 5:                 //focus and set current view as home
+                        log('focushome');
                         cam.setCurrentViewAsHome(true);
                         break;
                     case 6:                 //reset home
+                        log('resethome');
                         cam.resetHome();
                         break;
                     case 7:                 //set current view as front
+                        log('setfront');
                         cam.setCurrentViewAsFront();
                         break;
                     case 8:                 //set current view as top
+                        log('settop');
                         cam.setCurrentViewAsTop();
                         break;
                     case 9:                 //reset orientation
@@ -11815,7 +11926,7 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
         function cleanStack(name)
         {
             for( var i = _toolStack.length;  --i >= 0;  )
-                if( _toolStack[i] === name )
+                if( _toolStack[i].activeName === name )
                 {
                     _tools[name].deactivate(name);
                     _toolStack.splice(i, 1);
@@ -11845,7 +11956,16 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
     this.getActiveToolName = function()
     {
         var l = _toolStack.length;
-        return (l > 0) ? _toolStack[l-1] : "default";
+        return (l > 0) ? _toolStack[l-1].activeName : "default";
+    };
+
+    /**
+     * This method returns the name of the topmost tool on the tool stack. If no tools are active the name of the default tool is returned (which is "default").
+     *  @returns {string} name - the tool name to look up
+     */
+    this.getActiveTool = function()
+    {
+        return (_toolStack.length) ? _toolStack[l-1] : _tools["default"];
     };
 
     /**
@@ -11862,11 +11982,12 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
         if( tool )
         {
             var interceptor = null;
-            if (_toolStack[_toolStack.length - 1] === "intercept") {
+            if (_toolStack.length && _toolStack[_toolStack.length - 1].activeName === "intercept") {
                 interceptor = _toolStack.pop();
             }
-            _toolStack.push(toolName);
-            tool.activate(toolName);
+            tool.activeName = toolName;
+            _toolStack.push(tool);
+            tool.activate(toolName, viewerApi);
             if (interceptor) {
                 _toolStack.push(interceptor);
             }
@@ -11875,8 +11996,11 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
                 {
                     type: Autodesk.Viewing.TOOL_CHANGE_EVENT,
                     toolName: toolName,
+                    tool: tool,
                     active: true
                 });
+
+            viewerImpl.log({category: 'tool_changed', name: toolName});
 
             //stderr("push: [" + _toolStack.length + "] = " + toolName);
             return true;
@@ -11897,7 +12021,7 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
 
         for( var i = _toolStack.length;  --i >= 0;  )
         {
-            if( _toolStack[i] === toolName )
+            if( _toolStack[i].activeName === toolName )
             {
                 _toolStack.splice(i, 1);
                 _tools[toolName].deactivate(toolName);
@@ -11906,6 +12030,7 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
                     {
                         type: Autodesk.Viewing.TOOL_CHANGE_EVENT,
                         toolName: toolName,
+                        tool: _toolStack[i],
                         active: false
                     });
 
@@ -11984,8 +12109,8 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
         var cursor = null;
         for( var n = _toolStack.length;  --n >= 0;  )
         {
-            var tool = _tools[_toolStack[n]];
-            if( "getCursor" in tool )
+            var tool = _toolStack[n];
+            if( tool.getCursor )
             {
                 cursor = tool.getCursor();
                 if( cursor )
@@ -12013,8 +12138,8 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
 
         for( var n = _toolStack.length;  --n >= 0;  )
         {
-            var tool = _tools[_toolStack[n]];
-            if( "update" in tool && tool.update(highResTimestamp) )
+            var tool = _toolStack[n];
+            if( tool.update && tool.update(highResTimestamp) )
                 refresh = true;
         }
         if( viewerApi.navigation.getCamera().dirty )
@@ -12050,15 +12175,15 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
 
     this.__clientToCanvasCoords = function (event, normalized, screen)
     {
-        var viewport = viewerApi.navigation.getScreenViewport();
-        var width  = viewport.width;
-        var height = viewport.height;
+        var rect = viewerImpl.canvas.getBoundingClientRect();
+        var width  = rect.width;
+        var height = rect.height;
 
         // Canvas coordinates: relative to the canvas element.
         // 0 = top left, +ve right and down.
         //
-        var canvasX = event.clientX - viewport.left;
-        var canvasY = event.clientY - viewport.top;
+        var canvasX = event.clientX - rect.left;
+        var canvasY = event.clientY - rect.top;
         event.canvasX = canvasX;
         event.canvasY = canvasY;
 
@@ -12082,17 +12207,16 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
     {
         for( var n = _toolStack.length;  --n >= 0;  )
         {
-            var name = _toolStack[n];
-            var tool = _tools[name];
+            var tool = _toolStack[n];
 
-            if( method in tool && tool[method](arg1, arg2) )
+            if( tool[method] && tool[method](arg1, arg2) )
             {
                 //console.log(method + " consumed by " + tool.getName() + " = " + arg1.type);
                 return true;
             }
         }
         var last = this.getDefaultTool();
-        if( method in last && last[method](arg1, arg2) )
+        if( last[method] && last[method](arg1, arg2) )
         {
             //console.log(method + " consumed by " + last.getName() + " = " + arg1.type);
             return true;
@@ -12112,9 +12236,9 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
         // Call handleResize on all tools in case they need it:
         for( var n = _toolStack.length;  --n >= 0;  )
         {
-            var tool = _tools[_toolStack[n]];
+            var tool = _toolStack[n];
 
-            if( "handleResize" in tool )
+            if( tool.handleResize )
                 tool.handleResize();
         }
     };
@@ -12774,6 +12898,7 @@ Autodesk.Viewing.ViewingUtilities = function( viewerImplIn, autocam, navapi )
      */
     this.goHome = function()
     {
+        this.viewerImpl.log({category: 'navigation', name: 'home'});
         autocam.goHome();
     };
 
@@ -12957,8 +13082,8 @@ Autodesk.Viewing.ViewingUtilities = function( viewerImplIn, autocam, navapi )
      */
     this.fitToView = function(immediate)
     {
+        this.viewerImpl.log({category: 'navigation', name: 'fit'});
         var fit = navapi.fitBounds(immediate, this.viewerImpl.getFitBounds(false));
-
         // Show the pivot on a fit:
         this.activatePivot(true);
 
@@ -12985,7 +13110,8 @@ Autodesk.Viewing.ViewingUtilities = function( viewerImplIn, autocam, navapi )
         }
         return false;
     };
-};;AutodeskNamespace('Autodesk.Viewing');
+};
+;AutodeskNamespace('Autodesk.Viewing');
 //
 // This object handles the default click behaviour, some of which is controlled
 // via the "setClickBehavior" configuration.
@@ -13455,6 +13581,8 @@ Autodesk.Viewing.OrbitDollyPanTool = function( viewerImpl, viewerApi )
     var _prevPinchScale = 1.0;
     var _prevPinchLength = 0;
     var _pinchLength = 0;
+    var _deltaRoll = 0.0;
+    var _prevRoll = 0.0;
 
     var _activeModeLocked = false;
     var _autoCamStartXY = null;
@@ -13931,6 +14059,16 @@ Autodesk.Viewing.OrbitDollyPanTool = function( viewerImpl, viewerApi )
                     var distanceDelta = touchScale * distance;
                     _navapi.dollyFromPoint(distanceDelta, dollyTarget);
 
+                    var vview   = new THREE.Vector3();
+                    var qrotate = new THREE.Quaternion();
+
+                    var up = _navapi.getCameraUpVector();
+                    var view = vview.copy(_camera.position).sub(_camera.target).normalize();
+                    qrotate.setFromAxisAngle( view, _deltaRoll * 1.2 );
+                    up.applyQuaternion( qrotate );
+                    if (!_navapi.getIs2D()) 
+                        _navapi.setCameraUpVector(up);
+
                     _prevPinchLength = _pinchLength;
                     _prevPinchScale = _pinchScale;
                     _trackingDistance = distance + distanceDelta;
@@ -14218,10 +14356,18 @@ Autodesk.Viewing.OrbitDollyPanTool = function( viewerImpl, viewerApi )
 
         _pinchLength = fingerSeparation(event);
 
+        var roll = THREE.Math.degToRad(event.rotation);
+        _deltaRoll = roll - _prevRoll;
+        if (Math.abs(_deltaRoll) > 1.0)
+            _deltaRoll = 0;
+        _prevRoll = roll;
+
         if( endsWith(event.type, "start") )
         {
             _prevPinchLength = _pinchLength;
             _prevPinchScale = 1.0;
+            _deltaRoll = 0;
+            _prevRoll = roll;
         }
 
         _pinchScale = event.scale;
@@ -16064,6 +16210,191 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
     };
 
 };
+;AutodeskNamespace('Autodesk.Viewing');
+
+/** This class may be used as a base class for new interaction tools or simply as a template for creating a new tool.
+ *  @class
+ *  @constructor
+ *  @see Autodesk.Viewing.ToolController
+ */
+Autodesk.Viewing.ToolInterface = function()
+{
+    this.names = [ "unnamed" ];
+
+    /**
+     * This method should return an array containing the names of all tools implemented by this class. Often this would be a single name but it is possible to support multiple interactions with a single tool. When this tool is registered with the ToolController each name gets registered as an available tool.
+     *  @returns {Array} - Array of strings. Should not be empty.
+     */
+    this.getNames = function() {
+        return this.names;
+    };
+
+    /**
+     * This is an optional convenience method to obtain the first name of this tool.
+     * @returns {string} - The tools default name.
+     */
+    this.getName = function() {
+        return this.names[0];
+    };
+
+    /**
+     * This method is called by the ToolController.registerTool()
+     * Use this as initialization
+     */
+    this.register = function() {
+    };
+
+    /**
+     * This method is called by the ToolController.deregisterTool()
+     * Use this to clean up your tool
+     */
+    this.deregister = function() {
+    };
+
+    /**
+     * The activate method is called by the ToolController when it adds this tool to the list of those to receive event handling calls. Once activated, a tool's "handle*" methods may be called if no other higher priority tool handles the given event. Each active tool's "update" method also gets called once during each redraw loop.
+     * @param {string} name - The name under which the tool has been activated.
+     * @param {Autodesk.Viewing.Viewer3D} viewerApi - viewer instance
+     */
+    this.activate = function(name, viewerApi) {
+    };
+
+    /**
+     * The deactivate method is called by the ToolController when it removes this tool from the list of those to receive event handling calls. Once deactivated, a tool's "handle*" methods and "update" method will no longer be called.
+     * @param {string} name - The name under which the tool has been deactivated.
+     */
+    this.deactivate = function(name) {
+    };
+
+    /**
+     * The update method is called by the ToolController once per frame and provides each tool with the oportunity to make modifications to the scene or the view.
+     * @returns {boolean} - A state value indicating whether the tool has modified the view or the scene and a full refresh is required.
+     */
+    this.update = function() {
+        return false;
+    };
+
+    /**
+     * This method is called when a single mouse button click occurs.
+     * @param {MouseEvent} event - the event object that triggered this call.
+     * @param {Number} button - the button number that was clicked (0, 1, 2 for Left, Middle, Right respectively). Note that the button parameter value may be different that the button value indicated in the event object due to button re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleSingleClick = function( event, button ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a double mouse button click occurs.
+     * @param {MouseEvent} event - the event object that triggered this call.
+     * @param {Number} button - the button number that was clicked (0, 1, 2 for Left, Middle, Right respectively). Note that the button parameter value may be different that the button value indicated in the event object due to button re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleDoubleClick = function( event, button ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a single tap on a touch device occurs.
+     * @param {Event} event - The triggering event. For tap events the canvasX, canvasY properties contain the canvas relative device coordinates of the tap and the normalizedX, normalizedY properties contain the tap coordinates in the normalized [-1, 1] range. The event.pointers array will contain either one or two touch events depending on whether the tap used one or two fingers.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleSingleTap = function( event ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a double tap on a touch device occurs.
+     * @param {Event} event - The triggering event. For tap events the canvasX, canvasY properties contain the canvas relative device coordinates of the tap and the normalizedX, normalizedY properties contain the tap coordinates in the normalized [-1, 1] range. The event.pointers array will contain either one or two touch events depending on whether the tap used one or two fingers.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleDoubleTap = function( event ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a keyboard button is depressed.
+     * @param {KeyboardEvent} event - the event object that triggered this call.
+     * @param {Number} keyCode - the numerical key code identifying the key that was depressed. Note that the keyCode parameter value may be different that the value indicated in the event object due to key re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleKeyDown = function( event, keyCode ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a keyboard button is released.
+     * @param {KeyboardEvent} event - the event object that triggered this call.
+     * @param {Number} keyCode - the numerical key code identifying the key that was released. Note that the keyCode parameter value may be different that the value indicated in the event object due to key re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleKeyUp = function( event, keyCode ) {
+        return false;
+    };
+
+    /**
+     * This method is called when a mouse wheel event occurs.
+     * @param {Number} delta - a numerical value indicating the amount of wheel motion applied. Note that this value may be modified from the orignal event values so as to provide consistent results across browser families.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleWheelInput = function(delta) {
+        return false;
+    };
+
+    /**
+     * This method is called when a mouse button is depressed.
+     * @param {MouseEvent} event - the event object that triggered this call.
+     * @param {Number} button - the button number that was depressed (0, 1, 2 for Left, Middle, Right respectively). Note that the button parameter value may be different that the button value indicated in the event object due to button re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleButtonDown = function(event, button) {
+        return false;
+    };
+
+    /**
+     * This method is called when a mouse button is released.
+     * @param {MouseEvent} event - the event object that triggered this call.
+     * @param {Number} button - the button number that was released (0, 1, 2 for Left, Middle, Right respectively). Note that the button parameter value may be different that the button value indicated in the event object due to button re-mapping preferences that may be applied. This value should be respected over the value in the event object.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleButtonUp = function(event, button) {
+        return false;
+    };
+
+    /**
+     * This method is called when a mouse motion event occurs.
+     * @param {MouseEvent} event - the event object that triggered this call.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleMouseMove = function(event) {
+        return false;
+    };
+
+    /**
+     * This method is called when a touch gesture event occurs.
+     * @param {Event} event - the event object that triggered this call. The event.type attribute will indicate the gesture event type. This will be one of: dragstart, dragmove, dragend, panstart, panmove, panend, pinchstart, pinchmove, pinchend, rotatestart, rotatemove, rotateend, drag3start, drag3move, drag3end. The event.canvas[XY] attributes will contain the coresponding touch position. The event.scale and event.rotation attributes contain pinch scaling and two finger rotation quantities respectively. The deltaX and deltaY attributes will contain drag offsets.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleGesture = function(event) {
+        return false;
+    };
+
+    /**
+     * This method is called when the canvas area loses focus.
+     * @param {FocusEvent} event - the event object that triggered this call.
+     * @returns {boolean} - True if this tool wishes to consume the event and false to continue to pass the event to lower priority active tools.
+     */
+    this.handleBlur = function(event) {
+        return false;
+    };
+
+    /**
+     * This method is called on every active tool whenever the screen area changes. The new canvas area can be obtained from the Navigation interface via the getScreenViewport method.
+     * @see Autodesk.Viewing.Navigation
+     */
+    this.handleResize = function() {
+    };
+};
 ;
 (function() {
 
@@ -16139,12 +16470,15 @@ function Selector(viewer, model) {
     }
 
 
-    // NB: Node cannot be null
     function select(dbId) {
 
         var it = getInstanceTree();
-        if (it)
-            dbId = getInstanceTree().findNodeForSelection(dbId, _this.selectionMode);
+        if (it) {
+            dbId = it.findNodeForSelection(dbId, _this.selectionMode);
+
+            if (!it.isNodeSelectable(dbId))
+                return;
+        }
 
         var found = isSelected(dbId);
         if (!found) {
@@ -16154,7 +16488,6 @@ function Selector(viewer, model) {
         }
     }
 
-    // NB: Node cannot be null
     function deselect(dbId) {
 
         var found = isSelected(dbId);
@@ -16360,14 +16693,16 @@ function MultiModelSelector(viewer) {
             var sset = _models[i].selector.selectedObjectIds;
             var it = _models[i].selector.getInstanceTree();
             for (var p in sset) {
-                var dbId = parseInt(p);
-                if (dbId) {
-                    dbIdArray.push(dbId);
+                if (sset[p]) {
+                    var dbId = parseInt(p);
+                    if (dbId) {
+                        dbIdArray.push(dbId);
 
-                    if (it) {
-                        it.enumNodeFragments(dbId, function(fragId) {
-                            fragIdsArray.push(fragId);
-                        }, false);
+                        if (it) {
+                            it.enumNodeFragments(dbId, function (fragId) {
+                                fragIdsArray.push(fragId);
+                            }, false);
+                        }
                     }
                 }
             }
@@ -17416,6 +17751,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
         headers: av.HTTP_REQUEST_HEADERS,
         objectIds : options.ids,
         globalOffset : options.globalOffset,
+        placementTransform : options.placementTransform,
         auth : auth,
         viewing_url : VIEWING_URL,
         oss_url : OSS_URL,
@@ -17455,7 +17791,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
             if (onSuccess)
                 onSuccess(scope.model);
 
-            scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:svf});
+            scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:svf, model:scope.model});
 
             var numGeomPacks = svf.geompacks.length;
 
@@ -17968,7 +18304,7 @@ SvfLoader.prototype.onSvfLoadDone = function(svf) {
         this.loadPropertyDb();
     }
     
-    this.viewer3DImpl.matman().convertMaterials(svf);
+    var numMaterials = this.viewer3DImpl.matman().convertMaterials(svf);
 
     this.t0 = t1;
 
@@ -17995,6 +18331,18 @@ SvfLoader.prototype.onSvfLoadDone = function(svf) {
 
     stderr("scene bounds: " + JSON.stringify(svf.bbox));
 
+    if (this.logger) {
+        var metadataStats = {
+            category: "metadata_load_stats",
+            urn: svf.urn,
+            has_topology: !!svf.topology,
+            has_animations: !!svf.animations,
+            cameras: svf.cameras ? svf.cameras.length : 0,
+            lights: svf.lights ? svf.lights.length : 0,
+            materials: numMaterials
+        };
+        this.logger.log(metadataStats);
+    }
 
     this.viewer3DImpl.signalProgress(5, "Hold on, getting the model...");
     this.viewer3DImpl.invalidate(false, false);
@@ -18134,14 +18482,6 @@ function F2DLoader(parent) {
 F2DLoader.prototype.dtor = function () {
     this.svf = null;
     this.options = null;
-};
-
-
-F2DLoader.prototype.loadFile = function(path, options, onSuccess, onError) {
-    if (this.loading) {
-        console.log("Loading of SVF already in progress. Ignoring new request.");
-        return false;
-    }
 
     if (this.parsingWorker) {
         this.parsingWorker.terminate();
@@ -18151,6 +18491,16 @@ F2DLoader.prototype.loadFile = function(path, options, onSuccess, onError) {
         this.streamingWorker.terminate();
         this.streamingWorker = null;
     }
+};
+
+
+F2DLoader.prototype.loadFile = function(path, options, onSuccess, onError) {
+    if (this.loading) {
+        console.log("Loading of SVF already in progress. Ignoring new request.");
+        return false;
+    }
+
+    this.dtor();
 
     var index = path.indexOf('urn:');
     if (index != -1) {
@@ -18207,7 +18557,10 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
                 metadata: ew.data.metadata,
                 manifest: ew.data.manifest,
                 basePath: ew.data.basePath,
-                f2dLoadOptions: options,
+                f2dLoadOptions: {
+                    modelSpace : options.modelSpace,
+                    bgColor: options.bgColor
+                },
                 url: svfPath
                 };
             parsingWorker.postMessage(msg, [msg.data]);
@@ -18218,7 +18571,10 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
             var msg = { operation:WORKER_PARSE_F2D_FRAME,
                         data: ew.data.frames,
                         url: svfPath,
-                        f2dLoadOptions: options
+                        f2dLoadOptions: {
+                            modelSpace : options.modelSpace,
+                            bgColor: options.bgColor
+                        }
                       };
 
             //first frame
@@ -18275,7 +18631,7 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
             if (onSuccess)
                 onSuccess(scope.model);
 
-            scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:scope.svf});
+            scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:scope.svf, model:scope.model});
             
 
             for (var i=0; i < f.meshes.length; i++) {
@@ -18314,14 +18670,8 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
                 if (onSuccess) {
                     onSuccess(scope.model);
                 }
-                scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:f});
+                scope.viewer3DImpl.api.fireEvent({type:av.MODEL_ROOT_LOADED_EVENT, svf:f, model:scope.model});
 
-            }
-            else {
-                f.maxObjectNumber = ew.data.maxObjectNumber;
-                f.viewports = ew.data.viewports;
-                f.currentVpId = ew.data.currentVpId;
-                f.clips = ew.data.clips;
             }
 
             if (ew.data.meshes && ew.data.meshes.length)
@@ -18329,14 +18679,21 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
                 for (var i = 0; i < ew.data.meshes.length; i++) {
                     scope.processReceivedMesh2D(ew.data.meshes[i], baseIndex+i);
                 }
+            }
 
-                if (ew.data.finalFrame) {
-                    scope.onGeomLoadDone();
-
-                    scope.loading = false;
-
-                    parsingWorker.terminate();
+            if (ew.data.finalFrame) {
+                //Update the F2D properties which are accumulated
+                //while reading the F2D stream.
+                var cumulativeProps = ew.data.cumulativeProps;
+                for (var p in cumulativeProps) {
+                    f[p] = cumulativeProps[p];
                 }
+
+                scope.onGeomLoadDone();
+
+                scope.loading = false;
+
+                parsingWorker.terminate();
             }
 
         } else if (ew.data && ew.data.progress) {
@@ -18539,8 +18896,18 @@ F2DLoader.prototype.onSvfLoadDone = function(svf) {
     var model = this.model = new avp.RenderModel(svf);
     model.initialize(this);
     model.loader = this;
+    this.svf.propWorker = new avp.PropDbLoader(this.sharedDbPath, this.model, this.viewer3DImpl.api);
 
     stderr("scene bounds: " + JSON.stringify(svf.bbox));
+
+    if (this.logger) {
+        var metadataStats = {
+            category: "metadata_load_stats",
+            urn: svf.urn,
+            layers: svf.layerCount
+        };
+        this.logger.log(metadataStats);
+    }
 
     this.viewer3DImpl.signalProgress(5, "Hold on, getting the model...");
     this.viewer3DImpl.invalidate(false, false);
@@ -18602,7 +18969,6 @@ F2DLoader.prototype.onGeomLoadDone = function() {
 
 
 F2DLoader.prototype.loadPropertyDb = function() {
-    this.svf.propWorker = new avp.PropDbLoader(this.sharedDbPath, this.model, this.viewer3DImpl.api);
     this.svf.propWorker.load();
 };
 
@@ -18618,25 +18984,27 @@ av.FileLoaderManager.registerFileLoader("f2d", ["f2d"], avp.F2DLoader);
 
 "use strict";
 
-var VBB_LINE_SEGMENT = 0x10,
-    VBB_ARC_CIRCULAR = 0x20,
-    VBB_ARC_ELLIPTICAL = 0x30,
-    VBB_TEX_QUAD = 0x40,
-    VBB_ONE_TRIANGLE = 0x50,
-
-    VBB_INSTANCED_FLAG = 0,
-    VBB_SEG_START_RIGHT = 1,
-    VBB_SEG_START_LEFT = 2,
-    VBB_SEG_END_RIGHT = 3,
-    VBB_SEG_END_LEFT = 4;
-
 var TAU = Math.PI * 2;
 
-var VBB_COLOR_OFFSET = 6,
-    VBB_DBID_OFFSET = 7,
-    VBB_LINETYPE_OFFSET = 8,
-    VBB_FLAGS_OFFSET = 9;
+var VBB_GT_TRIANGLE_INDEXED = 0,
+    VBB_GT_LINE_SEGMENT     = 1,
+    VBB_GT_ARC_CIRCULAR     = 2,
+    VBB_GT_ARC_ELLIPTICAL   = 3,
+    VBB_GT_TEX_QUAD         = 4,
+    VBB_GT_ONE_TRIANGLE     = 5;
 
+var VBB_INSTANCED_FLAG  = 0, // this is intentionally 0 for the instancing case!
+    VBB_SEG_START_RIGHT = 0, // this starts intentionally at 0!
+    VBB_SEG_START_LEFT  = 1,
+    VBB_SEG_END_RIGHT   = 2,
+    VBB_SEG_END_LEFT    = 3;
+
+var VBB_COLOR_OFFSET    = 6,
+    VBB_DBID_OFFSET     = 7,
+    VBB_FLAGS_OFFSET    = 8,
+    VBB_LAYER_VP_OFFSET = 9;
+
+var QUAD_TRIANGLE_INDICES = [ 0,1,3, 0,3,2 ];
 
 function VertexBufferBuilder(useInstancing, allocSize)
 {
@@ -18652,31 +19020,32 @@ function VertexBufferBuilder(useInstancing, allocSize)
     //this.stride = 10;
     this.stride = 12;
 
-    this.vb = new ArrayBuffer(this.stride * 4 * (this.useInstancing ? MAX_VCOUNT / 4 : MAX_VCOUNT));
+    this.vb  = new ArrayBuffer(this.stride * 4 * (this.useInstancing ? MAX_VCOUNT / 4 : MAX_VCOUNT));
     this.vbf = new Float32Array(this.vb);
     this.vbi = new Int32Array(this.vb);
     this.vcount = 0;
 
-    if (!this.useInstancing)
-        this.ib = new Uint16Array(MAX_VCOUNT);
-    else
-        this.ib = null;
-
+    this.ib = this.useInstancing ? null : new Uint16Array(MAX_VCOUNT);
     this.icount = 0;
 
-    this.minx = this.miny = Infinity;
+    this.minx = this.miny =  Infinity;
     this.maxx = this.maxy = -Infinity;
 
     //Keeps track of objectIds referenced by geometry in the VB
     this.dbIds = {};
 
-    this.numEllipticals = 0;
-    this.numCirculars = 0;
+    this.numEllipticals   = 0;
+    this.numCirculars     = 0;
     this.numTriangleGeoms = 0;
 }
 
 VertexBufferBuilder.prototype.expandStride = function()
 {
+    // since we already set the stride to the current max value of 12 in the
+    // constructor above, we don't need to do anything here right now...
+    return;
+
+/*
     //Currently hardcoded to expand by 4 floats.
     var expandBy = 2;
 
@@ -18700,47 +19069,50 @@ VertexBufferBuilder.prototype.expandStride = function()
             dst[od+j] = src[os+j];
     }
 
-
     this.vb = nvb;
     this.vbf = new Float32Array(nvb);
     this.vbi = new Int32Array(nvb);
     this.stride = nstride;
+*/
 };
 
 VertexBufferBuilder.prototype.addToBounds = function(x, y)
 {
-    if (x < this.minx)
-        this.minx = x;
-    if (x > this.maxx)
-        this.maxx = x;
-    if (y < this.miny)
-        this.miny = y;
-    if (y > this.maxy)
-        this.maxy = y;
+    if (x < this.minx) this.minx = x;
+    if (x > this.maxx) this.maxx = x;
+    if (y < this.miny) this.miny = y;
+    if (y > this.maxy) this.maxy = y;
 };
 
-VertexBufferBuilder.prototype.setVertexFlag = function(vindex, layer, vertexId, geomType) {
+VertexBufferBuilder.prototype.setCommonVertexAttribs = function(offset, vertexId, geomType, color, dbId, layerId, vpId, linePattern)
+{
+    // align changes here with the "decodeCommonAttribs()" function in LineShader.js and VertexBufferReader.js!!!
+    vertexId    = (vertexId    &   0xff); //  8 bit
+    geomType    = (geomType    &   0xff); //  8 bit
+    linePattern = (linePattern &   0xff); //  8 bit
+    layerId     = (layerId     & 0xffff); // 16 bit
+    vpId        = (vpId        & 0xffff); // 16 bit
 
-    var val = geomType | vertexId | (layer << 16);
+    this.vbi[offset + VBB_FLAGS_OFFSET]    = vertexId | (geomType << 8) | (linePattern << 16); // vertexId: int8; geomType: int8; linePattern: int8; unused: int8
+    this.vbi[offset + VBB_COLOR_OFFSET]    = color;
+    this.vbi[offset + VBB_DBID_OFFSET]     = dbId;
+    this.vbi[offset + VBB_LAYER_VP_OFFSET] = layerId | (vpId << 16); // layerId: int16; vpId: int16
 
-    this.vbi[vindex * this.stride + VBB_FLAGS_OFFSET] = val;
-};
-
-
+    this.dbIds[dbId] = 1; // mark this feature as used
+}
 
 //Creates a non-indexed triangle geometry vertex (triangle vertex coords stored in single vertex structure)
-VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, vpId)
+VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
-
         var offset = (vi+i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x1;
+        // align changes here with the "decodeTriangleData()" function in LineShader.js!!!
+        vbf[offset]   = x1;
         vbf[offset+1] = y1;
         vbf[offset+2] = x2;
 
@@ -18748,41 +19120,57 @@ VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x
         vbf[offset+4] = x3;
         vbf[offset+5] = y3;
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = vpId << 16;
-
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_ONE_TRIANGLE, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
-        this.dbIds[dbId] = 1;
     }
 
     return vi;
 };
 
 
-VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlong, totalDistance, lineWidthHalf, color, dbId, vpId, lineType)
+VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlong, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
         var offset = (vi + i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x;
+        // align changes here with the "decodeSegmentData()" function in LineShader.js!!!
+        vbf[offset]   = x;
         vbf[offset+1] = y;
         vbf[offset+2] = angle;
 
         vbf[offset+3] = distanceAlong;
-        vbf[offset+4] = lineWidthHalf;
+        vbf[offset+4] = lineWidth * 0.5; // we are storing only the half width (i.e., the radius)
         vbf[offset+5] = totalDistance;
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | lineType;
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_LINE_SEGMENT, color, dbId, layerId, vpId, lineType);
+        this.vcount++;
+    }
 
-        this.dbIds[dbId] = 1;
+    return vi;
+};
+
+VertexBufferBuilder.prototype.addVertexTexQuad = function(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId)
+{
+    var vi  = this.vcount;
+    var vbf = this.vbf;
+
+    var repeat = this.useInstancing ? 1 : 4;
+    for (var i=0; i<repeat; i++) {
+        var offset = (vi + i) * this.stride;
+
+        // align changes here with the "decodeTexQuadData()" function in LineShader.js!!!
+        vbf[offset]   = centerX;
+        vbf[offset+1] = centerY;
+        vbf[offset+2] = rotation;
+
+        vbf[offset+3] = width;
+        vbf[offset+4] = height;
+
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_TEX_QUAD, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
     }
 
@@ -18790,36 +19178,32 @@ VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlon
 };
 
 
-VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle, major, minor, tilt, lineWidthHalf, color, dbId, vpId)
+VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle, major, minor, tilt, lineWidth, color, dbId, layerId, vpId)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
+
+    var geomType = (major == minor) ? VBB_GT_ARC_CIRCULAR : VBB_GT_ARC_ELLIPTICAL;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
         var offset = (vi+i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x;
+        // align changes here with the "decodeArcData()" function in LineShader.js!!!
+        vbf[offset]   = x;
         vbf[offset+1] = y;
         vbf[offset+2] = startAngle;
 
         vbf[offset+3] = endAngle;
-        vbf[offset+4] = lineWidthHalf;
-        vbf[offset+5] = major;
+        vbf[offset+4] = lineWidth * 0.5; // we are storing only the half width (i.e., the radius)
+        vbf[offset+5] = major; // = radius for circular arcs
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | 0;
-
-        //In the non-instanced case, the vertex flag
-        //is at offset 8, so do not use that.
-        if (major != minor) {
+        if (geomType === VBB_GT_ARC_ELLIPTICAL) {
             vbf[offset+10] = minor;
             vbf[offset+11] = tilt;
         }
 
-        this.dbIds[dbId] = 1;
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, geomType, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
     }
 
@@ -18836,77 +19220,57 @@ VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle
 //====================================================================================================
 //====================================================================================================
 
-VertexBufferBuilder.prototype.addVertex = function(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addVertex = function(x, y, color, dbId, layerId, vpId)
 {
     if (this.useInstancing)
         return;//not supported if instancing is used.
 
-    var vi = this.vcount;
-    var offset = vi * this.stride;
-    var vbf = this.vbf;
+    var vi     = this.vcount;
+    var offset = this.stride * vi;
+    var vbf    = this.vbf;
 
-    vbf[offset] = x;
+    // align changes here with the "decodeTriangleData()" function in LineShader.js!!!
+    vbf[offset]   = x;
     vbf[offset+1] = y;
-    vbf[offset+2] = angle;
 
-    vbf[offset+3] = distanceAlong;
-    vbf[offset+4] = lineWidthHalf;
-    vbf[offset+5] = 0;
-
-    this.vbi[offset+VBB_COLOR_OFFSET] = color;
-    this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-    this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | 0;
-
-    this.setVertexFlag(vi, layer, 0, 0);
-
+    this.setCommonVertexAttribs(offset, /*vertexId*/0, VBB_GT_TRIANGLE_INDEXED, color, dbId, layerId, vpId, /*linePattern*/0);
     this.vcount++;
-    this.dbIds[dbId] = 1;
 
     return vi;
 };
 
 
-VertexBufferBuilder.prototype.addVertexPolytriangle = function(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addVertexPolytriangle = function(x, y, color, dbId, layerId, vpId)
 {
     if (this.useInstancing)
         return;//not supported if instancing is used.
 
-    this.addVertex(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId);
+    this.addVertex(x, y, color, dbId, layerId, vpId);
 
     this.addToBounds(x, y);
 };
 
-VertexBufferBuilder.prototype.setVertexColor = function(i, color)
-{
-    if (this.useInstancing)
-        return;//not supported if instancing is used.
-
-    var offset = i * this.stride;
-    this.vbi[offset + VBB_COLOR_OFFSET] = color;
-};
-
-VertexBufferBuilder.prototype.addTriangle = function(i0, i1, i2) {
+VertexBufferBuilder.prototype.addIndices = function(indices, vindex) {
 
     if (this.useInstancing)
         return; //not supported if instancing is used.
 
     var ib = this.ib;
-
     var ii = this.icount;
 
-    if (ii + 3 >= ib.length) {
+    if (ii + indices.length >= ib.length) {
         var ibnew = new Uint16Array(ib.length * 2);
-        for (var i=0; i<ii; i++) {
+        for (var i=0; i<ii; ++i) {
             ibnew[i] = ib[i];
         }
         this.ib = ib = ibnew;
     }
 
-    ib[ii] = i0;
-    ib[ii+1] = i1;
-    ib[ii+2] = i2;
+    for(var i=0; i<indices.length; ++i) {
+        ib[ii+i] = vindex + indices[i];
+    }
 
-    this.icount += 3;
+    this.icount += indices.length;
 };
 
 //====================================================================================================
@@ -18916,69 +19280,59 @@ VertexBufferBuilder.prototype.addTriangle = function(i0, i1, i2) {
 //====================================================================================================
 
 
-VertexBufferBuilder.prototype.finalizeQuad = function(v, geomType, layer) {
-
+VertexBufferBuilder.prototype.finalizeQuad = function(vindex)
+{
     if (!this.useInstancing) {
-        this.addTriangle(v, v+1, v+2);
-        this.addTriangle(v, v+2, v+3);
-
-        //Set the flags specific to each vertex
-        this.setVertexFlag(v,   layer, VBB_SEG_START_RIGHT, geomType);
-        this.setVertexFlag(v+1, layer, VBB_SEG_END_RIGHT,   geomType);
-        this.setVertexFlag(v+2, layer, VBB_SEG_END_LEFT,    geomType);
-        this.setVertexFlag(v+3, layer, VBB_SEG_START_LEFT,  geomType);
-    } else {
-        //Set the flags specific to each vertex
-        this.setVertexFlag(v,   layer, VBB_INSTANCED_FLAG, geomType);
+        this.addIndices(QUAD_TRIANGLE_INDICES, vindex);
     }
 };
 
 
-VertexBufferBuilder.prototype.addSegment = function(x1, y1, x2, y2, totalDistance, lineWidth, color, dbId, layer, vpId, lineType)
+VertexBufferBuilder.prototype.addSegment = function(x1, y1, x2, y2, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType)
 {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    var theta = 0;
-
-    if (dx || dy )
-        theta = Math.atan2(dy, dx);
-
-    var segLen = Math.sqrt(dx*dx + dy*dy);
-
-    //We store a radius value in the vertex, so halve it
-    lineWidth *= 0.5;
+    var angle  = (dx || dy) ? Math.atan2(dy, dx)       : 0.0;
+    var segLen = (dx || dy) ? Math.sqrt(dx*dx + dy*dy) : 0.0;
 
     //Add four vertices for the bbox of this line segment
     //This call sets the stuff that's common for all four
-    var v = this.addVertexLine(x1, y1, theta, segLen, totalDistance, lineWidth, color, dbId, vpId, lineType);
+    var v = this.addVertexLine(x1, y1, angle, segLen, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType);
 
-    this.finalizeQuad(v, VBB_LINE_SEGMENT, layer);
-
+    this.finalizeQuad(v);
     this.addToBounds(x1, y1);
     this.addToBounds(x2, y2);
 };
 
 
 //Creates a non-indexed triangle geometry (triangle vertex coords stored in single vertex structure)
-VertexBufferBuilder.prototype.addTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layer, vpId) {
-
+VertexBufferBuilder.prototype.addTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId)
+{
     this.numTriangleGeoms++;
 
-    var v = this.addVertexTriangleGeom(x1, y1, x2, y2, x3, y3, color, dbId, layer, vpId);
+    var v = this.addVertexTriangleGeom(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId);
 
-    this.finalizeQuad(v, VBB_ONE_TRIANGLE, layer);
-
+    this.finalizeQuad(v);
     this.addToBounds(x1, y1);
     this.addToBounds(x2, y2);
     this.addToBounds(x3, y3);
 };
 
+VertexBufferBuilder.prototype.addArc = function(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layerId, vpId)
+{
+    if(major == minor)  {
+        this.numCirculars++;
+    } else {
+        this.numEllipticals++;
+    }
 
-VertexBufferBuilder.prototype.addCircularArc = function(cx, cy, start, end, radius, lineWidth, color, dbId, layer, vpId) {
+    // This is a workaround, when the circular arc has rotation, the extractor cannot handle it.
+    // After the fix is deployed in extractor, this can be removed.
+    var result = fixUglyArc(start, end);
+    start = result.start;
+    end   = result.end;
 
-    this.numCirculars++;
-
-    //If both start and end angles are exactly 0, it's a complete circle
+    //If both start and end angles are exactly 0, it's a complete ellipse/circle
     //This is working around a bug in the F2D writer, where an fmod operation will potentially.
     //convert 2pi to 0.
     if (start == 0 && end == 0)
@@ -18986,70 +19340,19 @@ VertexBufferBuilder.prototype.addCircularArc = function(cx, cy, start, end, radi
 
     //Add two zero length segments as round caps at the end points
     {
-        //If it's a full ellipse, then we don't need caps
         //If it's a full ellipse, then we don't need caps
         var range = Math.abs(start - end);
         if (range > 0.0001 && Math.abs(range - TAU) > 0.0001)
         {
-            var sx = cx + radius * Math.cos(start);
-            var sy = cy + radius * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layer, vpId);
-
-            var ex = cx + radius * Math.cos(end);
-            var ey = cy + radius * Math.sin(end);
-
-            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layer, vpId);
-
-            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range
-            //to get exact bounds
-        }
-        else
-        {
-            this.addToBounds(cx - radius, cy - radius);
-            this.addToBounds(cx + radius, cy + radius);
-        }
-    }
-
-    lineWidth *= 0.5;
-
-    var v = this.addVertexArc(cx, cy, start, end, radius, radius, 0, lineWidth, color, dbId, vpId);
-
-    this.finalizeQuad(v, VBB_ARC_CIRCULAR, layer);
-};
-
-
-VertexBufferBuilder.prototype.addEllipticalArc = function(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layer, vpId) {
-
-    //color = 0xff00ffff;
-
-    this.expandStride();
-    this.numEllipticals++;
-
-    //If both start and end angles are exactly 0, it's a complete ellipse
-    //This is working around a bug in the F2D writer, where an fmod operation will potentially.
-    //convert 2pi to 0.
-    if (start == 0 && end == 0)
-        end = TAU;
-
-    //Add two zero length segments as round caps at the end points
-    {
-        //If it's a full ellipse, then we don't need caps
-        var range = Math.abs(start - end);
-        if (Math.abs(range - TAU) > 0.0001)
-        {
             var sx = cx + major * Math.cos(start);
             var sy = cy + minor * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layer, vpId);
+            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layerId, vpId);
 
             var ex = cx + major * Math.cos(end);
             var ey = cy + minor * Math.sin(end);
+            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layerId, vpId);
 
-            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layer, vpId);
-
-            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range
-            //to get exact bounds
+            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range to get exact bounds
         }
         else
         {
@@ -19058,60 +19361,55 @@ VertexBufferBuilder.prototype.addEllipticalArc = function(cx, cy, start, end, ma
         }
     }
 
-    lineWidth *= 0.5;
+    var v = this.addVertexArc(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layerId, vpId);
 
-    var v = this.addVertexArc(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, vpId);
-
-    this.finalizeQuad(v, VBB_ARC_ELLIPTICAL, layer);
+    this.finalizeQuad(v);
 
     //Testing caps
-    if (0){
+    if(false) {
         //If it's a full ellipse, then we don't need caps
         var range = Math.abs(start - end);
         if (Math.abs(range - TAU) > 0.0001)
         {
             var sx = cx + major * Math.cos(start);
             var sy = cy + minor * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, 2 * lineWidth, 0xff00ffff, dbId, layer, vpId);
+            this.addSegment(sx, sy, sx, sy, 0, lineWidth, 0xff00ffff, dbId, layerId, vpId);
 
             var ex = cx + major * Math.cos(end);
             var ey = cy + minor * Math.sin(end);
-
-            this.addSegment(ex, ey, ex, ey, 0, 2 * lineWidth, 0xff00ffff, dbId, layer, vpId);
+            this.addSegment(ex, ey, ex, ey, 0, lineWidth, 0xff00ffff, dbId, layerId, vpId);
         }
     }
+}
 
-};
 
-
-VertexBufferBuilder.prototype.addTexturedQuad = function(x, y, w, h, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addTexturedQuad = function(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId)
 {
-    var hh = h * 0.5;
-
     //Height is specified using the line weight field.
     //This will result in height being clamped to at least one pixel
     //but that's ok (zero height for an image would be rare).
-    var v = this.addVertexLine(x, y + hh, 0, w, 0, hh, 0xff00ffff, dbId, vpId, 0);
+    var v = this.addVertexTexQuad(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId);
 
-    this.finalizeQuad(v, VBB_TEX_QUAD, layer);
+    this.finalizeQuad(v);
 
-    this.addToBounds(x, y);
-    this.addToBounds(x+w, y+h);
+    var cos = 0.5 * Math.cos(rotation);
+    var sin = 0.5 * Math.sin(rotation);
+    var w = Math.abs(width * cos) + Math.abs(height * sin);
+    var h = Math.abs(width * sin) + Math.abs(height * cos);
+    this.addToBounds(centerX - w, centerY - h);
+    this.addToBounds(centerX + w, centerY + h);
 };
 
-VertexBufferBuilder.prototype.isFull = function(addCount) {
-    if (!addCount)
-        addCount = 3;
+VertexBufferBuilder.prototype.isFull = function(addCount)
+{
+    addCount = addCount || 3;
+    var mult = this.useInstancing ? 4 : 1;
 
-    if (this.useInstancing)
-        return (this.vcount*4 + addCount > 32767);
-    else
-        return (this.vcount + addCount > 32767);
+    return (this.vcount * mult + addCount > 32767);
 };
 
-VertexBufferBuilder.prototype.toMesh = function() {
-
+VertexBufferBuilder.prototype.toMesh = function()
+{
     var mesh = {};
 
     mesh.vb = new Float32Array(this.vb.slice(0, this.vcount * this.stride * 4));
@@ -19120,74 +19418,105 @@ VertexBufferBuilder.prototype.toMesh = function() {
     var d = this.useInstancing ? 1 : 0;
 
     mesh.vblayout = {
-        "fields1" :    {offset: 0,                  itemSize: 3, bytesPerItem: 4, divisor: d },
-        "fields2" :    {offset: 3,                  itemSize: 3, bytesPerItem: 4, divisor: d },
-        "color4b":     {offset: VBB_COLOR_OFFSET,   itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true },
-        "dbId4b":      {offset: VBB_DBID_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true},
-        "linetype4b":  {offset: VBB_LINETYPE_OFFSET,itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false},
-        "flags4b":     {offset: VBB_FLAGS_OFFSET,   itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false}
+        "fields1" :    { offset: 0,                   itemSize: 3, bytesPerItem: 4, divisor: d, normalize: false },
+        "fields2" :    { offset: 3,                   itemSize: 3, bytesPerItem: 4, divisor: d, normalize: false },
+        "color4b":     { offset: VBB_COLOR_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true  },
+        "dbId4b":      { offset: VBB_DBID_OFFSET,     itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false },
+        "flags4b":     { offset: VBB_FLAGS_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false },
+        "layerVp4b":   { offset: VBB_LAYER_VP_OFFSET, itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false }
     };
 
     //Are we using an expanded vertex layout -- then add the extra attribute to the layout
     if (this.stride > 10) {
-        mesh.vblayout["extraParams"] = {offset: 10, itemSize: 2, bytesPerItem: 4, divisor: d, normalize: false};
+        mesh.vblayout["extraParams"] = { offset: 10, itemSize: 2, bytesPerItem: 4, divisor: d, normalize: false };
     }
 
     if (this.useInstancing) {
-
-        for (var attr in mesh.vblayout) {
-            mesh.vblayout[attr].divisor = 1;
-        }
-
         mesh.numInstances = this.vcount;
 
         //Set up trivial vertexId and index attributes
 
-        var instFlags = new Int32Array(4);
-        instFlags[0] = VBB_SEG_START_RIGHT;
-        instFlags[1] = VBB_SEG_END_RIGHT;
-        instFlags[2] = VBB_SEG_END_LEFT;
-        instFlags[3] = VBB_SEG_START_LEFT;
-
-        mesh.vblayout.instFlags4b = { offset:0, itemSize: 4, bytesPerItem: 1, normalize: false, divisor: 0 };
+        var instFlags = new Int32Array([ VBB_SEG_START_RIGHT, VBB_SEG_START_LEFT, VBB_SEG_END_RIGHT, VBB_SEG_END_LEFT ]);
+        mesh.vblayout.instFlags4b = { offset: 0, itemSize: 4, bytesPerItem: 1, divisor: 0, normalize: false };
         mesh.vblayout.instFlags4b.array = instFlags.buffer;
 
-        var idx = mesh.indices = new Uint16Array(6);
-        idx[0] = 0; idx[1] = 1; idx[2] = 2;
-        idx[3] = 0; idx[4] = 2; idx[5] = 3;
-    }
-    else {
-
-        mesh.indices = new Uint16Array(this.ib.buffer.slice(0, this.icount*2));
+        var idx = mesh.indices = new Uint16Array(QUAD_TRIANGLE_INDICES);
+    } else {
+        mesh.indices = new Uint16Array(this.ib.buffer.slice(0, 2 * this.icount));
     }
 
     mesh.dbIds = this.dbIds;
 
-    var w = this.maxx-this.minx;
-    var h = this.maxy-this.miny;
+    var w  = this.maxx - this.minx;
+    var h  = this.maxy - this.miny;
     var sz = Math.max(w, h);
 
     mesh.boundingBox = {
-        min: { x:this.minx, y:this.miny, z:-sz * 1e-3 },
-        max: { x:this.maxx, y:this.maxy, z:sz * 1e-3 }
+        min: { x: this.minx, y: this.miny, z: -sz * 1e-3 },
+        max: { x: this.maxx, y: this.maxy, z:  sz * 1e-3 }
     };
 
     //Also compute a rough bounding sphere
-    var bs = mesh.boundingSphere = {};
-
-    bs.center = { x:0.5 * (this.minx + this.maxx),
-                  y:0.5 * (this.miny + this.maxy),
-                  z:0 };
-
-    bs.radius = 0.5 * Math.sqrt(w*w + h*h);
+    var bs = mesh.boundingSphere = {
+        center: {
+            x: 0.5 * (this.minx + this.maxx),
+            y: 0.5 * (this.miny + this.maxy),
+            z: 0.0
+        },
+        radius: 0.5 * Math.sqrt(w*w + h*h)
+    };
 
     return mesh;
 };
 
+// The following logic attempts to "fix" imprecisions in arc definitions introduced
+// by Heidi's fixed point math, in case that the extractor doesn't handle it correctly.
+
+var fixUglyArc = function (start, end)
+{
+    //Snap critical angles exactly
+    function snapCritical() {
+        function fuzzyEquals(a, b) { return (Math.abs(a - b) < 1e-3); }
+
+        if (fuzzyEquals(start, 0))   start = 0.0;
+        if (fuzzyEquals(end,   0))   end   = 0.0;
+        if (fuzzyEquals(start, TAU)) start = TAU;
+        if (fuzzyEquals(end,   TAU)) end   = TAU;
+    }
+
+    snapCritical();
+
+    //OK, in some cases the angles are both over-rotated...
+    if (start > end) {
+        while (start > TAU) {
+            start -= TAU;
+            end   -= TAU;
+        }
+    } else {
+        while (end > TAU) {
+            start -= TAU;
+            end   -= TAU;
+        }
+    }
+
+    //Snap critical angles exactly -- again
+    snapCritical();
+
+    //If the arc crosses the x axis, we have to make it clockwise...
+    //This is a side effect of bringing over-rotated arcs in range above.
+    //For example start = 5.0, end = 7.0 will result in start < 0 and end > 0,
+    //so we have to make start > end in order to indicate we are crossing angle = 0.
+    if (start < 0 && end > 0) {
+        start += TAU;
+    }
+
+    return {start: start, end: end};
+};
 
 ns.VertexBufferBuilder = VertexBufferBuilder;
 
-})(Autodesk.Viewing.Private);;/**
+})(Autodesk.Viewing.Private);
+;/**
  * Created by stanevt on 5/8/2015.
  */
 function init_three_triangulator() {
@@ -19758,7 +20087,6 @@ Autodesk.Viewing.Private.Triangulator = (function() {
         try {
             sweepCtx.triangulate();
         } catch (e) {
-        
         }
     };
     
@@ -21307,149 +21635,151 @@ BVHBuilder.prototype.build = function(options) {
 var av = Autodesk.Viewing,
     avp = Autodesk.Viewing.Private;
 
-//Constants duplicated from src/lmvtk/VertexBufferBuilder.js
-var VBB_LINE_SEGMENT = 0x10,
-    VBB_ARC_CIRCULAR = 0x20,
-    VBB_ARC_ELLIPTICAL = 0x30,
-    VBB_TEX_QUAD = 0x40,
-    VBB_ONE_TRIANGLE = 0x50,
-
-    VBB_INSTANCED_FLAG = 0,
-    VBB_SEG_START_RIGHT = 1,
-    VBB_SEG_START_LEFT = 2,
-    VBB_SEG_END_RIGHT = 3,
-    VBB_SEG_END_LEFT = 4;
-
 var TAU = Math.PI * 2;
 
-var VBB_COLOR_OFFSET = 6,
-    VBB_DBID_OFFSET = 7,
-    VBB_LINETYPE_OFFSET = 8,
-    VBB_FLAGS_OFFSET = 9;
+//Constants duplicated from src/lmvtk/VertexBufferBuilder.js
+var VBB_GT_TRIANGLE_INDEXED = 0,
+    VBB_GT_LINE_SEGMENT     = 1,
+    VBB_GT_ARC_CIRCULAR     = 2,
+    VBB_GT_ARC_ELLIPTICAL   = 3,
+    VBB_GT_TEX_QUAD         = 4,
+    VBB_GT_ONE_TRIANGLE     = 5;
+
+var VBB_INSTANCED_FLAG  = 0, // this is intentionally 0 for the instancing case!
+    VBB_SEG_START_RIGHT = 0, // this starts intentionally at 0!
+    VBB_SEG_START_LEFT  = 1,
+    VBB_SEG_END_RIGHT   = 2,
+    VBB_SEG_END_LEFT    = 3;
+
+var VBB_COLOR_OFFSET    = 6,
+    VBB_DBID_OFFSET     = 7,
+    VBB_FLAGS_OFFSET    = 8,
+    VBB_LAYER_VP_OFFSET = 9;
 
 /**
  * Initializes a "view" into a compacted interleaved vertex buffer array using our custom 2D vertex layout.
  * See src/lmvtk/VertexBufferBuilder.js for more details.
  */
-avp.VertexBufferReader = function(geometry) {
-
-    this.vb = geometry.vb.buffer;
+avp.VertexBufferReader = function(geometry)
+{
+    this.vb  = geometry.vb.buffer;
     this.vbf = new Float32Array(this.vb);
     this.vbi = new Int32Array(this.vb);
-    
-    this.stride = geometry.vbstride;
 
+    this.stride = geometry.vbstride;
     this.vcount = this.vbf.length / this.stride;
-    
-    this.useInstancing = false;
+
+    this.useInstancing = false; // TODO: derive value from somewhere...
 };
 
-avp.VertexBufferReader.prototype.getIdAt = function(vindex) {
+avp.VertexBufferReader.prototype.getDbIdAt = function(vindex) {
     return this.vbi[vindex*this.stride + VBB_DBID_OFFSET];
 };
 
-avp.VertexBufferReader.prototype.getVertexFlagAt = function(vindex) {
+avp.VertexBufferReader.prototype.getVertexFlagsAt = function(vindex) {
     return this.vbi[vindex*this.stride + VBB_FLAGS_OFFSET];
 };
 
+avp.VertexBufferReader.prototype.getLayerIndexAt = function(vindex) {
+    return this.vbi[vindex*this.stride + VBB_LAYER_VP_OFFSET] & 0xffff;
+};
+
 avp.VertexBufferReader.prototype.getViewportIndexAt = function(vindex) {
-    return this.vbi[vindex*this.stride + VBB_LINETYPE_OFFSET] >> 16;
+    return (this.vbi[vindex*this.stride + VBB_LAYER_VP_OFFSET] >> 16) & 0xffff;
 };
 
-avp.VertexBufferReader.prototype.decodeLineAt = function(vindex, layer, vpId, callback) {
-    var baseOffset = this.stride * vindex;
-    var x0 = this.vbf[baseOffset];
-    var y0 = this.vbf[baseOffset+1];
-    var angle = this.vbf[baseOffset+2];
-    var distanceAlong = this.vbf[baseOffset+3];
-
-    var x1 = x0 + distanceAlong * Math.cos(angle);
-    var y1 = y0 + distanceAlong * Math.sin(angle);
-
-    if (callback.onLineSegment)
-        callback.onLineSegment(x0, y0, x1, y1, vpId);
-};
-
-avp.VertexBufferReader.prototype.decodeCircularArcAt = function(vindex, layer, vpId, callback) {
-    var baseOffset = this.stride * vindex;
-    var cx = this.vbf[baseOffset];
-    var cy = this.vbf[baseOffset+1];
-    var start = this.vbf[baseOffset+2];
-    var end = this.vbf[baseOffset+3];
-    var radius = this.vbf[baseOffset+5];
-
-    if (callback.onCircularArc)
-        callback.onCircularArc(cx, cy, start, end, radius, vpId);
-
-};
-
-avp.VertexBufferReader.prototype.decodeEllipticalArcAt = function(vindex, layer, vpId, callback) {
-    var baseOffset = this.stride * vindex;
-    var cx = this.vbf[baseOffset];
-    var cy = this.vbf[baseOffset+1];
-    var start = this.vbf[baseOffset+2];
-    var end = this.vbf[baseOffset+3];
-    var major = this.vbf[baseOffset+5];
-    var minor = this.vbf[baseOffset+10];
-    var tilt = this.vbf[baseOffset+11];
-
-    if (callback.onEllipticalArc)
-        callback.onEllipticalArc(cx, cy, start, end, major, minor, tilt, vpId);
-
-};
-
-avp.VertexBufferReader.prototype.decodeTriangleVertex = function(vindex, layer, vpId, callback) {
+avp.VertexBufferReader.prototype.decodeLineAt = function(vindex, layer, vpId, callback)
+{
+    if (!callback.onLineSegment) { return; }
 
     var baseOffset = this.stride * vindex;
-    var cx = this.vbf[baseOffset];
-    var cy = this.vbf[baseOffset+1];
+    var x0         = this.vbf[baseOffset];
+    var y0         = this.vbf[baseOffset+1];
+    var angle      = this.vbf[baseOffset+2];
+    var distAlong  = this.vbf[baseOffset+3];
 
-    if (callback.onTriangleVertex)
-        callback.onTriangleVertex(cx, cy, vpId);
+    var x1 = x0 + distAlong * Math.cos(angle);
+    var y1 = y0 + distAlong * Math.sin(angle);
+
+    callback.onLineSegment(x0, y0, x1, y1, vpId);
+};
+
+avp.VertexBufferReader.prototype.decodeCircularArcAt = function(vindex, layer, vpId, callback)
+{
+    if (!callback.onCircularArc) { return; }
+
+    var baseOffset = this.stride * vindex;
+    var cx         = this.vbf[baseOffset];
+    var cy         = this.vbf[baseOffset+1];
+    var start      = this.vbf[baseOffset+2];
+    var end        = this.vbf[baseOffset+3];
+    var radius     = this.vbf[baseOffset+5];
+
+    callback.onCircularArc(cx, cy, start, end, radius, vpId);
+};
+
+avp.VertexBufferReader.prototype.decodeEllipticalArcAt = function(vindex, layer, vpId, callback)
+{
+    if (!callback.onEllipticalArc) { return; }
+
+    var baseOffset = this.stride * vindex;
+    var cx         = this.vbf[baseOffset];
+    var cy         = this.vbf[baseOffset+1];
+    var start      = this.vbf[baseOffset+2];
+    var end        = this.vbf[baseOffset+3];
+    var major      = this.vbf[baseOffset+5];
+    var minor      = this.vbf[baseOffset+10];
+    var tilt       = this.vbf[baseOffset+11];
+
+    callback.onEllipticalArc(cx, cy, start, end, major, minor, tilt, vpId);
+};
+
+avp.VertexBufferReader.prototype.decodeTriangleVertex = function(vindex, layer, vpId, callback)
+{
+    if (!callback.onTriangleVertex) { return; }
+
+    var baseOffset = this.stride * vindex;
+    var cx         = this.vbf[baseOffset];
+    var cy         = this.vbf[baseOffset+1];
+
+    callback.onTriangleVertex(cx, cy, vpId);
 };
 
 
-avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback) {
-
+avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
+{
     var i = 0;
-    //var cur_index = 0;
-
     while (i < this.vcount) {
+        var flag = this.getVertexFlagsAt(i);
 
-        var flag = this.getVertexFlagAt(i);
+        var vertexId    = (flag >>  0) & 0xff;        //  8 bit
+        var geomType    = (flag >>  8) & 0xff;        //  8 bit
+        var linePattern = (flag >> 16) & 0xff;        //  8 bit
+        var layerId     = this.getLayerIndexAt(i);    // 16 bit
+        var vpId        = this.getViewportIndexAt(i); // 16 bit
 
-        var geomType = flag & 0xf0;
-        var vertexId = flag & 0xf;
-        var layer = (flag >> 16) & 0xff;
-
-        var vpId = this.getViewportIndexAt(i);
-
-        if (this.getIdAt(i) === dbId)
+        if (this.getDbIdAt(i) === dbId)
         {
             switch (geomType) {
-
-                case VBB_LINE_SEGMENT: this.decodeLineAt(i, layer, vpId, callback); break;
-                case VBB_ARC_CIRCULAR: this.decodeCircularArcAt(i, layer, vpId, callback); break;
-                case VBB_ARC_ELLIPTICAL: this.decodeEllipticalArcAt(i, layer, vpId, callback); break;
-                case VBB_TEX_QUAD: break; //TODO: do we really want to snap to rasters?
-                case VBB_ONE_TRIANGLE: break; //TODO: do we really want to snap to interior edges?
-                case 0: this.decodeTriangleVertex(i, layer, vpId, callback);
-                default: break;
-
+                case VBB_GT_TRIANGLE_INDEXED:    this.decodeTriangleVertex( i, layerId, vpId, callback); break;
+                case VBB_GT_LINE_SEGMENT:        this.decodeLineAt(         i, layerId, vpId, callback); break;
+                case VBB_GT_ARC_CIRCULAR:        this.decodeCircularArcAt(  i, layerId, vpId, callback); break;
+                case VBB_GT_ARC_ELLIPTICAL:      this.decodeEllipticalArcAt(i, layerId, vpId, callback); break;
+                case VBB_GT_TEX_QUAD:            break; // TODO: do we really want to snap to rasters?
+                case VBB_GT_ONE_TRIANGLE:        break; // TODO: do we really want to snap to interior edges?
+                default:                         break;
             }
         }
 
         //Skip duplicate vertices (when not using instancing and the geometry is not a simple polytriangle,
         //each vertex is listed four times with a different vertexId flag
-        i += (vertexId && geomType) ? 4 : 1;
+        i += (this.useInstancing || (geomType == VBB_GT_TRIANGLE_INDEXED)) ? 1 : 4;
     }
 
 };
 
-
-
-
-})();;var OUTSIDE = 0,
+})();
+;var OUTSIDE = 0,
     INTERSECTS = 1,
     CONTAINS = 2;
 
@@ -21693,6 +22023,9 @@ var VBIntersector = (function() {
 
         var geometry = mesh.geometry;
 
+		if (!geometry)
+		    return;
+
         var material = mesh.material;
         
         var side = material ? material.side : THREE.FrontSide;
@@ -21828,6 +22161,9 @@ var VBIntersector = (function() {
 		var precisionSq = precision * precision;
 
 		var geometry = mesh.geometry;
+
+		if (!geometry)
+		    return;
 
 		inverseMatrix.getInverse( mesh.matrixWorld );
 		ray.copy( raycaster.ray ).applyMatrix4( inverseMatrix );
@@ -22030,7 +22366,6 @@ var BufferGeometryUtils = (function() {
         if (attributeData.array) {
             //Is the data for the attribute specified separately
             //from the interleaved VB?
-            geometry.byteSize += attributeData.array.byteLength;
         }
         else if (attributeData.hasOwnProperty("offset")) {
             //If the attribute is in the interleaved VB, it has
@@ -22388,6 +22723,7 @@ var NODE_TYPE_ASSEMBLY   = 0x0,    // Real world object as assembly of sub-objec
     NODE_TYPE_GEOMETRY   = 0x6,    // Leaf geometry node
     NODE_TYPE_BITS       = 0x7,    //mask for all bits used by node type
 
+    NODE_FLAG_NOSELECT   = 0x20000000,
     NODE_FLAG_OFF        = 0x40000000,
     NODE_FLAG_HIDE       = 0x80000000;
 
@@ -22522,6 +22858,10 @@ InstanceTree.prototype.isNodeHidden = function(dbId) {
 
 InstanceTree.prototype.getNodeType = function(dbId) {
     return this.nodeflags[dbId] & NODE_TYPE_BITS;
+};
+
+InstanceTree.prototype.isNodeSelectable = function(dbId) {
+    return !(this.nodeflags[dbId] & NODE_FLAG_NOSELECT);
 };
 
 
@@ -23476,8 +23816,8 @@ RenderBatch.prototype.sortByMaterial = function() {
 
     var tmp = indices.subarray(this.start, this.start + this.count);
     Array.prototype.sort.call(tmp, function (a,b) {
-        var ma = frags.getMaterialId(indices[a]);
-        var mb = frags.getMaterialId(indices[b]);
+        var ma = frags.getMaterialId(a);
+        var mb = frags.getMaterialId(b);
 
         if (ma === undefined)
             return mb ? 1 : 0;
@@ -23492,6 +23832,7 @@ RenderBatch.prototype.sortByMaterial = function() {
     this.numAdded = 0;
     this.sortDone = true;
 };
+
 
 RenderBatch.prototype.sortByDepth = (function() {
 
@@ -23683,7 +24024,7 @@ RenderBatch.prototype.forEachNoMesh = function(callback, drawMode, includeEmpty)
 
 RenderBatch.prototype.raycast = (function() {
 
-    return function (raycaster, intersects) {
+    return function (raycaster, intersects, dbIdFilter) {
 
         //Assumes bounding box is up to date.
         if (raycaster.ray.isIntersectionBox(this.boundingBox) === false)
@@ -23693,6 +24034,18 @@ RenderBatch.prototype.raycast = (function() {
         var tmpBox = _tmpBox;
 
         this.forEach(function (m, fragId) {
+
+            //Check the dbIds filter if given
+            if (dbIdFilter && dbIdFilter.length) {
+                //Theoretically this can return a list of IDs (for 2D meshes)
+                //but this code will not be used for 2D geometry intersection.
+                var dbId = 0 | self.frags.getDbIds(fragId);
+
+                //dbIDs will almost always have just one integer in it, so
+                //indexOf should be fast enough.
+                if (dbIdFilter.indexOf(dbId) === -1)
+                    return;
+            }
 
             self.frags.getWorldBounds(fragId, tmpBox);
 
@@ -24112,9 +24465,9 @@ function ModelIteratorLinear(renderModel) {
 
     };
     
-    this.rayCast = function(raycaster, intersects) {
+    this.rayCast = function(raycaster, intersects, dbIdFilter) {
         for (var i = 0; i < _geomScenes.length; i++) {
-            _geomScenes[i].raycast(raycaster, intersects);
+            _geomScenes[i].raycast(raycaster, intersects, dbIdFilter);
         }
     };
 /*
@@ -24184,7 +24537,10 @@ function ModelIteratorBVH() {
             var primCount = nodes.getPrimCount(i);
             if (primCount) {
                 _bvhScenes[i] = new avp.RenderBatch(_frags, _bvhFragOrder, nodes.getPrimStart(i), primCount);
+                //Those are set manually, because we will not be adding fragments to the
+                //render batch one by one -- the fragments are already loaded.
                 _bvhScenes[i].lastItem = _bvhScenes[i].start + primCount;
+                _bvhScenes[i].numAdded = primCount;
                 if (nodes.getFlags(i) & 8) {
                     _bvhScenes[i].sortObjects = true; //scene contains transparent objects
                 }
@@ -24409,7 +24765,7 @@ function ModelIteratorBVH() {
         
     };
     
-    this.rayCast = function(raycaster, intersects) {
+    this.rayCast = function(raycaster, intersects, dbIdFilter) {
 
         var nodeStack = [1, 0];
         var pt = new THREE.Vector3();
@@ -24432,7 +24788,7 @@ function ModelIteratorBVH() {
             var prims = _bvhNodes.getPrimCount(nodeIdx);
             if (prims !== 0) {
                 var scene = _bvhScenes[nodeIdx];
-                scene.raycast(raycaster, intersects);
+                scene.raycast(raycaster, intersects, dbIdFilter);
             }
         }
  
@@ -24705,27 +25061,51 @@ function RenderModel(svf) {
     
     // Add "meshes" parameter, after we get meshes of the object using id buffer,
     // then we just need to ray intersect this object instead of all objects of the model.
-    this.rayIntersect = function(raycaster, ignoreTransparent, fragIds) {
+    this.rayIntersect = function(raycaster, ignoreTransparent, dbIds) {
 
         if (this.visibleBoundsDirty)
             this.getVisibleBounds();
 
         var intersects = [];
 
-        if (fragIds && fragIds.length > 0) {
+        if (dbIds && dbIds.length > 0) {
 
-            for (var i = 0; i < fragIds.length; i++) {
-                var mesh = _frags.getVizmesh(fragIds[i]);
-                var res = VBIntersector.rayCast(mesh, raycaster, intersects);
-                if (res) {
-                    res.fragId = fragIds[i];
-                    intersects.push(res);
+            //Collect the mesh fragments for the given database ID node filter.
+            var it = this.getData().instanceTree;
+            var fragIds = [];
+            if (it) {
+                for (var i=0; i<dbIds.length; i++) {
+                    it.enumNodeFragments(dbIds[i], function(fragId) {
+                        fragIds.push(fragId);
+                    }, true);
+                }
+            } else {
+                //No instance tree -- treat dbIds as fragIds
+                fragIds = dbIds;
+            }
+
+            //If there are multiple fragments it pays to still use
+            //the bounding volume hierarchy to do the intersection,
+            //because it can cull away entire fragments by bounding box,
+            //instead of checking every single fragment triangle by triangle
+            if (fragIds.length > 2) { //2 is just an arbitrary value, assuming checking 2 fragments is still cheap than full tree traversal
+                _iterator.rayCast(raycaster, intersects, dbIds);
+            } else {
+                for (var i=0; i<fragIds.length; i++) {
+                    var mesh = _frags.getVizmesh(fragIds[i]);
+                    if (!mesh)
+                        continue;
+                    var res = VBIntersector.rayCast(mesh, raycaster, intersects);
+                    if (res) {
+                        intersects.push(res);
+                    }
                 }
             }
-        }
-        else {
+
+        } else {
             _iterator.rayCast(raycaster, intersects);
         }
+
 
         if (!intersects.length)
             return null;
@@ -25003,6 +25383,7 @@ avp.RenderModel = RenderModel;
 
         var _models = [];
         var _candidateScenes = [];
+        var _tmpBox = new THREE.Box3();
 
         var _frustum = new avp.FrustumIntersector();
 
@@ -25247,20 +25628,30 @@ avp.RenderModel = RenderModel;
                 _models[i].visibleBoundsDirty = true;
         };
 
+
         this.getVisibleBounds = function (includeGhosted) {
-            return _models[0].getVisibleBounds(includeGhosted);
+            if (_models.length === 1)
+                return _models[0].getVisibleBounds(includeGhosted);
+
+            _tmpBox.makeEmpty();
+            for (var i=0; i<_models.length; i++)
+                _tmpBox.union(_models[i].getVisibleBounds(includeGhosted));
+
+            return _tmpBox;
         };
 
         // Add "meshes" parameter, after we get meshes of the object using id buffer,
         // then we just need to ray intersect this object instead of all objects of the model.
-        this.rayIntersect = function (position, direction, ignoreTransparent, fragIds) {
+        this.rayIntersect = function (position, direction, ignoreTransparent, dbIds) {
 
             _raycaster.set(position, direction);
 
             if (_models.length > 1) {
                 var modelHits = [];
                 for (var i=0; i<_models.length; i++) {
-                    var res = _models[i].rayIntersect(_raycaster, ignoreTransparent, fragIds);
+                    if (_models[i].is2d())
+                        continue;
+                    var res = _models[i].rayIntersect(_raycaster, ignoreTransparent, dbIds);
                     if (res)
                         modelHits.push(res);
                 }
@@ -25272,7 +25663,9 @@ avp.RenderModel = RenderModel;
 
                 return modelHits[0];
             } else {
-                return _models[0].rayIntersect(_raycaster, ignoreTransparent, fragIds);
+                if (!_models.length || _models[0].is2d())
+                    return null;
+                return _models[0].rayIntersect(_raycaster, ignoreTransparent, dbIds);
             }
         };
 
@@ -25443,6 +25836,8 @@ function RenderContext() {
 
     var _saoBufferValid = false;
 
+    var _lastX, _lastY, _lastID, _lastIDValid = false;
+
     var _depthTarget;
     var _depthMipMap = null;
     var _colorTarget = null;
@@ -25500,6 +25895,7 @@ function RenderContext() {
 
     this.init = function (glrenderer, width, height) {
 
+        init_ShaderChunks(avs);
         init_FireflyPhongShader(avs);
         init_FireflyPrismShader(avs);
         init_BackgroundShader(avs);
@@ -25626,6 +26022,7 @@ function RenderContext() {
         _camera = camera;
         _lights = customLights;
         _saoBufferValid = false;
+        _lastIDValid = false;
 
         if (!_colorTarget) {
             if (!_w && !_warnedLeak) {
@@ -25737,6 +26134,7 @@ function RenderContext() {
 
         //console.time("renderScenePart");
         _saoBufferValid = false;
+        _lastIDValid = false;
         var lights = updateLights ? _lights : undefined;
 
         //Three possibilities here -- MRT fully supported (Mac OS or native GL backends on Windows).
@@ -26448,10 +26846,12 @@ function RenderContext() {
         if (!_idTarget)
             return 0;
 
-        var px = (vpx + 1.0) * 0.5 * _idTarget.width;
-        var py = (vpy + 1.0) * 0.5 * _idTarget.height;
+        var px = 0 | ((vpx + 1.0) * 0.5 * _idTarget.width);
+        var py = 0 | ((vpy + 1.0) * 0.5 * _idTarget.height);
 
         //stderr("x:" + px + " y:" + py);
+        if (_lastIDValid && px === _lastX && py === _lastY)
+            return _lastID;
 
         _renderer.readRenderTargetPixels(_idTarget, px, py, 1, 1, _readbackBuffer);
 
@@ -26459,6 +26859,11 @@ function RenderContext() {
 
         //sign extend the upper byte to get back negative numbers (since we clamp 32 bit to 24 bit when rendering ids)
         id = (id << 8) >> 8;
+
+        _lastX = px;
+        _lastY = py;
+        _lastID = id;
+        _lastIDValid = true;
 
         return id;
     };
@@ -26486,29 +26891,47 @@ function RenderContext() {
         return id;
     };
 
-    this.rolloverObjectViewport = function (vpx, vpy) {
+    this.rolloverObjectViewport = function (vpx, vpy, dbIds) {
+        var objId = dbIds ? dbIds[0] : this.idAtPixel(vpx, vpy);
+        return this.rolloverObjectId(objId, dbIds);
+    };
 
-        var objId = this.idAtPixel(vpx, vpy);
+    this.rolloverObjectId = function(objId, dbIds) {
 
         if (objId == _lastObjId)
             return false;
         //stderr(objId);
 
         _blendPass.uniforms['highlightIntensity'].value = 0;
+        _blendPass.uniforms['objID'].value = objId;
 
         _lastObjTime = performance.now();
         _lastObjId = objId;
 
-        //Check if nothing was at that pixel -- 0 means object
-        //that has no ID, ffffff (-1) means background, and both result
-        //in no highlight.
-        if (objId <= 0) {
-            objId = 0;
-            _readbackBuffer[0] = _readbackBuffer[1] = _readbackBuffer[2] = _readbackBuffer[3] = 0;
-        }
+        // When dbIds is provided, highlight nodes in a range
+        if (dbIds) {
 
-        _blendPass.uniforms['objID'].value = objId;
-        _blendPass.uniforms['objIDv3'].value.set(_readbackBuffer[0]/255, _readbackBuffer[1]/255, _readbackBuffer[2]/255);
+            if (dbIds.length > 1)
+                dbIds.shift();
+            _blendPass.uniforms['highlightRange'].value = 1;
+            _blendPass.uniforms['objIDStart'].value = dbIds[0];
+            _blendPass.uniforms['objIDEnd'].value = dbIds[dbIds.length - 1];
+        }
+        else {
+
+            _blendPass.uniforms['highlightRange'].value = 0;
+
+            //Check if nothing was at that pixel -- 0 means object
+            //that has no ID, ffffff (-1) means background, and both result
+            //in no highlight.
+            if (objId <= 0) {
+                objId = 0;
+            }
+
+            _blendPass.uniforms['objIDv3'].value.set((objId & 0xFF) / 255,
+                                                    ((objId >> 8) & 0xFF) / 255,
+                                                    ((objId >> 16) & 0xFF) / 255);
+        }
 
         return true;
     };
@@ -26637,7 +27060,15 @@ avs.FXAAShader = {
 
 };
 
-};var PackDepthShaderChunk = [
+};
+function init_ShaderChunks() {
+
+"use strict";
+
+var avs = Autodesk.Viewing.Shaders;
+
+
+avs.PackDepthShaderChunk = [
     //Packs a float in the range 0-1 to an RGBA8
     "vec4 packDepth( const in float depth ) {",
         "vec4 enc = vec4(1.0, 255.0, 65025.0, 160581375.0) * depth;",
@@ -26653,7 +27084,7 @@ avs.FXAAShader = {
 ].join("\n");
 
 
-var TonemapShaderChunk = [
+avs.TonemapShaderChunk = [
     //post-gamma luminance
     "float luminance_post(vec3 rgb) {",
     "return dot(rgb, vec3(0.299, 0.587, 0.114));",
@@ -26807,7 +27238,7 @@ var TonemapShaderChunk = [
 ].join("\n");
 
 
-var OrderedDitheringShaderChunk = [
+avs.OrderedDitheringShaderChunk = [
     "vec3 orderedDithering(vec3 col) {",
         //Matrix for 4x4 ordered dithering. (http://en.wikipedia.org/wiki/Ordered_dithering)
         "const vec4 m0 = vec4( 1.0, 13.0,  4.0, 16.0);",
@@ -26836,47 +27267,36 @@ var OrderedDitheringShaderChunk = [
     "}",
 ].join("\n");
 
+
+avs.CutPlanesUniforms = {
+    "cutplanes": { type: "v4v", value: [] },
+    "hatchParams": { type: "v2", value: new THREE.Vector2(1.0, 10.0) },
+    "hatchTintColor": { type: "c", value: new THREE.Color( 0xFFFFFF ) },
+    "hatchTintIntensity": { type: "f", value: 1.0 },
+};
+
 // requires vWorldPosition
-//          vViewPosition, if CUTPLANES_LINE
-var CutPlanesShaderChunk = [
+avs.CutPlanesShaderChunk = [
     "#if NUM_CUTPLANES > 0",
         "uniform vec4 cutplanes[NUM_CUTPLANES];",
 
-        "#ifdef CUTPLANES_LINE",
-        "uniform vec3 cutplanesOutlineColor;",
-        "uniform float cutplanesOutlineThickness;",
-        "#endif",
-
         "bool checkCutPlanes(vec3 worldPosition) {",
             "bool isCut = false;",
-            "#ifdef CUTPLANES_LINE",
-            "bool isCutEdge = false;",
-            "float eyeDist = length(vViewPosition);",
-            "#endif",
             "for (int i=0; i<NUM_CUTPLANES; i++) {",
                 "float dotPlane = dot(vec4(worldPosition, 1.0), cutplanes[i]);",
                 "isCut = isCut || (dotPlane > 0.0);",
-                "#ifdef CUTPLANES_LINE",
-                "isCutEdge = isCutEdge || (dotPlane > -cutplanesOutlineThickness*eyeDist);",
-                "#endif",
             "}",
             "if (isCut) {",
                 "discard;",
                 "return true;",
             "}",
-            "#ifdef CUTPLANES_LINE",
-            "else if (isCutEdge) {",
-                "gl_FragColor = vec4(cutplanesOutlineColor, 1.0);",
-                "return true;",
-            "}",
-            "#endif",
             "return false;",
         "}",
     "#endif",
 ].join("\n");
 
 
-var PackNormalsShaderChunk = [
+avs.PackNormalsShaderChunk = [
 
 //See http://aras-p.info/texts/CompactNormalStorage.html
 //Currently using the slow and simple approach of mapping 3d normal to two spherical coords.
@@ -26899,7 +27319,7 @@ var PackNormalsShaderChunk = [
 
 ].join("\n");
 
-var HatchPatternShaderChunk = [
+avs.HatchPatternShaderChunk = [
 
 "#ifdef HATCH_PATTERN",
 "uniform vec2 hatchParams;",
@@ -26940,7 +27360,7 @@ var HatchPatternShaderChunk = [
 
 ].join("\n");
 
-var EnvSamplingShaderChunk = [
+avs.EnvSamplingShaderChunk = [
 // Precomputed sin/cos of the environment rotation
 "uniform float envRotationSin;",
 "uniform float envRotationCos;",
@@ -26951,7 +27371,62 @@ var EnvSamplingShaderChunk = [
         "envRotationSin * lookup.x + envRotationCos * lookup.z);",
 "}"
 ].join("\n");
-;function init_CopyShader() {
+
+
+avs.IdUniforms = {
+    "dbId" : { type: "v4", value : new THREE.Vector4(0,0,0,0) }
+};
+
+avs.IdOutputShaderChunk = [
+
+    "#ifdef MRT_ID_BUFFER",
+        //When using MRT, we have to set the alpha channel to 1
+        //in order to override alpha blending (which cannot be individually controlled per target
+        //and we need it for the color target)
+        "#ifdef MRT_NORMALS",
+            "const int index = 2;",
+        "#else",
+            "const int index = 1;",
+        "#endif",
+            "gl_FragData[index] = vec4(dbId.rgb, 1.0);",
+    "#elif defined(ID_COLOR)",
+        //here we assume that in case we are only rendering
+        //to an ID target, blending is off, so we can use
+        //the alpha channel as well (which is usually 0 for IDs and will cause the pixels to be discarded).
+        "gl_FragColor = dbId;",
+    "#endif"
+
+].join("\n");
+
+
+avs.FinalOutputShaderChunk = [
+
+    "#ifdef HATCH_PATTERN",
+        "gl_FragColor = calculateHatchPattern(hatchParams, gl_FragCoord.xy, gl_FragColor, hatchTintColor, hatchTintIntensity);",
+    "#endif",
+
+    "#if defined(USE_LOGDEPTHBUF) && defined(USE_LOGDEPTHBUF_EXT)",
+        "gl_FragDepthEXT = log2(vFragDepth) * logDepthBufFC * 0.5;",
+    "#endif",
+
+    "#ifdef MRT_NORMALS",
+        //We cannot avoid blending in the depth target when blending
+        //to the color target is on, so
+        //we pack the normal and depth in the first three elements
+        //and use 0 or 1 as the alpha.
+        //NOTE: Dropping the Z coordinate of the normal entirely means
+        //that we lose information about its sign (we use sqrt to restore it later).
+        //This is OK in this case because in view space surfaces that we see will have
+        //positive Z component in all cases. If that changes we have to also
+        //encode the sign bit in the x or y.
+        "gl_FragData[1] = vec4(geomNormal.x, geomNormal.y, depth, gl_FragColor.a < 1.0 ? 0.0 : 1.0);",
+    "#endif",
+
+    avs.IdOutputShaderChunk
+
+].join("\n");
+
+};function init_CopyShader() {
 
 "use strict";
 
@@ -27057,7 +27532,7 @@ avs.CelShader = {
             "return nrmz;",
         "}",
         
-        TonemapShaderChunk,
+        avs.TonemapShaderChunk,
         
         "vec4 quantize(vec4 c) {",
             "c *= c;",
@@ -27290,6 +27765,10 @@ avs.BlendShader = {
         //Enable these if the forward pass renders in HDR-linear target and the Blend shader is doing the tone mapping
         //"exposureBias" : { type:"f", value: 1.0 },
         //"toneMapMethod" : { type:"i", value: 0 }
+
+        "highlightRange" : { type: "i", value: 0 },
+        "objIDStart" : { type: "i", value: 0 },
+        "objIDEnd" : { type: "i", value: 0 }
     },
 
 
@@ -27324,9 +27803,13 @@ avs.BlendShader = {
         "uniform sampler2D tID;",
         "uniform float highlightIntensity;",
 
+        "uniform int highlightRange;",
+        "uniform int objIDStart;",
+        "uniform int objIDEnd;",
+
         "varying vec2 vUv;",
 
-        TonemapShaderChunk,
+        avs.TonemapShaderChunk,
 
         // search 3x3 neighbors
         // the current pixel is outline if
@@ -27433,19 +27916,31 @@ avs.BlendShader = {
                 "texel.rgb = mix(texel.rgb, sqrt(overlay.rgb)/*sqrt=gamma*/, overlay.a);",
             "}",
 
-            "if (objID != 0) {",
+            "if (highlightRange == 0) {",
+                "if (objID != 0) {",
 
+                    "vec4 idAtPixel = texture2D(tID, vUv);",
+
+                    "vec3 idDelta = abs(idAtPixel.rgb - objIDv3.rgb);",
+                    "if (max(max(idDelta.r, idDelta.g), idDelta.b) < 1e-3) {",
+                        "#ifdef IS_2D",
+                        "texel.rgb = mix(texel.rgb, vec3(1.0,1.0,0.0), highlightIntensity * 0.25);",
+                        "#else",
+                        "texel.rgb += highlightIntensity * 0.2;",
+                        "#endif",
+                    "}",
+
+                "}",
+            "} else {",
                 "vec4 idAtPixel = texture2D(tID, vUv);",
-
-                "vec3 idDelta = abs(idAtPixel.rgb - objIDv3.rgb);",
-                "if (max(max(idDelta.r, idDelta.g), idDelta.b) < 1e-3) {",
+                "int dbId = int(idAtPixel.r * 255.0 + idAtPixel.g * 255.0 * 256.0 + idAtPixel.b * 255.0 * 256.0 * 256.0);",
+                "if (dbId >= objIDStart && dbId <= objIDEnd) {",
                     "#ifdef IS_2D",
                     "texel.rgb = mix(texel.rgb, vec3(1.0,1.0,0.0), highlightIntensity * 0.25);",
                     "#else",
                     "texel.rgb += highlightIntensity * 0.2;",
                     "#endif",
                 "}",
-
             "}",
 
             "gl_FragColor = texel;",
@@ -27689,7 +28184,7 @@ avs.SAOShader = {
             "p.y = key * 256.0 - temp;",
         "}",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         //Used to unpack depth value when input depth texture is RGBA8
         "float unpackDepthNearFar( const in vec4 rgba_depth ) {",
@@ -28334,7 +28829,7 @@ avs.SAOMinifyFirstShader = {
 
         //"varying vec2 vUv;",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         "void main() {",
 
@@ -28425,6 +28920,8 @@ avs.FireflyPhongShader = {
             THREE.UniformsLib[ "bump" ],
             THREE.UniformsLib[ "normalmap" ],
             THREE.UniformsLib[ "lights" ],
+            avs.CutPlanesUniforms,
+            avs.IdUniforms,
 
             {
                 "emissive" : { type: "c", value: new THREE.Color( 0x000000 ) },
@@ -28442,16 +28939,6 @@ avs.FireflyPhongShader = {
                 "envMapExposure" : { type:"f", value: 1.0 },
                 "envRotationSin": {type: "f", value: 0.0},
                 "envRotationCos": {type: "f", value: 1.0},
-
-                "cutplanes": { type: "v4v", value: [] },
-                "cutplanesOutlineColor": { type: "v3", value: new THREE.Vector3( 0, 1, 0 ) },
-
-                "hatchParams": { type: "v2", value: new THREE.Vector2(1.0, 10.0) },
-                "cutplanesOutlineThickness" : { type: "f", value: 0.001 },
-                "hatchTintColor": { type: "c", value: new THREE.Color( 0xFFFFFF ) },
-                "hatchTintIntensity": { type: "f", value: 1.0 },
-
-                "dbId" : { type: "v4", value : new THREE.Vector4(0,0,0,0) }
             }
 
         ] ),
@@ -28504,7 +28991,7 @@ avs.FireflyPhongShader = {
                 "varying float depth;",
             "#endif",
 
-            PackNormalsShaderChunk,
+            avs.PackNormalsShaderChunk,
 
             "void main() {",
 
@@ -28593,7 +29080,7 @@ avs.FireflyPhongShader = {
             "uniform vec3 specular;",
             "uniform float shininess;",
 
-            EnvSamplingShaderChunk,
+            avs.EnvSamplingShaderChunk,
 
             "#ifdef USE_COLOR",
                 "varying vec3 vColor;",
@@ -28633,7 +29120,7 @@ avs.FireflyPhongShader = {
 
             "#if TONEMAP_OUTPUT > 0",
                 "uniform float exposureBias;",
-                TonemapShaderChunk,
+                avs.TonemapShaderChunk,
             "#endif",
 
             "#if defined(IRR_RGBM) || defined(ENV_RGBM) || defined(ENV_GAMMA) || defined(IRR_GAMMA)",
@@ -28848,7 +29335,7 @@ avs.FireflyPhongShader = {
                 "uniform sampler2D alphaMap;",
             "#endif",
 
-            HatchPatternShaderChunk,
+            avs.HatchPatternShaderChunk,
 
             "#if defined(MRT_NORMALS) || defined(MRT_ID_BUFFER)",
                 "varying highp float depth;",
@@ -28875,8 +29362,7 @@ avs.FireflyPhongShader = {
                 "return v + ( 1.0 - v ) * facing2 * facing2 * facing;",
             "}",
 
-            //"#define CUTPLANES_LINE",
-            CutPlanesShaderChunk,
+            avs.CutPlanesShaderChunk,
 
             "void main() {",
 
@@ -29274,54 +29760,13 @@ avs.FireflyPhongShader = {
 
                 "#endif", //USE_ENVMAP
 
-
-                "#ifdef GAMMA_OUTPUT",
-                    "gl_FragColor.xyz = sqrt( gl_FragColor.xyz );",
-                "#endif",
-
                 "#if TONEMAP_OUTPUT == 1",
                     "gl_FragColor.xyz = toneMapCanonOGS_WithGamma_WithColorPerserving(exposureBias * gl_FragColor.xyz);",
                 "#elif TONEMAP_OUTPUT == 2",
                     "gl_FragColor.xyz = toneMapCanonFilmic_WithGamma( exposureBias * gl_FragColor.xyz );",
                 "#endif",
 
-                "#ifdef HATCH_PATTERN",
-                    "gl_FragColor = calculateHatchPattern(hatchParams, gl_FragCoord.xy, gl_FragColor, hatchTintColor, hatchTintIntensity);",
-                "#endif",
-
-                "#if defined(USE_LOGDEPTHBUF) && defined(USE_LOGDEPTHBUF_EXT)",
-                    "gl_FragDepthEXT = log2(vFragDepth) * logDepthBufFC * 0.5;",
-                "#endif",
-
-                "#ifdef MRT_NORMALS",
-                    //We cannot avoid blending in the depth target when blending
-                    //to the color target is on, so
-                    //we pack the normal and depth in the first three elements
-                    //and use 0 or 1 as the alpha.
-                    //NOTE: Dropping the Z coordinate of the normal entirely means
-                    //that we lose information about its sign (we use sqrt to restore it later).
-                    //This is OK in this case because in view space surfaces that we see will have
-                    //positive Z component in all cases. If that changes we have to also
-                    //encode the sign bit in the x or y.
-                    "gl_FragData[1] = vec4(geomNormal.x, geomNormal.y, depth, gl_FragColor.a < 1.0 ? 0.0 : 1.0);",
-                "#endif",
-
-                "#ifdef MRT_ID_BUFFER",
-                    //When using MRT, we have to set the alpha channel to 1
-                    //in order to override alpha blending (which cannot be individually controlled per target
-                    //and we need it for the color target)
-                    "#ifdef MRT_NORMALS",
-                        "const int index = 2;",
-                    "#else",
-                        "const int index = 1;",
-                    "#endif",
-                        "gl_FragData[index] = vec4(dbId.rgb, 1.0);",
-                "#elif defined(ID_COLOR)",
-                    //here we assume that in case we are only rendering
-                    //to an ID target, blending is off, so we can use
-                    //the alpha channel as well (which is usually 0 for IDs and will cause the pixels to be discarded).
-                    "gl_FragColor = dbId;",
-                "#endif",
+                avs.FinalOutputShaderChunk,
 
             "}"
 
@@ -29456,6 +29901,8 @@ avs.PrismShader = {
 
             THREE.UniformsLib[ "common" ],
             THREE.UniformsLib[ "lights" ],
+            avs.CutPlanesUniforms,
+            avs.IdUniforms,
 
             GetPrismMapUniforms("surface_albedo_map"),
             GetPrismMapUniforms("surface_roughness_map"),
@@ -29587,15 +30034,6 @@ avs.PrismShader = {
                 "envExponentMax" : { type:"f", value: 512.0 },
                 "envExponentCount" : { type:"f", value: 10.0 },
 
-                "cutplanes": { type: "v4v", value: [] },
-                "cutplanesOutlineColor": { type: "v3", value: new THREE.Vector3( 0, 1, 0 ) },
-                "hatchParams": { type: "v2", value: new THREE.Vector2(1.0, 10.0) },
-                "cutplanesOutlineThickness" : { type: "f", value: 0.001 },
-                "hatchTintColor": { type: "c", value: new THREE.Color( 0xFFFFFF ) },
-                "hatchTintIntensity": { type: "f", value: 1.0 },
-
-                "dbId" : { type: "v4", value : new THREE.Vector4(0,0,0,0) }
-
             }
 
         ] ),
@@ -29628,7 +30066,7 @@ avs.PrismShader = {
                 "varying float depth;",
             "#endif",
 
-            PackNormalsShaderChunk,
+            avs.PackNormalsShaderChunk,
 
             //Prism brdf calculation needs tangent/bitangent. If uv is not available,
             //calculate tangent/bitangent in vertex shader with a simplified algorithm.
@@ -29732,8 +30170,6 @@ avs.PrismShader = {
             "// They may not be disclosed to, copied or used by any third party without",
             "// the prior written consent of Autodesk, Inc. ",
             "//**************************************************************************/ ",
-            "// AUTHORS: Mauricio Vives, Wallace Wang, Hao Zhou ",
-            "//**************************************************************************/",
             "#define PI 3.141592654",
             "#define RECIPROCAL_PI 0.318309886",
             "#define RECIPROCAL_2PI 0.159154943",
@@ -29834,11 +30270,11 @@ avs.PrismShader = {
             "uniform float envExponentMin;",
             "uniform float envExponentMax;",
             "uniform float envExponentCount;",
-            EnvSamplingShaderChunk,
+            avs.EnvSamplingShaderChunk,
 
             "#if TONEMAP_OUTPUT > 0",
                 "uniform float exposureBias;",
-                TonemapShaderChunk,
+                avs.TonemapShaderChunk,
             "#endif",
 
             "#if defined(MRT_NORMALS) || defined(MRT_ID_BUFFER)",
@@ -30008,7 +30444,7 @@ avs.PrismShader = {
             "}",
             "#endif",
 
-            HatchPatternShaderChunk,
+            avs.HatchPatternShaderChunk,
 
             "#if defined( USE_ENVMAP ) && defined( USE_IRRADIANCEMAP )",
             "uniform samplerCube irradianceMap;",
@@ -31367,7 +31803,7 @@ avs.PrismShader = {
 
             "varying vec3 vNormal;",
             "varying vec3 vViewPosition;",
-            CutPlanesShaderChunk,
+            avs.CutPlanesShaderChunk,
 
             "void main() {",
             "#if NUM_CUTPLANES > 0",
@@ -31608,43 +32044,7 @@ avs.PrismShader = {
                     "gl_FragColor.xyz = toneMapCanonFilmic_WithGamma(exposureBias * gl_FragColor.xyz);",
                 "#endif",
 
-                "#ifdef HATCH_PATTERN",
-                    "gl_FragColor = calculateHatchPattern(hatchParams, gl_FragCoord.xy, gl_FragColor, hatchTintColor, hatchTintIntensity);",
-                "#endif",
-
-                "#if defined(USE_LOGDEPTHBUF) && defined(USE_LOGDEPTHBUF_EXT)",
-                    "gl_FragDepthEXT = log2(vFragDepth) * logDepthBufFC * 0.5;",
-                "#endif",
-
-                "#ifdef MRT_NORMALS",
-                    //We cannot avoid blending in the depth target when blending
-                    //to the color target is on, so
-                    //we pack the normal and depth in the first three elements
-                    //and use 0 or 1 as the alpha.
-                    //NOTE: Dropping the Z coordinate of the normal entirely means
-                    //that we lose information about its sign (we use sqrt to restore it later).
-                    //This is OK in this case because in view space surfaces that we see will have
-                    //positive Z component in all cases. If that changes we have to also
-                    //encode the sign bit in the x or y.
-                    "gl_FragData[1] = vec4(geomNormal.x, geomNormal.y, depth, gl_FragColor.a < 1.0 ? 0.0 : 1.0);",
-                "#endif",
-
-                "#ifdef MRT_ID_BUFFER",
-                    //When using MRT, we have to set the alpha channel to 1
-                    //in order to override alpha blending (which cannot be individually controlled per target
-                    //and we need it for the color target)
-                    "#ifdef MRT_NORMALS",
-                        "const int index = 2;",
-                    "#else",
-                        "const int index = 1;",
-                    "#endif",
-                        "gl_FragData[index] = vec4(dbId.rgb, 1.0);",
-                "#elif defined(ID_COLOR)",
-                    //here we assume that in case we are only rendering
-                    //to an ID target, blending is off, so we can use
-                    //the alpha channel as well (which is usually 0 for IDs and will cause the pixels to be discarded).
-                    "gl_FragColor = dbId;",
-                "#endif",
+                avs.FinalOutputShaderChunk,
             "}"
 
 
@@ -31852,7 +32252,7 @@ avs.NormalsShader = {
                 "varying vec3 vWorldPosition;",
             "#endif",
 
-            PackNormalsShaderChunk,  
+            avs.PackNormalsShaderChunk,
             
             "void main() {",
 
@@ -31892,7 +32292,7 @@ avs.NormalsShader = {
             "#if NUM_CUTPLANES > 0",
                 "varying vec3 vWorldPosition;",
             "#endif",
-            CutPlanesShaderChunk,
+            avs.CutPlanesShaderChunk,
 
             "void main() {",
                 "#if NUM_CUTPLANES > 0",
@@ -31986,11 +32386,11 @@ avs.BackgroundShader = {
         "uniform float uHalfFovTan;",
         "uniform bool envMapBackground;",
 
-        EnvSamplingShaderChunk,
+        avs.EnvSamplingShaderChunk,
 
         "const int bloomRange = 4;",
 
-        OrderedDitheringShaderChunk,
+        avs.OrderedDitheringShaderChunk,
 
         //NOTE: This depends on the specific encoding used.
         //We use the environment preset's built in exposure correction,
@@ -32056,6 +32456,10 @@ avs.BackgroundShader = {
 ;
 function init_FireflyBasicShader(ns) {
 
+	"use strict";
+
+	var avs = Autodesk.Viewing.Shaders;
+
     //Replacement for the THREE BasicMaterial adding
     //cut plane support
 
@@ -32066,11 +32470,7 @@ function init_FireflyBasicShader(ns) {
 			THREE.UniformsLib[ "common" ],
 			THREE.UniformsLib[ "fog" ],
 			THREE.UniformsLib[ "shadowmap" ],
-			
-			{
-				"cutplanes": { type: "v4v", value: [] },
-				"cutplanesOutlineColor": { type: "v3", value: new THREE.Vector3( 0, 1, 0 ) },
-			}
+			avs.CutPlanesUniforms
 		] ),
 
 		vertexShader: [
@@ -32143,7 +32543,7 @@ function init_FireflyBasicShader(ns) {
                 "varying highp vec3 vWorldPosition;",
             "#endif",
 
-			CutPlanesShaderChunk,
+			avs.CutPlanesShaderChunk,
 
 			"void main() {",
 
@@ -32212,22 +32612,64 @@ function init_LineShader(ns) {
 
 "use strict";
 
+var avs = Autodesk.Viewing.Shaders;
+
 if (typeof ns.LineShader !== "undefined")
     return;
+
+var COMMON_DEFINES = [
+    "#define TAU     6.28318530718",
+    "#define PI      3.14159265358979",
+    "#define HALF_PI 1.57079632679",
+
+    "#define PI_0_5  HALF_PI",       // 0.5 * PI
+    "#define PI_1_5  4.71238898038"  // 1.5 * PI
+].join('\n');
+
+var GEOMETRY_TYPES_DEFINES = [
+    "#define VBB_GT_TRIANGLE_INDEXED  0.0",
+    "#define VBB_GT_LINE_SEGMENT      1.0",
+    "#define VBB_GT_ARC_CIRCULAR      2.0",
+    "#define VBB_GT_ARC_ELLIPTICAL    3.0",
+    "#define VBB_GT_TEX_QUAD          4.0",
+    "#define VBB_GT_ONE_TRIANGLE      5.0"
+].join('\n');
+
+var VERTEX_ID_DEFINES = [
+    "#define VBB_INSTANCED_FLAG   0.0",
+    "#define VBB_SEG_START_RIGHT  0.0",
+    "#define VBB_SEG_START_LEFT   1.0",
+    "#define VBB_SEG_END_RIGHT    2.0",
+    "#define VBB_SEG_END_LEFT     3.0"
+].join('\n');
+
+// pass these attributes from the VS to the FS
+var VARYINGS = [
+    "varying vec4 fsColor;",
+    "varying vec4 dbId;", // this name is required by avs.IdOutputShaderChunk
+
+    "varying vec2 fsOffsetDirection;",
+    "varying vec4 fsMultipurpose;",
+
+    "varying float fsGeomType;",
+    "varying float fsHalfWidth;"
+].join('\n');
 
 ns.LineShader = {
 
         uniforms: {
 
-            "pixelsPerUnit" : { type: "f", value: 1.0 },
-            "aaRange" : { type: "f", value: 0.5 }, //aaRange = 0.5/pixelsPerUnit
-            "tLayerMask": { type: "t", value: null },
-            "tLineStyle": { type: "t", value: null },
-            "vLineStyleTexSize": { type: "v2", value : new THREE.Vector2(13,70) },
-            "tRaster": { type: "t", value: null},
-            "tSelectionTexture": { type: "t", value: null},
-            "vSelTexSize" : {type: "v2", value: new THREE.Vector2(4096,1) },
-            "displayPixelRatio" : { type: "f", value: 1.0 }
+            "pixelsPerUnit":     { type: "f",  value: 1.0 },
+            "aaRange":           { type: "f",  value: 0.5 }, //aaRange = 0.5/pixelsPerUnit
+            "tLayerMask":        { type: "t",  value: null },
+            "tLineStyle":        { type: "t",  value: null },
+            "vLineStyleTexSize": { type: "v2", value: new THREE.Vector2(13, 70) },
+            "tRaster":           { type: "t",  value: null},
+            "tSelectionTexture": { type: "t",  value: null},
+            "vSelTexSize":       { type: "v2", value: new THREE.Vector2(4096, 1) },
+            "displayPixelRatio": { type: "f",  value: 1.0 },
+            "opacity":           { type: "f",  value: 1.0 },
+            "selectionColor":    { type: "v4", value: new THREE.Vector4(0, 0, 1, 1) }
 
             //This is handled as special case by the renderer, like all other camera matrices
             //since it's shared between material instances
@@ -32235,25 +32677,25 @@ ns.LineShader = {
         },
 
         attributes: {
-            "fields1" : 0,
-            "fields2" : 0,
-            "color4b" : 0,
-            "dbId4b" : 0,
-            "flags4b" : 0,
+            "fields1":     0,
+            "fields2":     0,
+            "color4b":     0,
+            "dbId4b":      0,
+            "flags4b":     0,
+            "layerVp4b":   0,
             "extraParams": 0,
-            "instFlags4b" : 0,
-            "linetype4b" : 0
+            "instFlags4b": 0
         },
 
         defines : {
-            //"MRT_ID_BUFFER" : "1",
-            //"ID_COLOR" : "1",
-            //"SELECTION_RENDERER" : 1,
-            //"HAS_RASTER_QUADS": 1,
-            //"HAS_ELLIPTICALS": 1
-            //"HAS_CIRCLES" : 1
-            //"HAS_TRIANGLE_GEOMS" : 1
-            //"USE_INSTANCING" : 1
+            //"MRT_ID_BUFFER":      1,
+            //"ID_COLOR":           1,
+            //"SELECTION_RENDERER": 1,
+            //"HAS_RASTER_QUADS":   1,
+            //"HAS_ELLIPTICALS":    1,
+            //"HAS_CIRCLES":        1,
+            //"HAS_TRIANGLE_GEOMS": 1,
+            //"USE_INSTANCING":     1
         },
 
         vertexShader: [
@@ -32262,28 +32704,18 @@ Precision and extensions headers added by FrieflyWebGLProgram
 Might be good to convert this to RawShader at some point.
  */
 
-            "#define TAU 6.28318530718",
-            "#define PI 3.14159265358979",
-            "#define HALF_PI 1.57079632679",
+            COMMON_DEFINES,
+            GEOMETRY_TYPES_DEFINES,
+            VERTEX_ID_DEFINES,
 
-            "#define VBB_LINE_SEGMENT     16.0", //0x10
-            "#define VBB_ARC_CIRCULAR     32.0", //0x20
-            "#define VBB_ARC_ELLIPTICAL   48.0", //0x30
-            "#define VBB_TEX_QUAD         64.0", //0x40
-            "#define VBB_ONE_TRIANGLE     80.0", //0x50
-
-            "#define VBB_INSTANCED_FLAG   0.0",
-            "#define VBB_SEG_START_RIGHT  1.0",
-            "#define VBB_SEG_START_LEFT   2.0",
-            "#define VBB_SEG_END_RIGHT    3.0",
-            "#define VBB_SEG_END_LEFT     4.0",
+            VARYINGS,
 
             "attribute vec3 fields1;",
             "attribute vec3 fields2;",
             "attribute vec4 color4b;",
             "attribute vec4 dbId4b;",
-            "attribute vec4 linetype4b;",
             "attribute vec4 flags4b;",
+            "attribute vec4 layerVp4b;",
 
         "#ifdef HAS_ELLIPTICALS",
             "attribute vec3 extraParams;",
@@ -32309,241 +32741,145 @@ Might be good to convert this to RawShader at some point.
         "#ifdef SELECTION_RENDERER",
             "uniform sampler2D tSelectionTexture;",
             "uniform vec2 vSelTexSize;",
+            "uniform vec4 selectionColor;",
         "#endif",
 
-            "varying vec4 outColor;",
-            "varying vec4 dbId;",
-
+            // used internally by the VS
             "vec2 centralVertex;",
             "vec2 offsetPosition;",
-            "varying vec2 offsetDirection;",
-            "varying vec4 multipurpose;",
 
-            "varying float halfWidth;",
+            "vec2 cos_sin(const float angle) { return vec2(cos(angle), sin(angle)); }",
 
-            "void strokeLineSegment(float vertexId) {",
+            "void min_max(inout vec2 minPt, inout vec2 maxPt, const vec2 p) {",
+                "minPt = min(minPt, p);",
+                "maxPt = max(maxPt, p);",
+            "}",
 
-                "float distanceAlong = fields2.x;",
-                "float totalDistance = fields2.z;",
+        "#if defined(USE_INSTANCING)",
+            "float getVertexId() { return instFlags4b.x; }",
+        "#else", // defined(USE_INSTANCING)",
+            "float getVertexId() { return flags4b.x; }",
+        "#endif", // defined(USE_INSTANCING)",
 
-                "float isStartCapVertex = (vertexId < VBB_SEG_END_RIGHT) ? -1.0 : 1.0;",
+            "bool isStartVertex() { return (getVertexId() < VBB_SEG_END_RIGHT); }",
+            "bool isLeftVertex()  { float id = getVertexId(); return ((id == VBB_SEG_END_LEFT || id == VBB_SEG_START_LEFT)); }",
 
-                "float isLeftSide = (vertexId == VBB_SEG_END_LEFT || vertexId == VBB_SEG_START_LEFT) ? 1.0 : -1.0;",
+            "struct SegmentData { float angle, distAlong, distTotal, lineWidthHalf, lineType; };",
+            "void decodeSegmentData(out SegmentData seg) {",
+                "seg.angle         = fields1.z;",
+                "seg.distAlong     = fields2.x;",
+                "seg.distTotal     = fields2.z;",
+                "seg.lineWidthHalf = fields2.y;",
+                "seg.lineType      = flags4b.z;",
+            "}",
+
+            "void strokeLineSegment() {",
+                "SegmentData seg; decodeSegmentData(seg);",
+
+                "float isStartCapVertex = isStartVertex() ? -1.0 :  1.0;",
+                "float isLeftSide       = isLeftVertex( ) ?  1.0 : -1.0;",
 
                 //Apply transverse line width offset
-                "float angleTransverse = fields1.z + isLeftSide * HALF_PI;",
-                "float st = sin(angleTransverse);",
-                "float ct = cos(angleTransverse);",
-                "float lwAdjustment = halfWidth + aaRange;",
-                "vec2 transverseOffset = vec2(ct, st) * lwAdjustment;",
+                "float angleTransverse = seg.angle + isLeftSide * HALF_PI;",
+                "float lwAdjustment = fsHalfWidth + aaRange;",
+                "vec2 transverseOffset = cos_sin(angleTransverse) * lwAdjustment;",
                 "offsetPosition.xy += transverseOffset;",
 
                 //Compute end point based on start point plus segment length and direction
                 //This is because the line segment's 4 vertices are all equal to the start
                 //point to begin with. Note for the start point, we just move by 0, to avoid doing an if().
-                "float distanceFromStart = max(isStartCapVertex, 0.0) * distanceAlong;",
-                "vec2 along = distanceFromStart * vec2(cos(fields1.z), sin(fields1.z));",
+                "float distanceFromStart = max(isStartCapVertex, 0.0) * seg.distAlong;",
+                "vec2 along = distanceFromStart * cos_sin(seg.angle);",
                 "offsetPosition.xy += along;",
-                "centralVertex.xy += along;",
+                "centralVertex.xy  += along;",
 
                 //Apply start/end-cap extension offsets if needed
                 "vec2 moveOffset = isStartCapVertex * isLeftSide * vec2(-transverseOffset.y, transverseOffset.x);",
                 "offsetPosition.xy -= moveOffset;",
-                "centralVertex.xy -= moveOffset;",
+                "centralVertex.xy  -= moveOffset;",
 
                 //Distance we care about beyond the actual line segment vertex.
                 //For start vertex, this is negative and equal to half a line weight
                 //For end vertex this is the segment length plus the half line weight adjustment.
-                "multipurpose.x = (isStartCapVertex * lwAdjustment) + distanceFromStart;", //distance after end point that we want to fill with cap/join
+                "fsMultipurpose.x = (isStartCapVertex * lwAdjustment) + distanceFromStart;", //distance after end point that we want to fill with cap/join
+                "fsMultipurpose.y = seg.distAlong;",
+                "fsMultipurpose.z = seg.distTotal;",
+                "fsMultipurpose.w = seg.lineType;",
 
-                "multipurpose.y = distanceAlong;",
-                "multipurpose.z = linetype4b.x;",
-                "multipurpose.w = totalDistance;",
-                
-                "if (fields2.y < 0.0)",
-                    "halfWidth = -halfWidth;",
+                "if (seg.lineWidthHalf < 0.0)",
+                    "fsHalfWidth = -fsHalfWidth;",
             "}",
 
 
         "#ifdef HAS_TRIANGLE_GEOMS",
-            "void strokeOneTriangle(float vertexId) {",
+            "struct TriangleData { vec2 p0, p1, p2; };",
+            "void decodeTriangleData(out TriangleData tri) {",
+                "// tri.p0 = fields1.xy; // not used in shader...",
+                "tri.p1 = vec2(fields1.z, fields2.x);",
+                "tri.p2 = fields2.yz;",
+            "}",
 
-                //Mark as triangle for the fragment shader
-                "halfWidth = 0.0;",
+            "void strokeOneTriangle() {",
+                "TriangleData tri; decodeTriangleData(tri);",
+
+                // Note, that a degenerated triangle is created for the
+                // second triangle of the instancing quad. But that is
+                // exactly what we want, since we have just a single
+                // triangle!
 
                 //this is already done at the beginning of main()
                 //so we skip it here
-                //"offsetPosition.xy = fields1.xy;",
+                //"offsetPosition.xy = tri.p0;",
 
-                "if (vertexId == VBB_SEG_END_RIGHT)",
-                    "offsetPosition.xy = vec2(fields1.z, fields2.x);",
-                "else if (vertexId == VBB_SEG_END_LEFT)",
-                    "offsetPosition.xy = fields2.yz;",
+                "float vertexId = getVertexId();",
+                "if      (vertexId == VBB_SEG_END_RIGHT) offsetPosition.xy = tri.p1;",
+                "else if (vertexId == VBB_SEG_END_LEFT)  offsetPosition.xy = tri.p2;",
             "}",
         "#endif",
 
 
-            //The vertex format used for quads is very similar to line segments,
-            //with the start point being the left middle of the quad, and the width
-            //mapping to segment length and height to line weight.
+            //The vertex format used for quads is specifying the center of the quad,
+            //a rotation angle and the overall size of the quad (width, height).
         "#ifdef HAS_RASTER_QUADS",
-            "void strokeTexQuad(float vertexId) {",
+            "struct TexQuadData { float angle; vec2 size; };",
+            "void decodeTexQuadData(out TexQuadData quad) {",
+                "quad.angle     = fields1.z;",
+                "quad.size   = fields2.xy;",
+            "}",
 
-                "float distanceAlong = fields2.x;",
+            "void strokeTexQuad() {",
+                "TexQuadData quad; decodeTexQuadData(quad);",
 
-                "bool isStartCapVertex = (vertexId < VBB_SEG_END_RIGHT);",
+                "vec2 corner = vec2(isLeftVertex() ? -1.0 : 1.0, isStartVertex() ? -1.0 : 1.0);",
 
-                "float isLeftSide = (vertexId == VBB_SEG_END_LEFT || vertexId == VBB_SEG_START_LEFT) ? 1.0 : -1.0;",
+                "vec2 p      = 0.5 * corner * quad.size;",
+                "vec2 rot    = cos_sin(quad.angle);",
+                "vec2 offset = vec2(p.x * rot.x - p.y * rot.y, p.x * rot.y + p.y * rot.x);",
 
-                "float angleTransverse = fields1.z + isLeftSide * HALF_PI;",
-
-                "multipurpose.y = distanceAlong;",
-
-                "float st = sin(angleTransverse);",
-                "float ct = cos(angleTransverse);",
-
-                "float moveDist = halfWidth;",
-
-                "vec2 offset = vec2(ct, st) * moveDist;",
-
-                //Apply line width
                 "offsetPosition.xy += offset;",
 
-
-                //Mark as polytriangle for the fragment shader
-                "multipurpose.z = 1.0;",
-                "halfWidth = 0.0;",
-
-                "if (isStartCapVertex) {",
-                    "offsetPosition.xy += isLeftSide * vec2(0.0, offset.x);",
-
-                    //Tex coords
-                    "multipurpose.x = 0.0;",
-                    "multipurpose.y = max(0.0, isLeftSide);",
-                "}",
-                "else {",
-                    //Compute end point based on start point plus segment length and direction
-                    //This is because the line segment's 4 vertices are all equal to the start
-                    //point to begin with
-                    "vec2 along = vec2(cos(fields1.z), sin(fields1.z));",
-                    "offsetPosition.xy += distanceAlong * along;",
-                    "centralVertex.xy += distanceAlong * along;",
-
-                    "offsetPosition.xy += isLeftSide * vec2(0.0, -offset.x);",
-
-                    //Tex coords
-                    "multipurpose.x = 1.0;",
-                    "multipurpose.y = max(0.0, isLeftSide);",
-                "}",
-
+                "fsMultipurpose.xy = max(vec2(0.0), corner);",  // tex coords xy
             "}",
         "#endif", //HAS_RASTER_QUADS
 
-        "#ifdef HAS_CIRCLES",
-
-            "void strokeCircularArc(float vertexId) {",
-
-                "vec2 angles = vec2(fields1.z, fields2.x);",
-
-                "float r = fields2.z;",
-                "if (r * pixelsPerUnit < 0.125)",
-                   "r = 0.25 * aaRange;",
-
-                "float isStart = (vertexId < VBB_SEG_END_RIGHT) ? -1.0 : 1.0;",
-                "float isLeft = (vertexId == VBB_SEG_END_LEFT || vertexId == VBB_SEG_START_LEFT) ? -1.0 : 1.0;",
-
-                //Compute a tighter bounding quad for arcs if possible,
-                //to avoid massive overdraw in case of very small angular range
-                "vec2 minPt;",
-                "vec2 maxPt;",
-
-                "vec2 endsX = vec2(fields1.x) + r * cos(angles);",
-                "vec2 endsY = vec2(fields1.y) + r * sin(angles);",
-                "minPt = maxPt = vec2(endsX.x, endsY.x);",
-                "minPt = min(minPt, vec2(endsX.y, endsY.y));",
-                "maxPt = max(maxPt, vec2(endsX.y, endsY.y));",
-
-                "float start = angles.x;",
-                "float end = angles.y;",
-
-                "if (end > start) {",
-                    "if (start < (0.5 * PI) && end > (0.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y + r));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y + r));",
-                    "}",
-                    "if (start < PI && end > PI) {",
-                        "minPt = min(minPt, vec2(fields1.x - r, fields1.y));",
-                        "maxPt = max(maxPt, vec2(fields1.x - r, fields1.y));",
-                    "}",
-                    "if (start < (1.5 * PI) && end > (1.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y - r));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y - r));",
-                    "}",
-
-                "}",
-                "else {",
-
-                    //In this case, CW arcs, we know it passes through angle 0:
-                    "minPt = min(minPt, vec2(fields1.x + r, fields1.y));",
-                    "maxPt = max(maxPt, vec2(fields1.x + r, fields1.y));",
-
-                    //All other checks are also reversed
-                    //TODO: verify this logic -- it might be overestimating
-                    "if (start < (0.5 * PI) || end > (0.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y + r));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y + r));",
-                    "}",
-                    "if (start < PI || end > PI) {",
-                        "minPt = min(minPt, vec2(fields1.x - r, fields1.y));",
-                        "maxPt = max(maxPt, vec2(fields1.x - r, fields1.y));",
-                    "}",
-                    "if (start < (1.5 * PI) || end > (1.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y - r));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y - r));",
-                    "}",
-
-                "}",
-
-                "minPt -= halfWidth + aaRange;",
-                "maxPt += halfWidth + aaRange;",
-
-                "if (isStart<0.0)",
-                    "offsetPosition.x = minPt.x;",
-                "else",
-                    "offsetPosition.x = maxPt.x;",
-
-                "if (isLeft<0.0)",
-                    "offsetPosition.y = minPt.y;",
-                "else",
-                    "offsetPosition.y = maxPt.y;",
-
-            //Whole box code path (slow, used for debugging)
-            /*
-                "float expandedRadius = r + halfWidth + aaRange;",
-                "vec2 offset = vec2(expandedRadius * isStart, expandedRadius * isLeft);",
-                "offsetPosition.xy += offset;",
-             */
-                "multipurpose.x = angles.x;",
-                "multipurpose.y = -r;",
-                "multipurpose.z = angles.y;",
-                "multipurpose.w = -r;",
+        "#if defined(HAS_CIRCLES) || defined(HAS_ELLIPTICALS)",
+            "struct ArcData { vec2 c; float start, end, major, minor, tilt; };",
+            "void decodeArcData(out ArcData arc) {",
+                "arc.c     = fields1.xy;",
+                "arc.start = fields1.z;",
+                "arc.end   = fields2.x;",
+                "arc.major = fields2.z;",
+            "#if defined(HAS_ELLIPTICALS)",
+                "arc.minor = extraParams.x;",
+                "arc.tilt  = extraParams.y;",
+            "#endif // defined(HAS_ELLIPTICALS)",
             "}",
 
-        "#endif", //HAS_CIRCLES
+            "void strokeArc(const ArcData arc) {",
+                //TODO: rotation/tilt
 
-        "#ifdef HAS_ELLIPTICALS",
-            "void strokeEllipticalArc(float vertexId) {",
-
-                "vec2 angles = vec2(fields1.z, fields2.x);",
-
-                "float isStart = (vertexId < VBB_SEG_END_RIGHT) ? -1.0 : 1.0;",
-                "float isLeft = (vertexId == VBB_SEG_END_LEFT || vertexId == VBB_SEG_START_LEFT) ? -1.0 : 1.0;",
-
-                "float major = fields2.z;",
-                "float minor = extraParams.x;",
-
-                //TODO: rotation
-                //"float tilt = extraParams.y;",
+                "float isStart = isStartVertex() ? -1.0 : 1.0;",
+                "float isLeft  = isLeftVertex()  ? -1.0 : 1.0;",
 
                 //Compute a tighter bounding quad for arcs if possible,
                 //to avoid massive overdraw in case of very small angular range
@@ -32551,84 +32887,97 @@ Might be good to convert this to RawShader at some point.
                 "vec2 minPt;",
                 "vec2 maxPt;",
 
-                "vec2 endsX = vec2(fields1.x) + major * cos(angles);",
-                "vec2 endsY = vec2(fields1.y) + minor * sin(angles);",
+                "vec2 angles = vec2(arc.start, arc.end);",
+                "vec2 endsX = vec2(arc.c.x) + arc.major * cos(angles);",
+                "vec2 endsY = vec2(arc.c.y) + arc.minor * sin(angles);",
                 "minPt = maxPt = vec2(endsX.x, endsY.x);",
-                "minPt = min(minPt, vec2(endsX.y, endsY.y));",
-                "maxPt = max(maxPt, vec2(endsX.y, endsY.y));",
+                "min_max(minPt, maxPt, vec2(endsX.y, endsY.y));",
 
-                "float start = angles.x;",
-                "float end = angles.y;",
-
-                "if (end > start) {",
-                    "if (start < (0.5 * PI) && end > (0.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y + minor));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y + minor));",
+                "if (arc.end > arc.start) {",
+                    "if (arc.start < PI_0_5 && arc.end > PI_0_5) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x, arc.c.y + arc.minor));",
                     "}",
-                    "if (start < PI && end > PI) {",
-                        "minPt = min(minPt, vec2(fields1.x - major, fields1.y));",
-                        "maxPt = max(maxPt, vec2(fields1.x - major, fields1.y));",
+                    "if (arc.start < PI && arc.end > PI) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x - arc.major, arc.c.y));",
                     "}",
-                    "if (start < (1.5 * PI) && end > (1.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y - minor));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y - minor));",
+                    "if (arc.start < PI_1_5 && arc.end > PI_1_5) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x, arc.c.y - arc.minor));",
                     "}",
-
-                "}",
-                "else {",
-
+                "} else {",
                     //In this case, CW arcs, we know it passes through angle 0:
-                    "minPt = min(minPt, vec2(fields1.x + major, fields1.y));",
-                    "maxPt = max(maxPt, vec2(fields1.x + major, fields1.y));",
+                    "min_max(minPt, maxPt, vec2(arc.c.x + arc.major, arc.c.y));",
 
                     //All other checks are also reversed
                     //TODO: verify this logic -- it might be overestimating
-                    "if (start < (0.5 * PI) || end > (0.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y + minor));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y + minor));",
+                    "if (arc.start < PI_0_5 || arc.end > PI_0_5) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x, arc.c.y + arc.minor));",
                     "}",
-                    "if (start < PI || end > PI) {",
-                        "minPt = min(minPt, vec2(fields1.x - major, fields1.y));",
-                        "maxPt = max(maxPt, vec2(fields1.x - major, fields1.y));",
+                    "if (arc.start < PI || arc.end > PI) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x - arc.major, arc.c.y));",
                     "}",
-                    "if (start < (1.5 * PI) || end > (1.5 * PI)) {",
-                        "minPt = min(minPt, vec2(fields1.x, fields1.y - minor));",
-                        "maxPt = max(maxPt, vec2(fields1.x, fields1.y - minor));",
+                    "if (arc.start < PI_1_5 || arc.end > PI_1_5) {",
+                        "min_max(minPt, maxPt, vec2(arc.c.x, arc.c.y - arc.minor));",
                     "}",
-
                 "}",
 
-                "minPt -= halfWidth + aaRange;",
-                "maxPt += halfWidth + aaRange;",
+                "minPt -= fsHalfWidth + aaRange;",
+                "maxPt += fsHalfWidth + aaRange;",
 
-                "if (isStart < 0.0)",
-                    "offsetPosition.x = minPt.x;",
-                "else",
-                    "offsetPosition.x = maxPt.x;",
-
-                "if (isLeft < 0.0)",
-                    "offsetPosition.y = minPt.y;",
-                "else",
-                    "offsetPosition.y = maxPt.y;",
+                "offsetPosition.x = (isStart < 0.0) ? minPt.x : maxPt.x;",
+                "offsetPosition.y = (isLeft < 0.0)  ? minPt.y : maxPt.y;",
 
                 //Whole box code path (slow, used for debugging)
-                //"vec2 offset = vec2((major + halfWidth + aaRange) * isStart, (minor + halfWidth + aaRange) * isLeft);",
+                //"vec2 offset = vec2((major + fsHalfWidth + aaRange) * isStart, (minor + fsHalfWidth + aaRange) * isLeft);",
                 //"offsetPosition.xy += offset;",
 
-                "multipurpose.x = angles.x;",
-                "multipurpose.y = -major;",
-                "multipurpose.z = angles.y;",
-                "multipurpose.w = minor;",
-
+                "fsMultipurpose.x = arc.start;",
+                "fsMultipurpose.y = arc.end;",
+                "fsMultipurpose.z = arc.major;",
+                "fsMultipurpose.w = arc.minor;",
             "}",
-        "#endif", //HAS_ELLIPTICALS
+        "#endif // defined(HAS_CIRCLES) || defined(HAS_ELLIPTICALS)",
+
+        "#if defined(HAS_CIRCLES)",
+
+            "void strokeCircularArc() {",
+                "ArcData arc; decodeArcData(arc);",
+
+                "float r = arc.major;",
+                "if (r * pixelsPerUnit < 0.125)",
+                    "r = 0.25 * aaRange;",
+                "arc.major = arc.minor = r;",
+
+                "strokeArc(arc);",
+            "}",
+
+        "#endif", // defined(HAS_CIRCLES)
+
+        "#if defined(HAS_ELLIPTICALS)",
+            "void strokeEllipticalArc() {",
+                "ArcData arc; decodeArcData(arc);",
+                "strokeArc(arc);",
+            "}",
+        "#endif", // defined(HAS_ELLIPTICALS)
+
+        "struct CommonAttribs { vec2 pos; vec4 color; vec2 layerTC, vpTC; float lineWidthHalf, geomType; };",
+        "void decodeCommonAttribs(out CommonAttribs attribs) {",
+            "attribs.pos           = fields1.xy;",
+            "attribs.color         = color4b;",
+            "attribs.geomType      = flags4b.y;",
+            "attribs.layerTC       = layerVp4b.xy / 255.0;",
+            "attribs.vpTC          = layerVp4b.zw / 255.0;",
+            "attribs.lineWidthHalf = fields2.y;",
+        "}",
+
+        "void strokeIndexedTriangle() {",
+            // nothing to go, since "centralVertex = attribs.pos" already happened in main()...
+        "}",
 
         "#ifdef SELECTION_RENDERER",
-            "bool isSelected() {",
+            "bool isSelected(const CommonAttribs attribs) {",
                 //This math assumes that vSelTexSize.x = 4096 (byte and a half) for easy computation.
 
-                //Denormalize the dbId -- we use it normalized in the ID buffer so that's how it's bound
-                "vec3 oid = dbId4b.rgb * 255.0;",
+                "vec3 oid = dbId4b.rgb;",
 
                 //A byte and a half for the horizontal coord
                 "float id01 = oid.r + oid.g * 256.0;",
@@ -32645,92 +32994,85 @@ Might be good to convert this to RawShader at some point.
                 "return selBit.r == 1.0;",
             "}",
         "#endif", //SELECTION_RENDERER
-            
-            "bool isLayerOff() {", 
+
+            "bool isLayerOff(const CommonAttribs attribs) {",
         "#ifdef HAS_LAYERS",
-                "vec4 layerBit = texture2D(tLayerMask, flags4b.ba / 255.0);",
+                "vec4 layerBit = texture2D(tLayerMask, attribs.layerTC);",
                 "return layerBit.r == 0.0;",
         "#else",
                 "return false;",
         "#endif",
             "}",
 
-            "void main() {",
-
-                "centralVertex = offsetPosition = fields1.xy;",
-
+            "vec4 getColor(const CommonAttribs attribs) {",
                 //Check layer visibility
-                "if (isLayerOff()) {",
-                    "outColor = vec4(0.0);",
+                "if (isLayerOff(attribs)) { return vec4(0.0); }",
+        "#ifdef SELECTION_RENDERER",
+                "if (isSelected(attribs)) { return selectionColor; }", //Item is selected -- draw it with selection highlight color
+                "return vec4(0.0);", //Item is not selected -- hide it
+        "#else", // SELECTION_RENDERER
+                "return attribs.color;",
+        "#endif", // SELECTION_RENDERER
+            "}",
+
+            "void main() {",
+                "CommonAttribs attribs; decodeCommonAttribs(attribs);",
+
+                "fsColor = getColor(attribs);",
+
+                //[TS] Collpasing of vertices into degenerate quads commented out
+                //because it does not work on iPhone 6 and 6+ (and only those). 
+                //Somehow sampling the layer texture in isLayerOff confuses the logic here.
+                /*
+                "if(fsColor.a == 0.0) {",
+                    // If the feature is fully transparent collapse all
+                    // the vertices of it into a single degenerated one.
+                    // This avoids rasterization of the whole feature.
+                    "gl_Position = vec4(0.0);",
+                    "return;",
+                "}",
+                */
+
+                "centralVertex = offsetPosition = attribs.pos;",
+
+                "float lineWeight = attribs.lineWidthHalf;",
+                "if (lineWeight > 0.0) {",
+                    //Do not go below a line width of one pixel
+                    //Since we store, half-widths, the comparison is to 0.5 instead of 1.0
+                    "if(lineWeight < 0.5 / pixelsPerUnit) {",
+                        "lineWeight = 0.5 / pixelsPerUnit;",
+                    "}",
                 "}",
                 "else {",
+                    //Negative line weight means device space (pixel) width.
+                    //Currently used for antialiasing of polygon outlines.
+                    "lineWeight = abs(lineWeight) / pixelsPerUnit;",
+                "}",
 
-                    //Sigh... Can we get integer ops support in WebGL please?
-                    "float vertexId = mod(flags4b.x, 16.0);",
-                    "float geomType = flags4b.x - vertexId;",
+                "fsHalfWidth = lineWeight;",
+                "dbId = dbId4b / 255.0;", // normalize for using it as a color
 
-                    //VertexId is either in the vertex itself or in the separate flags
-                    //attribute in case of instancing, in which case the in-vertex value is set to 0.
-                "#ifdef USE_INSTANCING",
-                    "vertexId = instFlags4b.x;",
-                "#endif",
+                "if      (attribs.geomType == VBB_GT_LINE_SEGMENT)     strokeLineSegment();",
+            "#ifdef HAS_CIRCLES",
+                "else if (attribs.geomType == VBB_GT_ARC_CIRCULAR)     strokeCircularArc();",
+            "#endif",
+            "#ifdef HAS_ELLIPTICALS",
+                "else if (attribs.geomType == VBB_GT_ARC_ELLIPTICAL)   strokeEllipticalArc();",
+            "#endif",
+            "#ifdef HAS_RASTER_QUADS",
+                "else if (attribs.geomType == VBB_GT_TEX_QUAD)         strokeTexQuad();",
+            "#endif",
+            "#ifdef HAS_TRIANGLE_GEOMS",
+                "else if (attribs.geomType == VBB_GT_ONE_TRIANGLE)     strokeOneTriangle();",
+            "#endif",
+                "else if (attribs.geomType == VBB_GT_TRIANGLE_INDEXED) strokeIndexedTriangle();",
 
-                    "float lineWeight = fields2.y;",
+                "fsGeomType = attribs.geomType;",
 
-                    "if (lineWeight > 0.0) {",
-                        //Do not go below a line width of one pixel
-                        //Since we store, half-widths, the comparison is to 0.5 instead of 1.0
-                        "if (lineWeight * pixelsPerUnit < 0.5)",
-                           "lineWeight = 0.5 / pixelsPerUnit;",
-                    "}",
-                    "else {",
-                        //Negative line weight means device space (pixel) width.
-                        //Currently used for antialiasing of polygon outlines.
-                        "lineWeight = abs(lineWeight) / pixelsPerUnit;",
-                    "}",
-
-                "#ifdef SELECTION_RENDERER",
-                    "if (isSelected())",
-                        //Item is selected -- draw it with selection highlight color
-                        "outColor = vec4(0.0,0.0,1.0,1.0);",
-                    "else",
-                        "outColor = vec4(0.0);",
-                "#else",
-                    "outColor = color4b;",
-                "#endif",
-
-                    "halfWidth = lineWeight;",
-                    "dbId = dbId4b;",
-
-                    "if (geomType == VBB_LINE_SEGMENT)",
-                        "strokeLineSegment(vertexId);",
-                "#ifdef HAS_CIRCLES",
-                    "else if (geomType == VBB_ARC_CIRCULAR)",
-                        "strokeCircularArc(vertexId);",
-                "#endif",
-                "#ifdef HAS_ELLIPTICALS",
-                    "else if (geomType == VBB_ARC_ELLIPTICAL)",
-                        "strokeEllipticalArc(vertexId);",
-                "#endif",
-                "#ifdef HAS_RASTER_QUADS",
-                    "else if (geomType == VBB_TEX_QUAD)",
-                        "strokeTexQuad(vertexId);",
-                "#endif",
-                "#ifdef HAS_TRIANGLE_GEOMS",
-                    "else if (geomType == VBB_ONE_TRIANGLE)",
-                        "strokeOneTriangle(vertexId);",
-                "#endif",
-                    "else {",
-                        "halfWidth = 0.0;", //just plain triangles
-                        "multipurpose.z = 0.0;",
-                    "}",
-               "}",
-
-                "offsetDirection = offsetPosition - centralVertex;",
+                "fsOffsetDirection = offsetPosition - centralVertex;",
 
                 //Now apply MVP matrix
                 "gl_Position = mvpMatrix * modelMatrix * vec4( offsetPosition.xy, 0.0, 1.0 );",
-
             "}"
 
         ].join("\n"),
@@ -32742,35 +33084,25 @@ Precision and extensions headers added by FrieflyWebGLProgram
 Might be good to convert this to RawShader at some point.
  */
 
+            COMMON_DEFINES,
+            GEOMETRY_TYPES_DEFINES,
+            VERTEX_ID_DEFINES,
 
-            "#define TAU 6.28318530717958",
-            "#define PI  3.14159265358979",
+            VARYINGS,
 
             "uniform highp float pixelsPerUnit;",
             "uniform highp float aaRange;",
             //"float aaRange = 0.5 * unitsPerPixel;",
+            "uniform float opacity;",
 
         "#ifdef HAS_RASTER_QUADS",
             "uniform sampler2D tRaster;",
         "#endif",
 
         "#ifdef HAS_LINESTYLES",
-
             "uniform sampler2D tLineStyle;",
             "uniform vec2 vLineStyleTexSize;",
-
         "#endif",
-
-            "varying vec4 outColor;",
-            "varying vec4 dbId;",
-
-            "varying vec2 offsetDirection;",
-
-            "varying vec4 multipurpose;",
-
-
-            "varying float halfWidth;",
-
 
             //Gaussian falloff function
             "float curveGaussian(float r, float invWidth) {",
@@ -32807,14 +33139,14 @@ Might be good to convert this to RawShader at some point.
 
             "void fillLineSegment() {",
 
-                "float radius = abs(halfWidth);",
-                "float parametricDistance = multipurpose.x;",
-                "float segmentLength = multipurpose.y;",
-                "float totalDistance = multipurpose.w;",
+                "float radius = abs(fsHalfWidth);",
+                "float parametricDistance = fsMultipurpose.x;",
+                "float segmentLength      = fsMultipurpose.y;",
+                "float totalDistance      = fsMultipurpose.z;",
 
             //Apply any dot/dash linetype
             "#ifdef HAS_LINESTYLES",
-                "int whichPattern = int(multipurpose.z);",
+                "int whichPattern         = int(fsMultipurpose.w);",
 
                 "if (whichPattern > 0) {",
                     "const float TEX_TO_UNIT = 1.0 / 96.0;",
@@ -32827,7 +33159,7 @@ Might be good to convert this to RawShader at some point.
 
                     //If line width is negative it means device space line style (zoom invariant)
                     //line width, which also implies the same about the line pattern -- check for this here.
-                    "if (halfWidth < 0.0) {",
+                    "if (fsHalfWidth < 0.0) {",
                         "patternScale = LTSCALE;",
                     "} else {",
                         "patternScale = LTSCALE * TEX_TO_UNIT * pixelsPerUnit;",
@@ -32838,13 +33170,13 @@ Might be good to convert this to RawShader at some point.
 
                     "bool onPixel = true;",
                     "float radiusPixels = radius * pixelsPerUnit;",
-                    
+
                     "for (int i=2; i<MAX_LINESTYLE_LENGTH; i+=2) {",
 
                         "float on = getLinePatternPixel(i, whichPattern);",
                         "if (on == 1.0) on = 0.0;", //special handling for dots, map length 1 to 0
                         "on *= patternScale;",
-                        
+
                         "onPixel = true;",
                         "phase -= on;",
                         "if (phase < 0.0) {",
@@ -32858,7 +33190,7 @@ Might be good to convert this to RawShader at some point.
                         "float off = getLinePatternPixel(i+1, whichPattern);",
                         "if (off <= 1.0) off = 0.0;", //special handling for dots, map length 1 to 0
                         "off *= patternScale;",
-                        
+
                         "onPixel = false;",
                         "phase -= off;",
                         "if (phase < -radiusPixels)",
@@ -32868,21 +33200,21 @@ Might be good to convert this to RawShader at some point.
                     "}",
 
                     //Modify the parametricDistance value used for round cap
-                    //rendering to reflect the current position along the dash, 
+                    //rendering to reflect the current position along the dash,
                     //so that dashes get caps also.
                     "if (!onPixel && (abs(phase) <= radiusPixels)) {",
                         "segmentLength = 0.0;",
                         "parametricDistance = phase / pixelsPerUnit;",
                     "}",
                 "}",
-            "#endif",
+            "#endif", // HAS_LINESTYLES
 
                 //Check for end cap or join region -- here we reduce
                 ///allowed distance from centerline in a circular way
                 //to get a round cap/join
                 "float dist;",
-                "float offsetLength2 = dot(offsetDirection, offsetDirection);",
-                
+                "float offsetLength2 = dot(fsOffsetDirection, fsOffsetDirection);",
+
                 /*
                 "if (parametricDistance < 0.0) {",
                     "float d = parametricDistance;",
@@ -32901,7 +33233,7 @@ Might be good to convert this to RawShader at some point.
                 "float d = (ltz + gtsl) * (parametricDistance - gtsl * segmentLength);",
                 "dist = sqrt(max(0.0, offsetLength2 + d*d));",
 
-            
+
                 //pixel is too far out of the line center
                 //so discard it
                 "float range =  dist - radius;",
@@ -32915,17 +33247,18 @@ Might be good to convert this to RawShader at some point.
                 //gl_FragColor.a *= makeTransparent;
 
                 //The geometry covers this pixel -- do AA.
-                "gl_FragColor = outColor;",
+                "gl_FragColor = fsColor;",
                 "gl_FragColor.a *= curveGaussian(range+aaRange, pixelsPerUnit);",
             "}",
 
         "#ifdef HAS_CIRCLES",
             "void fillCircularArc() {",
 
-                "float dist = length(offsetDirection);",
-                "float radius = abs(multipurpose.y);",
-                "float range =  abs(dist - radius);",
-                "range -= halfWidth;",
+                "float dist   = length(fsOffsetDirection);",
+                "vec2 angles  = fsMultipurpose.xy;", // (start, end) angles
+                "float radius = fsMultipurpose.z;",
+                "float range  =  abs(dist - radius);",
+                "range -= fsHalfWidth;",
 
                 //pixel is too far out of the line center
                 //so discard it
@@ -32933,9 +33266,7 @@ Might be good to convert this to RawShader at some point.
                     "discard;",
                 "}",
 
-                "vec2 angles = multipurpose.xz;", /* (start, end) angles */
-
-                "vec2 direction = offsetDirection;",
+                "vec2 direction = fsOffsetDirection;",
                 "float angle = atan(direction.y, direction.x);",
 
                 //Handle clockwise arcs, which happpen when the arc
@@ -32948,7 +33279,7 @@ Might be good to convert this to RawShader at some point.
 
                 //Are we in the exact range of the arc?
                 "if (angle > angles.x && angle < angles.y) {",
-                    "gl_FragColor = outColor;",
+                    "gl_FragColor = fsColor;",
                     "gl_FragColor.a *= curveGaussian(range+aaRange, pixelsPerUnit);",
                 "}",
 
@@ -32999,53 +33330,48 @@ Might be good to convert this to RawShader at some point.
             // the query point to the ellipse. It also computes the ellipse point (x0,x1)
             // in the first quadrant that is closest to (y0,y1).
             //----------------------------------------------------------------------------
+            "float EllipticalApprox(",
+                "const int iters,",
+                "inout float t0, inout float t1,",
+                "const vec2 y,   out   vec2 x,",
+                "const vec2 e,   const vec2 ey, const vec2 esqr",
+            ") {",
+                "vec2 r;",
+                "for (int i = 0; i < 10; ++i) {", // maximum 10 iterations
+                    "if(i >= iters) break;", // early out if we don't want the max number of iterations
+
+                    "float t = mix(t0, t1, 0.5);", // 0.5*(t0 + t1);
+                    "r = ey / (vec2(t) + esqr);",
+
+                    "vec2 rsq = r * r;",
+                    "float f = rsq.x + rsq.y - 1.0;",
+
+                    "if(f > 0.0) { t0 = t; } else { t1 = t; }",
+                "}",
+
+                "x = e * r;",
+                "return distance(x, y);",
+            "}",
+
             "float DistancePointEllipseSpecial (vec2 e, vec2 y, out vec2 x, float width, float aaRange) {",
                 "float dist;",
 
                 // Bisect to compute the root of F(t) for t >= -e1*e1.
                 "vec2 esqr = e * e;",
-                "vec2 ey = e * y;",
+                "vec2 ey   = e * y;",
                 "float t0 = -esqr[1] + ey[1];",
                 "float t1 = -esqr[1] + length(ey);",
-                "float t;",
-                "vec2 r;",
 
                 //Do a few initial iterations without loop break checks
                 //to get approximately close to the result
-                "for (int i = 0; i < 6; ++i) {",
-                    "t = mix(t0, t1, 0.5);//0.5*(t0 + t1);",
-                    "r = ey / (vec2(t) + esqr);",
-
-                    "vec2 rsq = r * r;",
-                    "float f = rsq[0] + rsq[1] - 1.0;",
-
-                    "float fsign = sign(f);",
-                    "t0 = mix(t0, t, max(0.0, fsign));",
-                    "t1 = mix(t1, t, max(0.0, -fsign));",
-                "}",
-
-                "x = e * r;",
-                "dist = distance(x, y);",
+                "dist = EllipticalApprox(6, t0, t1, y, x, e, ey, esqr);",
 
                 //Early out -- point is going to be too far to matter for the ellipse outline
                 "if (dist > max(2.0 * (width + aaRange), e[0] * 0.05))",
                     "return dist;",
 
                 //Do a few more iterations to get really close to the result...
-                "for (int i = 0; i < 6; ++i) {",
-                    "t = mix(t0, t1, 0.5);//0.5*(t0 + t1);",
-                    "r = ey / (vec2(t) + esqr);",
-
-                    "vec2 rsq = r * r;",
-                    "float f = rsq[0] + rsq[1] - 1.0;",
-
-                    "float fsign = sign(f);",
-                    "t0 = mix(t0, t, max(0.0, fsign));",
-                    "t1 = mix(t1, t, max(0.0, -fsign));",
-                "}",
-
-                "x = e * r;",
-                "dist = distance(x, y);",
+                "dist = EllipticalApprox(6, t0, t1, y, x, e, ey, esqr);",
 
                 //Early out -- point is too far to matter for the ellipse outline
                 //The bigger the eccentricity, the worse the estimate, so increse
@@ -33060,21 +33386,7 @@ Might be good to convert this to RawShader at some point.
 
                 //Finally get an almost exact answer since
                 //we are near the line width boundary
-                "for (int i = 0; i < 10; ++i) {",
-                    "t = mix(t0, t1, 0.5);//0.5*(t0 + t1);",
-                    "r = ey / (vec2(t) + esqr);",
-
-                    "vec2 rsq = r * r;",
-                    "float f = rsq[0] + rsq[1] - 1.0;",
-
-                    "float fsign = sign(f);",
-                    "t0 = mix(t0, t, max(0.0, fsign));",
-                    "t1 = mix(t1, t, max(0.0, -fsign));",
-                "}",
-
-                "x = e * r;", //nearest point on ellipse
-                "dist = distance(x, y);",
-
+                "dist = EllipticalApprox(10, t0, t1, y, x, e, ey, esqr);",
                 "return dist;",
             "}",
 
@@ -33129,27 +33441,27 @@ Might be good to convert this to RawShader at some point.
 
 
             "void fillEllipticalArc() {",
-                "vec2 radii = abs(multipurpose.yw);",
-                "vec2 dir = offsetDirection;",
+                "vec2 angles = fsMultipurpose.xy;", // (start, end) angles
+                "vec2 radii  = fsMultipurpose.zw;", // (major, minor)
+                "vec2 dir    = fsOffsetDirection;",
 
                 //TODO: Handle arc rotation
 /*
                 //Quick cull of the inside circle
                 "float lenDirSq = dot(dir, dir);",
-                "float minRad = min(radii.x, radii.y) - (halfWidth + aaRange);",
+                "float minRad = min(radii.x, radii.y) - (fsHalfWidth + aaRange);",
                 "if (lenDirSq < minRad * minRad)",
                     "discard;",
 */
                 //"float range = DistancePointEllipseApprox(radii, dir);",
                 "vec2 pos;",
-                "float range = DistancePointEllipse(radii, dir, pos, halfWidth, aaRange);",
-                "range -= halfWidth;",
+                "float range = DistancePointEllipse(radii, dir, pos, fsHalfWidth, aaRange);",
+                "range -= fsHalfWidth;",
 
                 "if (range > aaRange)",
                     "discard;",
 
                 "float ar = radii[0] / radii[1];", //TODO: can be done in the vertex shader or otherwise precomputed
-                "vec2 angles = multipurpose.xz;", // (start, end) angles
 
                 //Get the parametric angle at the ellipse intersection point
                 // -- note that for ellipses this is not just atan of the direction,
@@ -33166,7 +33478,7 @@ Might be good to convert this to RawShader at some point.
 
                 //Are we in the exact range of the arc?
                 "if (angle > angles.x && angle < angles.y) {",
-                    "gl_FragColor = outColor;",
+                    "gl_FragColor = fsColor;",
                     "gl_FragColor.a *= curveGaussian(range+aaRange, pixelsPerUnit);",
                 "}",
                 "else {",
@@ -33175,27 +33487,33 @@ Might be good to convert this to RawShader at some point.
             "}",
         "#endif", //HAS_ELLIPTICALS
 
+        "#ifdef HAS_RASTER_QUADS",
+            "void fillTexQuad() { gl_FragColor = texture2D(tRaster, fsMultipurpose.xy); }",
+        "#endif",
+
+            "void fillTriangle() { gl_FragColor = fsColor; }",
 
             "void main() {",
 
                 //Is visibility off?
-                "if (outColor.a == 0.0) {",
+                "if (fsColor.a == 0.0) {",
                     "discard;",
                 "}",
 
+/*
                 //Filled triangle, not a line, no need for extra math
-                "if (halfWidth == 0.0) {",
+                "if (fsHalfWidth == 0.0) {",
             "#ifdef HAS_RASTER_QUADS",
-                    "if (multipurpose.z != 0.0)",
-                        "gl_FragColor = texture2D(tRaster, multipurpose.xy);",
+                    "if (fsMultipurpose.z != 0.0)",
+                        "fillTexQuad();",
                     "else",
             "#endif",
-                        "gl_FragColor = outColor;",
+                        "fillTriangle();",
                 "}",
-                "else if (multipurpose.y < 0.0) {",
+                "else if (fsMultipurpose.y < 0.0) {",
                     "#ifdef HAS_CIRCLES",
                     "#ifdef HAS_ELLIPTICALS",
-                        "if (multipurpose.y == multipurpose.w)",
+                        "if (fsMultipurpose.y == fsMultipurpose.w)",
                     "#endif",
                             "fillCircularArc();",
                     "#endif",
@@ -33208,44 +33526,48 @@ Might be good to convert this to RawShader at some point.
                 "}",
                 "else",
                     "fillLineSegment();",
+*/
 
-                "#ifdef MRT_NORMALS",
-                    //We cannot avoid blending in the depth target when blending
-                    //to the color target is on, so
-                    //we pack the normal and depth in the first three elements
-                    //and use 0 or 1 as the alpha.
-                    //NOTE: Dropping the Z coordinate of the normal entirely means
-                    //that we lose information about its sign (we use sqrt to restore it later).
-                    //This is OK in this case because in view space surfaces that we see will have
-                    //positive Z component in all cases. If that changes we have to also
-                    //encode the sign bit in the x or y.
-                    "gl_FragData[1] = vec4(0, 0, 0, 0.0);",
-                "#endif",
+                "if      (abs(fsGeomType - VBB_GT_LINE_SEGMENT) < 0.5)     fillLineSegment();",
+            "#ifdef HAS_CIRCLES",
+                "else if (abs(fsGeomType - VBB_GT_ARC_CIRCULAR) < 0.5)     fillCircularArc();",
+            "#endif",
+            "#ifdef HAS_ELLIPTICALS",
+                "else if (abs(fsGeomType - VBB_GT_ARC_ELLIPTICAL) < 0.5)   fillEllipticalArc();",
+            "#endif",
+            "#ifdef HAS_RASTER_QUADS",
+                "else if (abs(fsGeomType - VBB_GT_TEX_QUAD) < 0.5)         fillTexQuad();",
+            "#endif",
+            "#ifdef HAS_TRIANGLE_GEOMS",
+                "else if (abs(fsGeomType - VBB_GT_ONE_TRIANGLE) < 0.5)     fillTriangle();",
+            "#endif",
+                "else fillTriangle();",
 
-                "#ifdef MRT_ID_BUFFER",
-                    //When using MRT, we have to set the alpha channel to 1
-                    //in order to override alpha blending (which cannot be individually controlled per target
-                    //and we need it for the color target)
-                    "#ifdef MRT_NORMALS",
-                        "const int index = 2;",
-                    "#else",
-                        "const int index = 1;",
-                    "#endif",
-                        "gl_FragData[index] = vec4(dbId.rgb, 1.0);",
-                "#elif defined(ID_COLOR)",
-                    //here we assume that in case we are only rendering
-                    //to an ID target, blending is off, so we can use
-                    //the alpha channel as well (which is usually 0 for IDs and will cause the pixels to be discarded).
-                    "gl_FragColor = dbId;",
-                "#endif",
+            "#ifdef MRT_NORMALS",
+                //We cannot avoid blending in the depth target when blending
+                //to the color target is on, so
+                //we pack the normal and depth in the first three elements
+                //and use 0 or 1 as the alpha.
+                //NOTE: Dropping the Z coordinate of the normal entirely means
+                //that we lose information about its sign (we use sqrt to restore it later).
+                //This is OK in this case because in view space surfaces that we see will have
+                //positive Z component in all cases. If that changes we have to also
+                //encode the sign bit in the x or y.
+                //In the case of 2D: we just write with alpha=0 so that it does not affect the normals buffer.
+                "gl_FragData[1] = vec4(0.0);",
+            "#endif",
 
+                "gl_FragColor.a *= opacity;",
+
+                avs.IdOutputShaderChunk,
             "}"
 
         ].join("\n")
 
 };
 
-};//Based on THREE.WebGLProgram, with some defines added / removed.
+}
+;//Based on THREE.WebGLProgram, with some defines added / removed.
 FireflyWebGLProgram = ( function () {
 
 	var programIdCount = 0;
@@ -33908,6 +34230,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 			}
 
 		}
+
+		_gl = rescueFromPolymer(_gl);
 
 		_canvas.addEventListener( 'webglcontextlost', function ( event ) {
 
@@ -35838,7 +36162,7 @@ FireflyWebGLRenderer = function ( parameters ) {
     //default material attributes and has a single draw batch (offsets array has length 1).
     //Other geometry passes through setupVertexAttributes instead, to set up
     //the vertex layout on every draw.
-    function setupVAO( material, program, geometry) {
+    function setupVAO( material, program, geometry, uvChannel) {
 
         var vao;
 
@@ -35862,7 +36186,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
         //Set up a VAO for this object
         vao = _glExtensionVAO.createVertexArrayOES();
-        geometry.vaos.push( { geomhash : program.id, vao : vao } );
+        geometry.vaos.push( { geomhash : program.id, uv : uvChannel, vao : vao } );
         _glExtensionVAO.bindVertexArrayOES(vao);
 
         //bind the index buffer
@@ -35888,6 +36212,12 @@ FireflyWebGLRenderer = function ( parameters ) {
             if ( programAttribute >= 0 ) {
 
 	            var geometryAttribute = geometry.attributes[ key ];
+
+                // Override 'uv' attribute mapping if uvChannel is specified
+                // (account for the 1-based indexing used for the additional UV channel attributes)
+                if (key === 'uv' && uvChannel) {
+                    geometryAttribute = geometry.attributes['uv' + (uvChannel + 1)];
+                }
 
                 if (geometryAttribute) {
 
@@ -35941,15 +36271,16 @@ FireflyWebGLRenderer = function ( parameters ) {
         return true;
     }
 
-    function activateVAO( material, program, geometry) {
+    function activateVAO( material, program, geometry, uvChannel) {
         var vaos = geometry.vaos;
 
         if (vaos) {
             //The assumption is that this array is rarely bigger than one or two items,
             //so it's faster to do a search than use object hashmap based on geomhash.
-            for (var i=0; i<vaos.length; i++) {
-                if (vaos[i].geomhash === program.id) {
-                    _glExtensionVAO.bindVertexArrayOES(vaos[i].vao);
+            for (var i = 0, len = vaos.length; i < len; i++) {
+                var cache = vaos[i];
+                if (cache.geomhash === program.id && cache.uv === uvChannel) {
+                    _glExtensionVAO.bindVertexArrayOES(cache.vao);
                     return true;
                 }
             }
@@ -35957,7 +36288,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			return false
 		}
 
-		return setupVAO(material, program, geometry);
+		return setupVAO(material, program, geometry, uvChannel);
     }
 
 
@@ -36102,7 +36433,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	// Buffer rendering
 
-	this.renderBufferDirect = function ( camera, lights, fog, material, geometry, object ) {
+	this.renderBufferDirect = function(camera, lights, fog, material, geometry, object, uvChannel) {
 
 		if ( material.visible === false ) return;
 
@@ -36115,7 +36446,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		var updateBuffers = false,
 			wireframeBit = material.wireframe ? 1 : 0,
-			geometryHash = 'direct_' + geometry.id + '_' + program.id + '_' + wireframeBit;
+			geometryHash = 'direct_' + geometry.id + (uvChannel ? '/' + uvChannel : '') + '_' + program.id + '_' + wireframeBit;
 
 		if ( geometryHash !== _currentGeometryProgram ) {
 
@@ -36124,7 +36455,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-		var vao = activateVAO(material, program, geometry);
+		var vao = activateVAO(material, program, geometry, uvChannel || 0);
 		updateBuffers = updateBuffers && !vao;
 
 		if ( updateBuffers ) {
@@ -36708,15 +37039,23 @@ FireflyWebGLRenderer = function ( parameters ) {
 			_this.setMaterialFaces( material );
 
 			if ( buffer instanceof THREE.BufferGeometry ) {
-
 				_this.renderBufferDirect( camera, lights, fog, material, buffer, object );
-
 			} else {
-
 				_this.renderBuffer( camera, lights, fog, material, buffer, object );
-
 			}
 
+            if (material.decals && !overrideMaterial) {
+                var decals = material.decals;
+                for (var di = 0, dlen = decals.length; di < dlen; di++) {
+                    var decal = decals[di];
+                    material = decal.material;
+				    setMaterial(material);
+			        _this.setMaterialFaces(material);
+                    if (buffer instanceof THREE.BufferGeometry) {
+                        _this.renderBufferDirect(camera, lights, fog, material, buffer, object, decal.uv);
+                    }
+                }
+            }
 		}
 
 	};
@@ -36747,8 +37086,18 @@ FireflyWebGLRenderer = function ( parameters ) {
 			}
 
 			_this.setMaterialFaces( material );
-
 			_this.renderBufferDirect( roi_camera, roi_lights, roi_fog, material, m.geometry, m );
+
+            if (material.decals && !roi_overrideMaterial) {
+                var decals = material.decals;
+                for (var di = 0, dlen = decals.length; di < dlen; di++) {
+                    var decal = decals[di];
+                    material = decal.material;
+				    setMaterial(material);
+			        _this.setMaterialFaces(material);
+			        _this.renderBufferDirect(roi_camera, roi_lights, roi_fog, material, m.geometry, m, decal.uv);
+                }
+            }
 		}
 	}
 
@@ -37608,16 +37957,13 @@ FireflyWebGLRenderer = function ( parameters ) {
 			}
 
 			// TODO_NOP: direct assignment dangerous?
-			if (material.cutplanes && material.cutplanes.length > 0) {
-				m_uniforms.cutplanes.value = material.cutplanes;
+			var ucp = m_uniforms.cutplanes;
+			if (material.cutplanes && material.cutplanes.length > 0 && ucp) {
+				ucp.value = material.cutplanes;
 				// Currently, Prism is implemented as shader material, its uniform is just init for once.
 				// Remove the array component if cutplanes's length changed so it can be re-init.
-				if (m_uniforms.cutplanes._array && m_uniforms.cutplanes._array.length != 4 * material.cutplanes)
-					m_uniforms.cutplanes._array = undefined;
-				if (m_uniforms.cutplanesOutlineColor && material.cutplanesOutlineColor)
-					m_uniforms.cutplanesOutlineColor.value = material.cutplanesOutlineColor;
-				if (m_uniforms.cutplanesOutlineThickness && material.cutplanesOutlineThickness)
-					m_uniforms.cutplanesOutlineThickness.value = material.cutplanesOutlineThickness;
+				if (ucp._array && ucp._array.length != 4 * material.cutplanes)
+					ucp._array = undefined;
 			}
 
 			if (material.hatchParams && m_uniforms.hatchParams) {
@@ -38881,7 +39227,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				for ( var i = 0, il = mipmaps.length; i < il; i ++ ) {
 
-					mipmap = mipmaps[ i ];
+					mipmap = rescueFromPolymer(mipmaps[ i ]);
 					_gl.texImage2D( _gl.TEXTURE_2D, i, glFormat, glFormat, glType, mipmap );
 
 				}
@@ -38890,7 +39236,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			} else {
 
-				_gl.texImage2D( _gl.TEXTURE_2D, 0, glFormat, glFormat, glType, texture.image );
+				_gl.texImage2D( _gl.TEXTURE_2D, 0, glFormat, glFormat, glType, rescueFromPolymer(texture.image) );
 
 			}
 
@@ -39516,7 +39862,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         //       exposure = exponential bias to use as pre-tonemap multiplier for all rendered colors, including background
         //       lightMultiplier = linear scale of direct light intensity (diffuse only, not ambient)
         //       bgColorGradient = which background color preset to use as default for the environment map
-        //       illuminance     = cosine-weighted integral of the upper-hemisfere (i.e., actual lux)
+        //       illuminance     = cosine-weighted integral of the upper-hemisphere (i.e., actual lux)
 
         //Image-based lighting from RaaS. Initial exposure is empirically obtained.
         //These do not normally require any extra lights, because they have the lights fully baked into
@@ -39547,7 +39893,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         // 1. BaseExposure (B) in the canon tonemap is the negative log2 luminance of the
         //    white point (W) so B = -log2(W)
         // 2. To match the target illuminance from Fusion, the environment needs
-        //    to be scaled by the ration between the target and its actual illuminance, thus
+        //    to be scaled by the ratio between the target and its actual illuminance, thus
         //    S = target_illuminance / actual_illuminance
         // 3. Then by the definition of middle grey W = L / (0.18*S) where L is the middle grey
         //    luminance and 0.18 is the standard reflection of middle grey.
@@ -39563,7 +39909,8 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"SharpHighlights",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+			// illuminance currently is not used elsewhere in LMV, its effect is folded into E_bias.
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [0.5,0.5,0.5],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39711,7 +40058,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"RimHighlights",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [0.5,0.5,0.5],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39726,7 +40073,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"CoolLight",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [1,1,1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39742,7 +40089,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"WarmLight",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [1,1,1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39758,7 +40105,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"SoftLight",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [1,1,1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39774,7 +40121,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"GridLight",
             type:"logluv",
             tonemap:1,
-            illuminance: 1000.0,
+            //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [1,1,1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39790,7 +40137,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"Plaza",
             type:"logluv",
             tonemap:1,
-            illuminance: 24157.736,
+            //illuminance: 24157.736,
             E_bias: -14.0, // FIXME: EV 14.526, 50000.0 lux in the GUI, yet it does not seem to use illuminance
             directLightColor: [0.9, 0.9, 1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -39806,7 +40153,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"SnowField",
             type:"logluv",
             tonemap:1,
-            illuminance: 4302.7773,
+            //illuminance: 4302.7773,
             E_bias: -10.461343,  // EV 14.526, 50000.0 lux (target)
             directLightColor: [1,1,1],
             ambientColor: [0.25/8,0.25/8,0.25/8],
@@ -40087,6 +40434,49 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         return hp[0];
     }
 
+
+    function HalfToFloat(source)
+    {
+        var target;
+
+        var h = source & 0xFFFF;
+        if( (h & 0x7FFF) === 0 ) {  // Signed zero
+            target = h << 16;  // Return the signed zero
+        } else { // Not zero
+            var hs = h & 0x8000;  // Pick off sign bit
+            var he = h & 0x7C00;  // Pick off exponent bits
+            var hm = h & 0x03FF;  // Pick off mantissa bits
+            if( he == 0 ) {  // Denormal will convert to normalized
+                var e = -1; // The following loop figures out how much extra to adjust the exponent
+                do {
+                    e++;
+                    hm <<= 1;
+                } while( (hm & 0x0400) === 0 ); // Shift until leading bit overflows into exponent bit
+                var xs = (hs) << 16; // Sign bit
+                var xes = ((he << 16) >> 26) - 15 + 127 - e; // Exponent unbias the halfp, then bias the single
+                var xe = (xes << 23); // Exponent
+                var xm = ((hm & 0x03FF)) << 13; // Mantissa
+                target = (xs | xe | xm); // Combine sign bit, exponent bits, and mantissa bits
+            } else if( he == 0x7C00 ) {  // Inf or NaN (all the exponent bits are set)
+                if( hm == 0 ) { // If mantissa is zero ...
+                    target = ((hs) << 16) | (0x7F800000); // Signed Inf
+                } else {
+                    target = 0xFFC00000; // NaN, only 1st mantissa bit set
+                }
+            } else { // Normalized number
+                xs = (hs) << 16; // Sign bit
+                xes = ((he << 16) >> 26) - 15 + 127; // Exponent unbias the halfp, then bias the single
+                xe = (xes << 23); // Exponent
+                xm = (hm) << 13; // Mantissa
+                target = (xs | xe | xm); // Combine sign bit, exponent bits, and mantissa bits
+            }
+        }
+
+        ibuf[0] = target;
+        return fbuf[0];
+    }
+
+
     var tmpSrc = new Float32Array(4);
     var tmpDst = new Float32Array(4);
 
@@ -40169,7 +40559,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
 
     };
 
-    avp.DefaultLightPreset = 8;
+    avp.DefaultLightPreset = 1;
     avp.DefaultLightPreset2d = 0;
 
 
@@ -40661,10 +41051,9 @@ ns.LineStyleDefs = LineStyleDefs;
 ns.CreateLinePatternTexture = CreateLinePatternTexture;
 
 
-})(Autodesk.Viewing.Private);;
-(function() {
+})(Autodesk.Viewing.Private);;(function() {
 
-var avp = Autodesk.Viewing.Private;
+    var avp = Autodesk.Viewing.Private;
 
 // Helper functions to parse ugly Protein JSON
 function parseMaterialColor(props, name) {
@@ -40789,132 +41178,35 @@ function SRGBToLinear(color) {
     return new THREE.Color(r, g, b);
 }
 
-ELengthUnit = {
-    MilliMeter: 8206,
-    DeciMeter: 8204,
-    CentiMeter: 8205,
-    Meter: 8193,
-    KiloMeter: 8201,
-    Inch: 8214,
-    Foot: 8215,
-    Mile: 8225,
-    Yard: 8221
-}
+// TODO, since web doesn't use AdCoreUnits dependencies, only 9 units are supported in web now.
+var UnitPerMeter = {
+    MilliMeter: 1000,  mm: 1000,      8206: 1000,
+    DeciMeter: 10,     dm : 10,       8204: 10,
+    CentiMeter: 100,   cm: 100,       8205: 100,
+    Meter: 1,          m: 1,          8193: 1,
+    KiloMeter: 0.001,  km: 0.001,     8201: 0.001,
+    Inch: 39.37008,    in: 39.37008,  8214: 39.37008,
+    Foot: 3.28084,     ft: 3.28084,   8215: 3.28084,
+    Mile: 0.00062137,  mi: 0.00062137,8225: 0.00062137,
+    Yard: 1.09361,     yard:1.09361,  8221: 1.09361
+};
 
+// Convert meter to the new unit.
 function ConvertDistance(distance, currentUnit, newUnit) {
-    var factor = 1;
-    // TODO, since web doesn't use AdCoreUnits dependencies, only 9 units are supported in web now.
-    // Convert meter to the new unit.
-    switch (newUnit) {
-        case ELengthUnit.MilliMeter:
-            factor = 1000;
-            break;
-        case ELengthUnit.DeciMeter:
-            factor = 10;
-            break;
-        case ELengthUnit.CentiMeter:
-            factor = 100;
-            break;
-        case ELengthUnit.Meter:
-            factor = 1;
-            break;
-        case ELengthUnit.KiloMeter:
-            factor = 0.001;
-            break;
-        case ELengthUnit.Inch:
-            factor = 39.37008;
-            break;
-        case ELengthUnit.Foot:
-            factor = 3.28084;
-            break;
-        case ELengthUnit.Mile:
-            factor = 0.00062137;
-            break;
-        case ELengthUnit.Yard:
-            factor = 1.09361;
-            break;
-        default:
-            console.warn('Unsupported unit: ' + newUnit);
+
+    var factor = UnitPerMeter[newUnit];
+    if (!factor) {
+        factor = 1;
+        console.warn('Unsupported unit: ' + newUnit);
     }
 
-    // Convert current unit to meter.
-    if (typeof currentUnit === "number") {
-        switch (currentUnit) {
-            case ELengthUnit.MilliMeter:
-                factor *= 0.001;
-                break;
-            case ELengthUnit.DeciMeter:
-                factor *= 0.1;
-                break;
-            case ELengthUnit.CentiMeter:
-                factor *= 0.01;
-                break;
-            case ELengthUnit.Meter:
-                break;
-            case ELengthUnit.KiloMeter:
-                factor *= 1000;
-                break;
-            case ELengthUnit.Inch:
-                factor *= 0.0254;
-                break;
-            case ELengthUnit.Foot:
-                factor *= 0.3048;
-                break;
-            case ELengthUnit.Mile:
-                factor *= 1609.344;
-                break;
-            case ELengthUnit.Yard:
-                factor *= 0.9144;
-                break;
-            default:
-                console.warn('Unsupported unit: ' + currentUnit);
-                factor = 1;
-        }
-    }
-    else {// String
-        switch (currentUnit) {
-            case "MilliMeter":
-            case "mm":
-                factor *= 0.001;
-                break;
-            case "DeciMeter":
-            case "dm":
-                factor *= 0.1;
-                break;
-            case "CentiMeter":
-            case "cm":
-                factor *= 0.01;
-                break;
-            case "Meter":
-            case "m":
-                break;
-            case "KiloMeter":
-            case "km":
-                factor *= 1000;
-                break;
-            case "Inch":
-            case "in":
-                factor *= 0.0254;
-                break;
-            case "Foot":
-            case "ft":
-                factor *= 0.3048;
-                break;
-            case "Mile":
-            case "mi":
-                factor *= 1609.344;
-                break;
-            case "Yard":
-            case "yard":
-                factor *= 0.9144;
-                break;
-            default:
-                console.warn('Unsupported unit: ' + currentUnit);
-                factor = 1;
-        }
+    var divisor = UnitPerMeter[currentUnit];
+    if (!divisor) {
+        divisor = 1;
+        console.warn('Unsupported unit: ' + currentUnit);
     }
 
-    return distance * factor;
+    return distance * factor / divisor;
 }
 
 function GetBumpScale(props, type, sceneUnit) {
@@ -40986,6 +41278,149 @@ function Get2DMapTransform(props, sceneUnit) {
 
     return matrix;
 }
+
+
+var PrismWoodTexture;
+//Init the prism wood textures. They are used in all prism 3d wood materials, so keep them
+//in the material manager.
+function InitPrism3DWoodTextures() {
+    var permutation = [
+        151, 160, 137,  91,  90,  15, 131,  13, 201,  95,  96,  53, 194, 233,   7, 225,
+        140,  36, 103,  30,  69, 142,   8,  99,  37, 240,  21,  10,  23, 190,   6, 148,
+        247, 120, 234,  75,   0,  26, 197,  62,  94, 252, 219, 203, 117,  35,  11,  32,
+         57, 177,  33,  88, 237, 149,  56,  87, 174,  20, 125, 136, 171, 168,  68, 175,
+         74, 165,  71, 134, 139,  48,  27, 166,  77, 146, 158, 231,  83, 111, 229, 122,
+         60, 211, 133, 230, 220, 105,  92,  41,  55,  46, 245,  40, 244, 102, 143,  54,
+         65,  25,  63, 161,   1, 216,  80,  73, 209,  76, 132, 187, 208,  89,  18, 169,
+        200, 196, 135, 130, 116, 188, 159,  86, 164, 100, 109, 198, 173, 186,   3,  64,
+         52, 217, 226, 250, 124, 123,   5, 202,  38, 147, 118, 126, 255,  82,  85, 212,
+        207, 206,  59, 227,  47,  16,  58,  17, 182, 189,  28,  42, 223, 183, 170, 213,
+        119, 248, 152,   2,  44, 154, 163,  70, 221, 153, 101, 155, 167,  43, 172,   9,
+        129,  22,  39, 253,  19,  98, 108, 110,  79, 113, 224, 232, 178, 185, 112, 104,
+        218, 246,  97, 228, 251,  34, 242, 193, 238, 210, 144,  12, 191, 179, 162, 241,
+         81,  51, 145, 235, 249,  14, 239, 107,  49, 192, 214,  31, 181, 199, 106, 157,
+        184,  84, 204, 176, 115, 121,  50,  45, 127,   4, 150, 254, 138, 236, 205,  93,
+        222, 114,  67,  29,  24,  72, 243, 141, 128, 195,  78,  66, 215,  61, 156, 180
+    ];
+    var permutationBuffer = new Uint8Array(permutation);
+    var permutationTex = new THREE.DataTexture(permutationBuffer, 256, 1,
+                                            THREE.LuminanceFormat,
+                                            THREE.UnsignedByteType,
+                                            THREE.UVMapping,
+                                            THREE.RepeatWrapping, THREE.RepeatWrapping,
+                                            THREE.NearestFilter, THREE.NearestFilter, 0);
+    permutationTex.generateMipmaps = false;
+    permutationTex.flipY = false;
+    permutationTex.needsUpdate = true;
+    //This is different with OGS desktop. OGS uses a float texture. I map these number to
+    //unsight byte, since some platform may not support float texture. Test result shows that
+    //the pixel diffrence is very small.
+    var gradientData = [
+        225,  39, 122, 231,  29, 173,  15, 159,  75,  88, 233,  19, 179,  79,  72,  94,
+         54,  73, 151, 161, 171, 113, 221, 144, 127,  83, 168,  19,  88, 122,  62, 225,
+        109, 128, 246, 247, 172, 101,  61, 139, 211, 168,  64, 210, 224,  82,  87,  97,
+        119, 250, 201,  44, 242, 239, 154,  99, 126,  13,  44,  70, 246, 170, 100,  52,
+        135,  28, 187,  22, 207, 119, 199,   1, 235, 187,  55, 131, 190, 124, 222, 249,
+        236,  53, 225, 231,  71,  30, 173, 185, 153,  47,  79, 133, 225,  10, 140,  62,
+         17,  99, 100,  29, 137,  95, 142, 244,  76,   5,  83, 124,  38, 216, 253, 195,
+         44, 210, 148, 185, 188,  39,  78, 195, 132,  30,  60,  73,  92, 223, 133,  80,
+        230,  56, 118, 207,  79,  15, 251, 211, 111,  21,  79,  23, 240, 146, 150, 207,
+          3,  61, 103,  27, 148,   6,  31, 127, 235,  58, 173, 244, 116,  81,  34, 120,
+        192, 213, 188, 226,  97,  23,  16, 161, 106,  80, 242, 148,  35,  37,  91, 117,
+         51, 216,  97, 193, 126, 222,  39,  38, 133, 217, 215,  23, 237,  57, 205,  42,
+        222, 165, 126, 133,  33,   8, 227, 154,  27,  18,  56,  11, 192, 120,  80,  92,
+        236,  38, 210, 207, 128,  31, 135,  39, 123,   5,  49, 127, 107, 200,  34,  14,
+        153, 239, 134,  19, 248, 162,  58, 201, 159, 198, 243, 158,  72,   5, 138, 184,
+        222, 200,  34, 141, 233,  40, 195, 238, 191, 122, 171,  32,  66, 254, 229, 197
+    ];
+    var gradientBuffer = new Uint8Array(gradientData);
+    var gradientTex = new THREE.DataTexture(gradientBuffer, 256, 1,
+                                            THREE.LuminanceFormat,
+                                            THREE.UnsignedByteType,
+                                            THREE.UVMapping,
+                                            THREE.RepeatWrapping, THREE.RepeatWrapping,
+                                            THREE.NearestFilter, THREE.NearestFilter, 0);
+
+    gradientTex.generateMipmaps = false;
+    gradientTex.flipY = false;
+    gradientTex.needsUpdate = true;
+
+    var perm = function (x) {
+        return permutation[x % 256];
+    };
+
+    var perm2D = new Array(256 * 256 * 4);
+    var A, AA, AB, B, BA, BB, index;
+    for (var y = 0; y < 256; ++y)
+        for (var x = 0; x < 256; ++x) {
+            A = perm(x) + y;
+            AA = perm(A);
+            AB = perm(A + 1);
+            B = perm(x + 1) + y;
+            BA = perm(B);
+            BB = perm(B + 1);
+
+            // Store (AA, AB, BA, BB) in pixel (x,y)
+            index = 4 * (y * 256 + x);
+            perm2D[index] = AA;
+            perm2D[index + 1] = AB;
+            perm2D[index + 2] = BA;
+            perm2D[index + 3] = BB;
+        }
+    var perm2DBuffer = new Uint8Array(perm2D);
+    var perm2DTex = new THREE.DataTexture(perm2DBuffer, 256, 256,
+                                            THREE.RGBAFormat,
+                                            THREE.UnsignedByteType,
+                                            THREE.UVMapping,
+                                            THREE.RepeatWrapping, THREE.RepeatWrapping,
+                                            THREE.NearestFilter, THREE.NearestFilter, 0);
+    perm2DTex.generateMipmaps = false;
+    perm2DTex.flipY = false;
+    perm2DTex.needsUpdate = true;
+
+    var gradients3D = [
+        1,1,0,    -1,1,0,    1,-1,0,    -1,-1,0,
+        1,0,1,    -1,0,1,    1,0,-1,    -1,0,-1,
+        0,1,1,    0,-1,1,    0,1,-1,    0,-1,-1,
+        1,1,0,    0,-1,1,    -1,1,0,    0,-1,-1
+    ];
+    var permGrad = new Array(1024);
+    for (var x = 0; x < 256; ++x) {
+        var i = permutation[x] % 16;
+        // Convert the gradient to signed-normalized int.
+        permGrad[x * 4] = gradients3D[i * 3] * 127 + 128;
+        permGrad[x * 4 + 1] = gradients3D[i * 3 + 1] * 127 + 128;
+        permGrad[x * 4 + 2] = gradients3D[i * 3 + 2] * 127 + 128;
+        permGrad[x * 4 + 3] = 0;
+    }
+    var permGradBuffer = new Uint8Array(permGrad);
+    var permGradTex = new THREE.DataTexture(permGradBuffer, 256, 1,
+                                            THREE.RGBAFormat,
+                                            THREE.UnsignedByteType,
+                                            THREE.UVMapping,
+                                            THREE.RepeatWrapping, THREE.RepeatWrapping,
+                                            THREE.NearestFilter, THREE.NearestFilter, 0);
+    permGradTex.generateMipmaps = false;
+    permGradTex.flipY = false;
+    permGradTex.needsUpdate = true;
+
+    PrismWoodTexture = {
+        permutation: permutationTex,
+        gradient: gradientTex,
+        perm2D: perm2DTex,
+        permGrad: permGradTex
+    };
+}
+
+function parseWoodMap(tm, props, name) {
+    tm[name + "_enable"] = parseMaterialGeneric(props, "booleans", name + "_enable", 0);
+    var prof = parseWoodProfile(props, "scalars", name + "_prof");
+    tm[name + "_bands"] = prof.bands;
+    tm[name + "_weights"] = prof.weights;
+    tm[name + "_frequencies"] = prof.frequencies;
+}
+
+
 
 function convertMaterial(matObj, isPrism) {
 
@@ -41081,52 +41516,28 @@ function convertMaterial(matObj, isPrism) {
                 break;
 
             case 'PrismWood':
-                tm.wood_fiber_cosine_enable = parseMaterialGeneric(props, "booleans", "wood_fiber_cosine_enable", 0);
-                var wood_fiber_cosine_prof = parseWoodProfile(props, "scalars", "wood_fiber_cosine_prof");
-                tm.wood_fiber_cosine_bands = wood_fiber_cosine_prof.bands;
-                tm.wood_fiber_cosine_weights = wood_fiber_cosine_prof.weights;
-                tm.wood_fiber_cosine_frequencies = wood_fiber_cosine_prof.frequencies;
+                parseWoodMap(tm, props, "wood_fiber_cosine");
 
-                tm.wood_fiber_perlin_enable = parseMaterialGeneric(props, "booleans", "wood_fiber_perlin_enable", 0);
-                var wood_fiber_perlin_prof = parseWoodProfile(props, "scalars", "wood_fiber_perlin_prof");
-                tm.wood_fiber_perlin_bands = wood_fiber_perlin_prof.bands;
-                tm.wood_fiber_perlin_weights = wood_fiber_perlin_prof.weights;
-                tm.wood_fiber_perlin_frequencies = wood_fiber_perlin_prof.frequencies;
+                parseWoodMap(tm, props, "wood_fiber_perlin");
                 tm.wood_fiber_perlin_scale_z = parseMaterialGeneric(props, "scalars", "wood_fiber_perlin_scale_z", 0);
 
-                tm.wood_growth_perlin_enable = parseMaterialGeneric(props, "booleans", "wood_growth_perlin_enable", 0);
-                var wood_growth_perlin_prof = parseWoodProfile(props, "scalars", "wood_growth_perlin_prof");
-                tm.wood_growth_perlin_bands = wood_growth_perlin_prof.bands;
-                tm.wood_growth_perlin_weights = wood_growth_perlin_prof.weights;
-                tm.wood_growth_perlin_frequencies = wood_growth_perlin_prof.frequencies;
+                parseWoodMap(tm, props, "wood_growth_perlin");
 
                 tm.wood_latewood_ratio = parseMaterialGeneric(props, "scalars", "wood_latewood_ratio", 0);
                 tm.wood_earlywood_sharpness = parseMaterialGeneric(props, "scalars", "wood_earlywood_sharpness", 0);
                 tm.wood_latewood_sharpness = parseMaterialGeneric(props, "scalars", "wood_latewood_sharpness", 0);
                 tm.wood_ring_thickness = parseMaterialGeneric(props, "scalars", "wood_ring_thickness", 0);
 
-                tm.wood_earlycolor_perlin_enable = parseMaterialGeneric(props, "booleans", "wood_earlycolor_perlin_enable", 0);
-                var wood_earlycolor_perlin_prof = parseWoodProfile(props, "scalars", "wood_earlycolor_perlin_prof");
-                tm.wood_earlycolor_perlin_bands = wood_earlycolor_perlin_prof.bands;
-                tm.wood_earlycolor_perlin_weights = wood_earlycolor_perlin_prof.weights;
-                tm.wood_earlycolor_perlin_frequencies = wood_earlycolor_perlin_prof.frequencies;
+                parseWoodMap(tm, props, "wood_earlycolor_perlin");
                 tm.wood_early_color = SRGBToLinear(parseMaterialColor(props, "wood_early_color", new THREE.Color(1, 0, 0)));
 
                 tm.wood_use_manual_late_color = parseMaterialGeneric(props, "booleans", "wood_use_manual_late_color", 0);
                 tm.wood_manual_late_color = SRGBToLinear(parseMaterialColor(props, "wood_manual_late_color", new THREE.Color(1, 0, 0)));
 
-                tm.wood_latecolor_perlin_enable = parseMaterialGeneric(props, "booleans", "wood_latecolor_perlin_enable", 0);
-                var wood_latecolor_perlin_prof = parseWoodProfile(props, "scalars", "wood_latecolor_perlin_prof");
-                tm.wood_latecolor_perlin_bands = wood_latecolor_perlin_prof.bands;
-                tm.wood_latecolor_perlin_weights = wood_latecolor_perlin_prof.weights;
-                tm.wood_latecolor_perlin_frequencies = wood_latecolor_perlin_prof.frequencies;
+                parseWoodMap(tm, props, "wood_latecolor_perlin");
                 tm.wood_late_color_power = parseMaterialGeneric(props, "scalars", "wood_late_color_power", 0);
 
-                tm.wood_diffuse_perlin_enable = parseMaterialGeneric(props, "booleans", "wood_diffuse_perlin_enable", 0);
-                var wood_diffuse_perlin_prof = parseWoodProfile(props, "scalars", "wood_diffuse_perlin_prof");
-                tm.wood_diffuse_perlin_bands = wood_diffuse_perlin_prof.bands;
-                tm.wood_diffuse_perlin_weights = wood_diffuse_perlin_prof.weights;
-                tm.wood_diffuse_perlin_frequencies = wood_diffuse_perlin_prof.frequencies;
+                parseWoodMap(tm, props, "wood_diffuse_perlin");
                 tm.wood_diffuse_perlin_scale_z = parseMaterialGeneric(props, "scalars", "wood_diffuse_perlin_scale_z", 0);
 
                 tm.wood_use_pores = parseMaterialGeneric(props, "booleans", "wood_use_pores", 0);
@@ -41152,23 +41563,51 @@ function convertMaterial(matObj, isPrism) {
 
                 tm.transparent = false;
 
+                //Create the wood noise textures. They are used for all wood materials.
+                if (!PrismWoodTexture)
+                    InitPrism3DWoodTextures();
+
+                tm.uniforms.permutationMap.value = PrismWoodTexture['permutation'];
+                tm.uniforms.gradientMap.value = PrismWoodTexture['gradient'];
+                tm.uniforms.perm2DMap.value = PrismWoodTexture['perm2D'];
+                tm.uniforms.permGradMap.value = PrismWoodTexture['permGrad'];
+
                 break;
 
             default:
                 console.warn('Unknown prism type: ' + tm.prismType);
         }
 
-        var defines = {};
-
+        tm.defines = {};
+        tm.textureMaps = {};
         for (var p in mapList) {
-            if (mapList[p] != null) {
-                defines["USE_" + p.toUpperCase()] = "";
-            }
+            if (!mapList[p])
+                continue;
+
+            var textureObj = innerMats[mapList[p]];
+            var texProps = textureObj["properties"];
+
+            var uriType = textureObj["definition"] == "BumpMap" ?
+                          "bumpmap_Bitmap" :
+                          "unifiedbitmap_Bitmap";
+
+            var uri = texProps["uris"][uriType]["values"][0];
+            if (!uri)
+                continue;
+
+            var map = {
+                mapName: p,
+                uri: uri,
+                textureObj: textureObj,
+                isPrism: true
+            };
+            tm.textureMaps[map.mapName] = map;
+
+            tm.defines["USE_" + p.toUpperCase()] = "";
         }
 
-        defines[tm.prismType.toUpperCase()] = "";
+        tm.defines[tm.prismType.toUpperCase()] = "";
 
-        tm.defines = defines;
 
         return tm;
     }
@@ -41183,7 +41622,7 @@ function convertMaterial(matObj, isPrism) {
         var d = tm.color =    parseMaterialColor(props, "generic_diffuse");
         var s = tm.specular = parseMaterialColor(props, "generic_specular");
         var e = tm.emissive = parseMaterialColor(props, "generic_emissive");
-        
+
         //If the material is completely black, use a default material.
         if (  d.r == 0 && d.g == 0 && d.b == 0
             && s.r == 0 && s.g == 0 && s.b == 0
@@ -41195,6 +41634,24 @@ function convertMaterial(matObj, isPrism) {
         tm.opacity = 1.0 - parseMaterialScalar(props, "generic_transparency", 0);
         tm.reflectivity = parseMaterialScalar(props, "generic_reflectivity_at_0deg", 0);
 
+        var isNormal = parseMaterialBoolean(props, "generic_bump_is_normal");
+        var scale = parseMaterialScalar(props, "generic_bump_amount", 0);
+
+        // If cannot read the scale, set the scale to 1 which is the default value for prism and protein.
+        if (scale == null)
+            scale = 1;
+
+        if (isNormal) {
+            if (scale > 1)
+                scale = 1;
+            tm.normalScale = new THREE.Vector2(scale, scale);
+        }
+        else {
+            if (scale >= 1.0)
+                scale = 0.03;
+            tm.bumpScale = scale;
+        }
+
         var isMetal = parseMaterialBoolean(props, "generic_is_metal");
         if (isMetal !== undefined)
             tm.metal = isMetal;
@@ -41204,6 +41661,54 @@ function convertMaterial(matObj, isPrism) {
             tm.side = THREE.DoubleSide;
 
         tm.transparent = innerMat["transparent"];
+
+        tm.textureMaps = {};
+        var textures = innerMat["textures"];
+        for (var texType in textures) {
+
+            var map = {};
+
+            map.textureObj = innerMats[ textures[texType]["connections"][0] ];
+            var texProps = map.textureObj["properties"];
+
+            // Grab URI
+            map.uri = texProps["uris"]["unifiedbitmap_Bitmap"]["values"][0];
+            if (!map.uri)
+                continue;
+
+            // Figure out map name
+
+            if (texType == "generic_diffuse") {
+                map.mapName = "map";
+
+                if (!tm.color || (tm.color.r == 0 && tm.color.g == 0 && tm.color.b == 0))
+                    tm.color.setRGB(1, 1, 1);
+            }
+            else if (texType == "generic_bump") {
+                if (isNormal)
+                    map.mapName = "normalMap";
+                else
+                    map.mapName = "bumpMap";
+            }
+            else if (texType == "generic_specular") {
+                map.mapName = "specularMap";
+            }
+            else if (texType == "generic_alpha") {
+                map.mapName = "alphaMap";
+                tm.transparent = true;
+            }
+            // Environment maps from SVF turned off since we have better defaults
+            // else if (texType == "generic_reflection") {
+            //     mapName = "envMap";
+            // }
+            else {
+                // no map name recognized, skip
+                continue;
+            }
+
+            tm.textureMaps[map.mapName] = map;
+        }
+
     }
     else {
         // unknown material, use default colors
@@ -41218,16 +41723,97 @@ function convertMaterial(matObj, isPrism) {
 }
 
 
+
+function convertPrismTexture(textureObj, texture, sceneUnit) {
+
+    var texProps = textureObj["properties"];
+
+    texture.wrapS = parseMaterialGeneric(texProps, "booleans", "texture_URepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    texture.wrapT = parseMaterialGeneric(texProps, "booleans", "texture_VRepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+
+    texture.matrix = Get2DMapTransform(texProps, sceneUnit);
+
+    if (textureObj["definition"] == "UnifiedBitmap") {
+        texture.invert = parseMaterialGeneric(texProps, "booleans", "unifiedbitmap_Invert", false);
+    }
+
+    if (textureObj["definition"] == "BumpMap") {
+        texture.bumpmapType = parseMaterialGeneric(texProps, "choicelists", "bumpmap_Type", 0);
+        texture.bumpScale = GetBumpScale(texProps, texture.bumpmapType, sceneUnit);
+    }
+
+}
+
+function convertSimpleTexture(textureObj, texture) {
+
+    var texProps = textureObj["properties"];
+
+    texture.invert = parseMaterialBoolean(texProps, "unifiedbitmap_Invert");
+    texture.clampS = !parseMaterialBoolean(texProps, "texture_URepeat", true);  // defaults to wrap
+    texture.clampT = !parseMaterialBoolean(texProps, "texture_VRepeat", true);
+
+    var uscale = parseMaterialScalar(texProps, "texture_UScale", 1);
+    var vscale = parseMaterialScalar(texProps, "texture_VScale", 1);
+    var uoffset = parseMaterialScalar(texProps, "texture_UOffset", 0);
+    var voffset = parseMaterialScalar(texProps, "texture_VOffset", 0);
+    var wangle = parseMaterialScalar(texProps, "texture_WAngle", 0);
+
+    texture.matrix = { elements:[
+        Math.cos(wangle) * uscale, Math.sin(wangle) * vscale, 0,
+       -Math.sin(wangle) * uscale, Math.cos(wangle) * vscale, 0,
+        uoffset, voffset, 1
+    ]};
+}
+
+function convertTexture(textureObj, texture, sceneUnit, isPrism) {
+    if (isPrism)
+        convertPrismTexture(textureObj, texture, sceneUnit);
+    else
+        convertSimpleTexture(textureObj, texture);
+}
+
+
+function isPrismMaterial(material) {
+    var innerMats = material['materials'];
+    var innerMat = innerMats[material['userassets'][0]];
+    if (innerMat) {
+        var definition = innerMat['definition'];
+        return definition == 'PrismLayered'
+            || definition == 'PrismMetal'
+            || definition == 'PrismOpaque'
+            || definition == 'PrismTransparent'
+            || definition == 'PrismWood';
+    }
+    return false;
+}
+
+
+Autodesk.Viewing.Private.MaterialConverter = {
+	convertMaterial: convertMaterial,
+    convertTexture: convertTexture,
+    isPrismMaterial: isPrismMaterial
+};
+
+})();;
+(function() {
+
+var avp = Autodesk.Viewing.Private;
+
+
 function loadTextureWithSecurity(path, mapping, callback) {
 
     if (auth) {
-        // CORS with credentials is only supported by viewing service ITEM API.
-        // So check if we are using ITEM API and if we do, enable credentials.
-        //TODO: This check is a bit of a hack -- we should do something more robust
-        if (path.indexOf('/items/') != -1) {
-            THREE.ImageUtils.crossOrigin = "use-credentials";
-        } else {
-            THREE.ImageUtils.crossOrigin = "";
+        // TODO: We should actually ALSO consider the case where texture is being loaded from
+        // the same domain as the SVF being served. With such a change, we will be taking into
+        // account developers exposing SVF's through their own proxy servers.
+        var useCredentials = path.indexOf('://') === -1 ||
+            path.indexOf(window.location.host) !== -1 ||
+            avp.urlIsApiViewingOrDev(path);
+
+        if (useCredentials) { //if you're sending to your own host or to autodesk views and data api, then use credentials
+            THREE.ImageUtils.crossOrigin = 'use-credentials';
+        } else { //otherwise do not
+            THREE.ImageUtils.crossOrigin = 'anonymous';
         }
     }
 
@@ -41312,11 +41898,9 @@ function MaterialManager(viewer)
     var _texturesToUpdate = [];
     this.hasPrism = false;
     this.renderPrism = true; //matches the default preferences setting
-    this.PrismWoodTexture = null;
 
     // cutplanes array where all materials refer to
     var _cutplanes = [];
-    var _cutplanesOutlineColor = new THREE.Vector3(0, 1, 0);
 
     this.defaultMaterial = new THREE.MeshPhongMaterial({
                     ambient: 0x030303,
@@ -41374,47 +41958,27 @@ function MaterialManager(viewer)
     // Convert from LMV materials json to THREE.js materials
     this.convertMaterials = function (svf) {
         if (!svf.materials) {
-            return;
+            return 0;
         }
 
         // get outer Protein materials block
         var prmats = svf.materials["materials"];
         var prismmats = svf.proteinMaterials ? svf.proteinMaterials["materials"] : null;
+        var _renderPrism = this.renderPrism;
+        var totalAdded = 0;
 
         for (var p in prmats) {
 
             var isPrism = false;
 
             if (prismmats) {
-                var innerMats = prismmats[p]["materials"];
-                var innerMat = innerMats[prismmats[p]["userassets"][0]];
-
-                if (this.renderPrism && innerMat) {
-                    var definition = innerMat["definition"];
-
-                    isPrism = definition == "PrismLayered" ||
-                              definition == "PrismMetal" ||
-                              definition == "PrismOpaque" ||
-                              definition == "PrismTransparent" ||
-                              definition == "PrismWood";
-                }
+                isPrism = _renderPrism && avp.MaterialConverter.isPrismMaterial(prismmats[p]);
             }
 
             //If the definition is prism, use the prism object.
             var matObj = isPrism ? prismmats[p] : prmats[p];
 
-            var phongMat = convertMaterial(matObj, isPrism);
-
-            if (isPrism && phongMat.prismType == "PrismWood") {
-                //Create the wood noise textures. They are used for all wood materials.
-                if (this.PrismWoodTexture == null)
-                    this.InitPrism3DWoodTextures();
-
-                phongMat.uniforms.permutationMap.value = this.PrismWoodTexture['permutation'];
-                phongMat.uniforms.gradientMap.value = this.PrismWoodTexture['gradient'];
-                phongMat.uniforms.perm2DMap.value = this.PrismWoodTexture['perm2D'];
-                phongMat.uniforms.permGradMap.value = this.PrismWoodTexture['permGrad'];
-            }
+            var phongMat = avp.MaterialConverter.convertMaterial(matObj, isPrism);
 
             // TODO: do we want to check the global flag or drop that and rely on material only?
             if (!_isIE11 && svf.doubleSided)
@@ -41422,8 +41986,25 @@ function MaterialManager(viewer)
 
             var matName = getMaterialHash(svf, p);
             this.addMaterial(matName, phongMat, isPrism);
+            totalAdded++;
 
+            // Process decals
+            if (matObj.decals) {
+                phongMat.decals = [];
+                for (var di = 0, dlen = matObj.decals.length; di < dlen; di++) {
+                    var decal = matObj.decals[di];
+                    isPrism = _renderPrism && avp.MaterialConverter.isPrismMaterial(decal.material);
+                    var material = avp.MaterialConverter.convertMaterial(decal.material, isPrism);
+                    phongMat.decals.push({
+                        uv: decal.uv || 0,
+                        material: material
+                    });
+                    this.addMaterial(matName + '|decal|' + di, material, isPrism);
+                }
+            }
         }
+
+        return totalAdded;
     };
 
     //Called at the beginning of every frame, to perform pending
@@ -41450,15 +42031,74 @@ function MaterialManager(viewer)
 
 
     this.loadTexture = function(material, svf) {
-        if (!material || !material.proteinMat)
+        if (!material.textureMaps)
             return;
 
-        var innerMats = material.proteinMat["materials"];
-        var innerMat = innerMats[material.proteinMat["userassets"][0]];
+        // iterate and parse textures from ugly JSON
+        // for each texture type in material
+        //   if has URI and valid mapName
+        //     load and initialize that texture
+        var textures = material.textureMaps;
+        for (var mapName in textures) {
 
-        //Annoying closure to capture the mutable loop variable texName for
-        //use in the load callback
-        var load = function (textureName, texturePath) {
+            var map = textures[mapName];
+
+            //TODO : It's possible that a texture is used as bitmap and bumpmap. In this situation,
+            //if the bitmap is loaded first, the bumpscale won't be updated. To fix this, I added the
+            //definition as part of the key. This is a easy fix but will make the texture loaded twice.
+            //Ideally, we need to improve the current cache to save the texture properties like matrix,
+            //invert flag, separately, because a texture can be used in many places and each of them can
+            //have different properties.
+            var texName = svf.basePath + map.uri + map.mapName/*this is the TODO above*/;
+
+            var texEntry = _this.textures[texName];
+            if (texEntry) {
+                //Is texture already loaded, then update the material immediately?
+                if (texEntry.tex) {
+                    material[map.mapName] = texEntry.tex;
+                    material.needsUpdate = true;
+                } else {
+                    _this.textures[texName].mats.push(material);
+                    _this.textures[texName].slots.push(map.mapName);
+                }
+            } else {
+                var texPath = null;
+
+                //Of course, Prism uses a different CDN endpoint from Protein, so
+                //we have to distinguish between the two...
+                var isProteinMat = material.proteinType && material.proteinType.length;
+                var isPrism = isProteinMat && (material.proteinType.indexOf("Prism") === 0);
+
+                var isSharedTexture = (isPrism && PRISM_ROOT || isProteinMat && PROTEIN_ROOT) &&
+                    (map.uri.indexOf("1/Mats") === 0 || map.uri.indexOf("2/Mats") === 0 || map.uri.indexOf("3/Mats") === 0);
+
+                if (isSharedTexture) {
+                    if (isPrism) {
+                        texPath = PRISM_ROOT + map.uri;
+                    } else {
+                        texPath = PROTEIN_ROOT + map.uri;
+                    }
+                } else {
+
+                    for(var j=0; j<svf.manifest.assets.length; ++j)
+                    {
+                        var asset = svf.manifest.assets[j];
+                        if(asset.id == map.uri) {
+                            texPath = avp.pathToURL(svf.basePath + asset.URI);
+                            break;
+                        }
+                    }
+
+                    if(!texPath) {
+                        texPath = avp.pathToURL(svf.basePath + map.uri);
+                    }
+                }
+
+                _this.textures[texName] = { mats: [material], slots: [map.mapName], tex: null };
+
+                //Annoying closure to capture the mutable loop variable texName for
+                //use in the load callback
+                var texture = (function(textureName, texturePath) {
                     return loadTextureWithSecurity(texturePath, THREE.UVMapping, function (tex) {
 
                         //It's possible MaterialManager got destroyed before the texture loads
@@ -41486,239 +42126,23 @@ function MaterialManager(viewer)
                         //next frame. We can use this to throttle texture GPU upload
                         _texturesToUpdate.push(def);
                     });
-                    }
+                })(texName, texPath);
 
-        if (material.isPrismMaterial) {
-            var mapList = material.mapList;
-            for (p in mapList) {
-                if (mapList[p] == null)
-                    continue;
-
-                var textureObj = innerMats[mapList[p]];
-                var texProps = textureObj["properties"];
-
-                var uriType = textureObj["definition"] == "BumpMap" ?
-                              "bumpmap_Bitmap" :
-                              "unifiedbitmap_Bitmap";
-
-                var uri = texProps["uris"][uriType]["values"][0];
-                if (!uri)
-                    continue;
-
-                //TODO : It's possible that a texture is used as bitmap and bumpmap. In this situation,
-                //if the bitmap is loaded first, the bumpscale won't be updated. To fix this, I added the 
-                //definition as part of the key. This is a easy fix but will make the texture loaded twice.
-                //Ideally, we need to improve the current cache to save the texture properties like matrix,
-                //invert flag, separately, because a texture can be used in many places and each of them can
-                //have different properties.
-                var texName = svf.basePath + uri + textureObj["definition"];
-
-                var texEntry = _this.textures[texName];
-                if (texEntry) {
-                    //Is texture already loaded, then update the material immediately?
-                    if (texEntry.tex) {
-                        material[p] = texEntry.tex;
-                        material.needsUpdate = true;
-                    } else {
-                        _this.textures[texName].mats.push(material);
-                        _this.textures[texName].slots.push(p);
-                    }
-                } else {
-                    var texPath = null;
-                    if (PRISM_ROOT &&
-                        (uri.indexOf("1/Mats") === 0 || uri.indexOf("2/Mats") === 0 || uri.indexOf("3/Mats") === 0)) {
-                        texPath = PRISM_ROOT + uri;
-                    }
-                    else
-                        texPath = avp.pathToURL(svf.basePath + uri);
-                    var entry = { mats: [material], slots: [p], tex: null };
-                    _this.textures[texName] = entry;
-
-                    var texture = load(texName, texPath);
-
-                    // default params
-                    texture.flipY = true;
-                    texture.invert = false;
-                    texture.wrapS = THREE.RepeatWrapping;
-                    texture.wrapT = THREE.RepeatWrapping;
-
-                    texture.wrapS = parseMaterialGeneric(texProps, "booleans", "texture_URepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-                    texture.wrapT = parseMaterialGeneric(texProps, "booleans", "texture_VRepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-
-                    var sceneUnit = svf.proteinMaterials.scene.SceneUnit;
-                    texture.matrix = Get2DMapTransform(texProps, sceneUnit);
-
-                    if (textureObj["definition"] == "UnifiedBitmap") {
-                        texture.invert = parseMaterialGeneric(texProps, "booleans", "unifiedbitmap_Invert", false);
-                    }
-
-                    if (textureObj["definition"] == "BumpMap") {
-                        texture.bumpmapType = parseMaterialGeneric(texProps, "choicelists", "bumpmap_Type", 0);
-                        texture.bumpScale = GetBumpScale(texProps, texture.bumpmapType, sceneUnit);
-                    }
-
-                }
-            }
-            return;
-        }
-
-        if (!innerMat || innerMat["definition"] !== "SimplePhong")
-            return;
-
-        var props = innerMat["properties"];
-
-        // iterate and parse textures from ugly JSON
-        // for each texture type in material
-        //   if has URI and valid mapName
-        //     load and initialize that texture
-        var textures = innerMat["textures"];
-        for (var texType in textures) {
-            var texProps = innerMats[ textures[texType]["connections"][0] ]["properties"];
-
-            // Grab URI
-            var uri = texProps["uris"]["unifiedbitmap_Bitmap"]["values"][0];
-            if (!uri)
-                continue;
-
-            // Figure out map name
-
-            var mapName;
-            if (texType == "generic_diffuse") {
-                mapName = "map";
-
-                if (!material.color || (material.color.r == 0 && material.color.g == 0 && material.color.b == 0))
-                    material.color.setRGB(1, 1, 1);
-            }
-            else if (texType == "generic_bump") {
-                var isNormal = parseMaterialBoolean(props, "generic_bump_is_normal");
-                var scale = parseMaterialScalar(props, "generic_bump_amount", 0);
-
-                // If cannot read the scale, set the scale to 1 which is the default value for prism and protein.
-                if (scale == null)
-                    scale = 1;
-
-                if (isNormal) {
-                    mapName = "normalMap";
-                    if (scale > 1)
-                        scale = 1;
-                    material.normalScale = new THREE.Vector2(scale, scale);
-                }
-                else {
-                    mapName = "bumpMap";
-                    if (scale >= 1.0)
-                        scale = 0.03;
-                    material.bumpScale = scale;
-                }
-            }
-            else if (texType == "generic_specular") {
-                mapName = "specularMap";
-            }
-            else if (texType == "generic_alpha") {
-                mapName = "alphaMap";
-                material.transparent = true;
-            }
-            // Environment maps from SVF turned off since we have better defaults
-            // else if (texType == "generic_reflection") {
-            //     mapName = "envMap";
-            // }
-            else {
-                // no map name recognized, skip
-                continue;
-            }
-
-            //Some materials come with backslashes in the
-            //relative texture path. Until this is fixed on the
-            //translation side, we have to handle it here.
-            //uri = uri.replace(/\\/g, "/");
-
-            //Of course, Prism uses a different CDN endpoint from Protein, so
-            //we have to distinguish between the two...
-            var isProteinMat = material.proteinType && material.proteinType.length;
-            var isPrism = isProteinMat && (material.proteinType.indexOf("Prism") === 0);
-
-            var isSharedTexture = (isPrism && PRISM_ROOT || isProteinMat && PROTEIN_ROOT) &&
-                (uri.indexOf("1/Mats") === 0 || uri.indexOf("2/Mats") === 0 || uri.indexOf("3/Mats") === 0);
-
-            var texName = svf.basePath + uri;
-
-            var texEntry = _this.textures[texName];
-            if (texEntry) {
-                //Is texture already loaded, then update the material immediately?
-                if (texEntry.tex) {
-                    material[mapName] = texEntry.tex;
-                    material.needsUpdate = true;
-                } else {
-                    _this.textures[texName].mats.push(material);
-                    _this.textures[texName].slots.push(mapName);
-                }
-            } else {
-                var texPath = null;
-
-                if (isSharedTexture) {
-                    if (isPrism) {
-                        texPath = PRISM_ROOT + uri;
-                    } else {
-                        texPath = PROTEIN_ROOT + uri;
-                    }
-                } else {
-
-                    for(var j=0; j<svf.manifest.assets.length; ++j)
-                    {
-                        var asset = svf.manifest.assets[j];
-                        if(asset.id == uri) {
-                            texPath = avp.pathToURL(svf.basePath + asset.URI);
-                            break;
-                        }
-                    }
-
-                    if(!texPath) {
-                        texPath = avp.pathToURL(texName);
-                    }
-                }
-
-                var entry = { mats: [material], slots: [mapName], tex: null };
-                _this.textures[texName] = entry;
-
-                var texture = load(texName, texPath);
-
-                if (mapName == "alphaMap")
-                    material.transparent = true;
-
-                if (mapName == "bumpMap" || mapName == "normalMap") {
+                if (map.mapName == "bumpMap" || map.mapName == "normalMap") {
                     texture.anisotropy = 0;
-
-                    //Linear makes Protein grass materials look better,
-                    //but ruins Prism paint... so let's bias for Prism for now.
-                    //texture.minFilter = THREE.LinearFilter;
-                        //texture.magFilter = THREE.LinearFilter;
                 }
                 else {
-
                     texture.anisotropy = this.viewer.renderer().getMaxAnisotropy();
                 }
 
                 // default params
                 texture.flipY = true;
+                texture.invert = false;
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
 
                 // extract / construct texture params from JSON
-
-                texture.invert = parseMaterialBoolean(texProps, "unifiedbitmap_Invert");
-                texture.clampS = !parseMaterialBoolean(texProps, "texture_URepeat", true);  // defaults to wrap
-                texture.clampT = !parseMaterialBoolean(texProps, "texture_VRepeat", true);
-
-                var uscale = parseMaterialScalar(texProps, "texture_UScale", 1);
-                var vscale = parseMaterialScalar(texProps, "texture_VScale", 1);
-                var uoffset = parseMaterialScalar(texProps, "texture_UOffset", 0);
-                var voffset = parseMaterialScalar(texProps, "texture_VOffset", 0);
-                var wangle = parseMaterialScalar(texProps, "texture_WAngle", 0);
-
-                texture.matrix = { elements:[
-                    Math.cos(wangle) * uscale, Math.sin(wangle) * vscale, 0,
-                   -Math.sin(wangle) * uscale, Math.cos(wangle) * vscale, 0,
-                    uoffset, voffset, 1
-                ]};
+                avp.MaterialConverter.convertTexture(map.textureObj, texture, svf.materials.scene.SceneUnit, map.isPrism);
             }
         }
     };
@@ -41794,6 +42218,7 @@ function MaterialManager(viewer)
             }
             else if (isSelectionMaterial) {
                 lineMaterial.defines["SELECTION_RENDERER"] = 1;
+                lineMaterial.uniforms["selectionColor"].value = new THREE.Vector4(0, 0, 1, 1);
             }
             else if (this.viewer.renderer().hasMRT()){
                 //If the renderer can do MRT, enable it in the shader
@@ -41922,38 +42347,6 @@ function MaterialManager(viewer)
                     }
                 }
             }
-            else if (!proteinMaterial) {
-
-                //This section covers materials coming from ***DWF*** translation
-
-                if (mat.reflectivity)
-                {
-                    //If reflectivity is set explicitly, but metal is not, assume
-                    //the material is metallic anyway and set specular=diffuse
-
-                    mat.metal = true;
-                    mat.specular.r = mat.color.r * mat.reflectivity;
-                    mat.specular.g = mat.color.g * mat.reflectivity;
-                    mat.specular.b = mat.color.b * mat.reflectivity;
-
-                    mat.color.r *= 0.1;
-                    mat.color.g *= 0.1;
-                    mat.color.b *= 0.1;
-                }
-                else if (mat.color.r === 1 && mat.color.g === 1 && mat.color.b === 1 &&
-                    mat.specular.r === 1 && mat.specular.g === 1 && mat.specular.b === 1 &&
-                    !mat.uri_map && !mat.uri_specularMap)
-                {
-                    //Detect metal materials based on diffuse = specular = 1
-                    mat.metal = true;
-                    mat.reflectivity = 0.7;
-                    mat.specular.r = mat.specular.g = mat.specular.b = mat.reflectivity;
-
-                    mat.color.r *= 0.1;
-                    mat.color.g *= 0.1;
-                    mat.color.b *= 0.1;
-                }
-            }
             else {
                 //Non-metal materials
 
@@ -42004,22 +42397,59 @@ function MaterialManager(viewer)
                 else
                 {
                     //Get a reasonable reflectivity value if there isn't any
-                    if (!mat.reflectivity)
-                    {
-                        //For non-metallic materials, reflectivity
-                        //varies very little in the range 0.03-0.06 or so
-                        //and is never below 0.02.
-                        mat.reflectivity = 0.01 + 0.06 * luminance(mat.specular);
-                    }
+                    if (!mat.reflectivity) {
+                        if (mat.color.r === 1 && mat.color.g === 1 && mat.color.b === 1 &&
+                            mat.specular.r === 1 && mat.specular.g === 1 && mat.specular.b === 1 &&
+                            (!mat.textureMaps || (!mat.textureMaps.map && !mat.textureMaps.specularMap)))
+                        {
+                            //This covers specific cases in DWF where metals get diffuse=specular=1.
+                            mat.metal = true;
+                            mat.reflectivity = 0.7;
 
-                    //For non-metals, reflectivity is either set
-                    //correctly or we estimate it above, and the specular color
-                    //just carries the hue
-                    //Note: Protein (but not Prism) seems to have consistently high reflectivity
-                    //values for its non-metals.
-                    mat.specular.r *= mat.reflectivity;
-                    mat.specular.g *= mat.reflectivity;
-                    mat.specular.b *= mat.reflectivity;
+                            mat.color.r *= 0.1;
+                            mat.color.g *= 0.1;
+                            mat.color.b *= 0.1;
+                        } else {
+
+                            //General case
+                            //For non-metallic materials, reflectivity
+                            //varies very little in the range 0.03-0.06 or so
+                            //and is never below 0.02.
+                            mat.reflectivity = 0.01 + 0.06 * luminance(mat.specular);
+
+                            //For non-metals, reflectivity is either set
+                            //correctly or we estimate it above, and the specular color
+                            //just carries the hue
+                            //Note: Protein (but not Prism) seems to have consistently high reflectivity
+                            //values for its non-metals.
+                            mat.specular.r *= mat.reflectivity;
+                            mat.specular.g *= mat.reflectivity;
+                            mat.specular.b *= mat.reflectivity;
+                        }
+
+                    } else  if (mat.reflectivity > 0.3) {
+                        //If reflectivity is set explicitly to a high value, but metal is not, assume
+                        //the material is metallic anyway and set specular=diffuse
+                        //This covers specific cases in DWF.
+
+                        mat.metal = true;
+                        mat.specular.r = mat.color.r;
+                        mat.specular.g = mat.color.g;
+                        mat.specular.b = mat.color.b;
+
+                        mat.color.r *= 0.1;
+                        mat.color.g *= 0.1;
+                        mat.color.b *= 0.1;
+                    } else {
+                        //For non-metals, reflectivity is either set
+                        //correctly or we estimate it above, and the specular color
+                        //just carries the hue
+                        //Note: Protein (but not Prism) seems to have consistently high reflectivity
+                        //values for its non-metals.
+                        mat.specular.r *= mat.reflectivity;
+                        mat.specular.g *= mat.reflectivity;
+                        mat.specular.b *= mat.reflectivity;
+                    }
 
                     //For transparent non-layered materials, the reflectivity uniform is
                     //used for scaling the Fresnel reflection at oblique angles
@@ -42032,13 +42462,13 @@ function MaterialManager(viewer)
 
             //Alpha test for materials with textures that are potentially opacity maps
             if (mat.transparent ||
-            (mat.uri_map && mat.uri_map.toLowerCase().indexOf(".png") != -1) ||
-            mat.uri_opacityMap) {
+                (mat.textureMaps && ((mat.textureMaps.map && mat.textureMaps.map.uri.toLowerCase().indexOf(".png") != -1) ||
+                                      mat.textureMaps.opacityMap))) {
                 mat.alphaTest = 0.01;
             }
         }
 
-        if (mat.uri_normalMap)
+        if (mat.textureMaps && mat.textureMaps.normalMap)
         {
             var scale = mat.bumpScale;
             if (scale === undefined || scale >= 1)
@@ -42048,7 +42478,7 @@ function MaterialManager(viewer)
         }
         else
         {
-            if (mat.bumpScale === undefined && (mat.uri_map || mat.uri_bumpMap))
+            if (mat.bumpScale === undefined && mat.textureMaps && (mat.textureMaps.map || mat.textureMaps.bumpMap))
                 mat.bumpScale = 0.03; //seems like a good subtle default if not given
             else if (mat.bumpScale >= 1) //Protein generic mat sometimes comes with just 1.0 which can't be right...
                 mat.bumpScale = 0.03;
@@ -42071,21 +42501,19 @@ function MaterialManager(viewer)
 
         this.viewer.renderer().applyMRTFlags(mat);
 
-        //if (mat.opacity < 1.0 || mat.uri_opacityMap)
+        //if (mat.opacity < 1.0 || (mat.textureMaps && mat.textureMaps.opacityMap))
         //    mat.side = THREE.DoubleSide;
 
         if (mat.side == THREE.DoubleSide)
             this.viewer.renderer().toggleTwoSided(true);
 
         mat.cutplanes = _cutplanes;
-        mat.cutplanesOutlineColor = _cutplanesOutlineColor;
 
         _materials[name] = mat;
     };
 
     this.addMaterialNonHDR = function(name, mat) {
         mat.cutplanes = _cutplanes;
-        mat.cutplanesOutlineColor = _cutplanesOutlineColor;
         _materialsNonHDR[name] = mat;
     };
 
@@ -42124,8 +42552,8 @@ function MaterialManager(viewer)
                 material.bumpMap = material.map;
                 material.needsUpdate = true;
             }
-            if (material.uri_map && !material.uri_bumpMap) {
-                material.uri_bumpMap = material.uri_map;
+            if (material.textureMaps && material.textureMaps.map && !material.textureMaps.bumpMap) {
+                material.textureMaps.bumpMap = material.textureMaps.map;
                 material.needsUpdate = true;
             }
         }
@@ -42175,9 +42603,9 @@ function MaterialManager(viewer)
     };
 
     this.setCubeMap = function(path, exposure) {
-    
+
         var self = this;
-    
+
         var texLoadDone = function(map) {
             if (map) {
                 map.mapping = THREE.CubeReflectionMapping;
@@ -42235,7 +42663,7 @@ function MaterialManager(viewer)
 
 
     this.setIrradianceMap = function(path, exposure) {
-        
+
         var self = this;
         var texLoadDone = function(map) {
             if (map)
@@ -42398,7 +42826,7 @@ function MaterialManager(viewer)
     this.initLineStyleTexture = function() {
 
         this.lineStyleTex = avp.CreateLinePatternTexture();
-    
+
     };
 
 
@@ -42501,8 +42929,6 @@ function MaterialManager(viewer)
             material.proteinMat = mat.proteinMat;
             material.tonemapOutput = mat.tonemapOutput;
             material.cutplanes = mat.cutplanes;
-            material.cutplanesOutlineColor = mat.cutplanesOutlineColor;
-            material.cutplanesOutlineThickness = mat.cutplanesOutlineThickness;
         }
 
         this.viewer.renderer().applyMRTFlags(material);
@@ -42548,17 +42974,6 @@ function MaterialManager(viewer)
         }
     };
 
-    this.setCutPlanesOutlineColor = function(color) {
-        _cutplanesOutlineColor.set(color.r, color.g, color.b);
-    };
-
-    this.setCutPlanesOutlineThickness = function(thickness) {
-        for (var p in _materials)
-            _materials[p].cutplanesOutlineThickness = thickness;
-        for (var p in _materialsNonHDR)
-            _materialsNonHDR[p].cutplanesOutlineThickness = thickness;
-    };
-
     /**
      * Deallocates any material related GL objects associated with the given model.
      */
@@ -42595,141 +43010,10 @@ function MaterialManager(viewer)
 
 
     this.addSimpleMaterial = function(id, simpleMaterial, svf) {
-        var phongMat = convertMaterial(simpleMaterial);
+        var phongMat = avp.MaterialConverter.convertMaterial(simpleMaterial);
         var matName = getMaterialHash(svf, id);
         this.addMaterial(matName, phongMat);
         this.loadTexture(phongMat, svf);
-    };
-
-    //Init the prism wood textures. They are used in all prism 3d wood materials, so keep them
-    //in the material manager.
-    this.InitPrism3DWoodTextures = function () {
-        var permutation = [
-            151, 160, 137,  91,  90,  15, 131,  13, 201,  95,  96,  53, 194, 233,   7, 225,
-            140,  36, 103,  30,  69, 142,   8,  99,  37, 240,  21,  10,  23, 190,   6, 148,
-            247, 120, 234,  75,   0,  26, 197,  62,  94, 252, 219, 203, 117,  35,  11,  32,
-             57, 177,  33,  88, 237, 149,  56,  87, 174,  20, 125, 136, 171, 168,  68, 175,
-             74, 165,  71, 134, 139,  48,  27, 166,  77, 146, 158, 231,  83, 111, 229, 122,
-             60, 211, 133, 230, 220, 105,  92,  41,  55,  46, 245,  40, 244, 102, 143,  54,
-             65,  25,  63, 161,   1, 216,  80,  73, 209,  76, 132, 187, 208,  89,  18, 169,
-            200, 196, 135, 130, 116, 188, 159,  86, 164, 100, 109, 198, 173, 186,   3,  64,
-             52, 217, 226, 250, 124, 123,   5, 202,  38, 147, 118, 126, 255,  82,  85, 212,
-            207, 206,  59, 227,  47,  16,  58,  17, 182, 189,  28,  42, 223, 183, 170, 213,
-            119, 248, 152,   2,  44, 154, 163,  70, 221, 153, 101, 155, 167,  43, 172,   9,
-            129,  22,  39, 253,  19,  98, 108, 110,  79, 113, 224, 232, 178, 185, 112, 104,
-            218, 246,  97, 228, 251,  34, 242, 193, 238, 210, 144,  12, 191, 179, 162, 241,
-             81,  51, 145, 235, 249,  14, 239, 107,  49, 192, 214,  31, 181, 199, 106, 157,
-            184,  84, 204, 176, 115, 121,  50,  45, 127,   4, 150, 254, 138, 236, 205,  93,
-            222, 114,  67,  29,  24,  72, 243, 141, 128, 195,  78,  66, 215,  61, 156, 180
-        ];
-        var permutationBuffer = new Uint8Array(permutation);
-        var permutationTex = new THREE.DataTexture(permutationBuffer, 256, 1,
-                                                THREE.LuminanceFormat,
-                                                THREE.UnsignedByteType,
-                                                THREE.UVMapping,
-                                                THREE.RepeatWrapping, THREE.RepeatWrapping,
-                                                THREE.NearestFilter, THREE.NearestFilter, 0);
-        permutationTex.generateMipmaps = false;
-        permutationTex.flipY = false;
-        permutationTex.needsUpdate = true;
-        //This is different with OGS desktop. OGS uses a float texture. I map these number to 
-        //unsight byte, since some platform may not support float texture. Test result shows that
-        //the pixel diffrence is very small.
-        var gradientData = [
-            225,  39, 122, 231,  29, 173,  15, 159,  75,  88, 233,  19, 179,  79,  72,  94,
-             54,  73, 151, 161, 171, 113, 221, 144, 127,  83, 168,  19,  88, 122,  62, 225,
-            109, 128, 246, 247, 172, 101,  61, 139, 211, 168,  64, 210, 224,  82,  87,  97,
-            119, 250, 201,  44, 242, 239, 154,  99, 126,  13,  44,  70, 246, 170, 100,  52,
-            135,  28, 187,  22, 207, 119, 199,   1, 235, 187,  55, 131, 190, 124, 222, 249,
-            236,  53, 225, 231,  71,  30, 173, 185, 153,  47,  79, 133, 225,  10, 140,  62,
-             17,  99, 100,  29, 137,  95, 142, 244,  76,   5,  83, 124,  38, 216, 253, 195,
-             44, 210, 148, 185, 188,  39,  78, 195, 132,  30,  60,  73,  92, 223, 133,  80,
-            230,  56, 118, 207,  79,  15, 251, 211, 111,  21,  79,  23, 240, 146, 150, 207,
-              3,  61, 103,  27, 148,   6,  31, 127, 235,  58, 173, 244, 116,  81,  34, 120,
-            192, 213, 188, 226,  97,  23,  16, 161, 106,  80, 242, 148,  35,  37,  91, 117,
-             51, 216,  97, 193, 126, 222,  39,  38, 133, 217, 215,  23, 237,  57, 205,  42,
-            222, 165, 126, 133,  33,   8, 227, 154,  27,  18,  56,  11, 192, 120,  80,  92,
-            236,  38, 210, 207, 128,  31, 135,  39, 123,   5,  49, 127, 107, 200,  34,  14,
-            153, 239, 134,  19, 248, 162,  58, 201, 159, 198, 243, 158,  72,   5, 138, 184,
-            222, 200,  34, 141, 233,  40, 195, 238, 191, 122, 171,  32,  66, 254, 229, 197
-        ];
-        var gradientBuffer = new Uint8Array(gradientData);
-        var gradientTex = new THREE.DataTexture(gradientBuffer, 256, 1,
-                                                THREE.LuminanceFormat,
-                                                THREE.UnsignedByteType,
-                                                THREE.UVMapping,
-                                                THREE.RepeatWrapping, THREE.RepeatWrapping,
-                                                THREE.NearestFilter, THREE.NearestFilter, 0);
-
-        gradientTex.generateMipmaps = false;
-        gradientTex.flipY = false;
-        gradientTex.needsUpdate = true;
-
-        var perm = function (x) {
-            return permutation[x % 256];
-        }
-
-        var perm2D = new Array(256 * 256 * 4);
-        var A, AA, AB, B, BA, BB, index;
-        for (var y = 0; y < 256; ++y)
-            for (var x = 0; x < 256; ++x) {
-                A = perm(x) + y;
-                AA = perm(A);
-                AB = perm(A + 1);
-                B = perm(x + 1) + y;
-                BA = perm(B);
-                BB = perm(B + 1);
-
-                // Store (AA, AB, BA, BB) in pixel (x,y)
-                index = 4 * (y * 256 + x);
-                perm2D[index] = AA;
-                perm2D[index + 1] = AB;
-                perm2D[index + 2] = BA;
-                perm2D[index + 3] = BB;
-            }
-        var perm2DBuffer = new Uint8Array(perm2D);
-        var perm2DTex = new THREE.DataTexture(perm2DBuffer, 256, 256,
-                                                THREE.RGBAFormat,
-                                                THREE.UnsignedByteType,
-                                                THREE.UVMapping,
-                                                THREE.RepeatWrapping, THREE.RepeatWrapping,
-                                                THREE.NearestFilter, THREE.NearestFilter, 0);
-        perm2DTex.generateMipmaps = false;
-        perm2DTex.flipY = false;
-        perm2DTex.needsUpdate = true;
-
-        var gradients3D = [
-            1,1,0,    -1,1,0,    1,-1,0,    -1,-1,0,
-            1,0,1,    -1,0,1,    1,0,-1,    -1,0,-1,
-            0,1,1,    0,-1,1,    0,1,-1,    0,-1,-1,
-            1,1,0,    0,-1,1,    -1,1,0,    0,-1,-1
-        ];
-        var permGrad = new Array(1024);
-        for (var x = 0; x < 256; ++x) {
-            var i = permutation[x] % 16;
-            // Convert the gradient to signed-normalized int.
-            permGrad[x * 4] = gradients3D[i * 3] * 127 + 128;
-            permGrad[x * 4 + 1] = gradients3D[i * 3 + 1] * 127 + 128;
-            permGrad[x * 4 + 2] = gradients3D[i * 3 + 2] * 127 + 128;
-            permGrad[x * 4 + 3] = 0;
-        }
-        var permGradBuffer = new Uint8Array(permGrad);
-        var permGradTex = new THREE.DataTexture(permGradBuffer, 256, 1,
-                                                THREE.RGBAFormat,
-                                                THREE.UnsignedByteType,
-                                                THREE.UVMapping,
-                                                THREE.RepeatWrapping, THREE.RepeatWrapping,
-                                                THREE.NearestFilter, THREE.NearestFilter, 0);
-        permGradTex.generateMipmaps = false;
-        permGradTex.flipY = false;
-        permGradTex.needsUpdate = true;
-
-        this.PrismWoodTexture = {
-            permutation: permutationTex,
-            gradient: gradientTex,
-            perm2D: perm2DTex,
-            permGrad: permGradTex
-        };
     };
 
     //Register the default material
@@ -42802,12 +43086,12 @@ avs.GroundDepthShader = {
         "    #endif",
         "#endif",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         "#if NUM_CUTPLANES > 0",
             "varying vec3 vWorldPosition;",
         "#endif",
-        CutPlanesShaderChunk,
+        avs.CutPlanesShaderChunk,
 
         "void main() {",
         "#if NUM_CUTPLANES > 0",
@@ -42870,7 +43154,7 @@ avs.GroundShadowAOShader = {
         "#define AO_INTENSITY 0.8",
         "#endif",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         "#define PI 3.14159265358979",
 
@@ -42975,7 +43259,7 @@ avs.GroundShadowBlurShader = {
             "#define GET_UV(Y) vec2(vUv.x, vUv.y + KERNEL_SCALE*(Y))",
         "#endif",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         "#define PI 3.14159265358979",
         "#define SIGMA ((2.0 * KERNEL_RADIUS+1.0) / 6.0)",
@@ -43019,7 +43303,7 @@ avs.GroundShadowColorShader = {
         "uniform vec4 uShadowColor;",
         "varying vec2 vUv;",
 
-        PackDepthShaderChunk,
+        avs.PackDepthShaderChunk,
 
         "void main() {",
             "float depthVal = unpackDepth(texture2D(tDepth, vUv));",
@@ -44818,6 +45102,19 @@ var KeyFrameAnimator = function(viewer, duration) {
 };
 
 /**
+ * Destructor. Releasing references to other objects.
+ */
+KeyFrameAnimator.prototype.destroy = function() {
+    this.stop();
+    this.viewer = null;
+    this.keys = null;
+    this.animations = null;
+    this.isPlaying = false;
+    this.isPaused = false;
+    this.animationHandler = null;
+};
+
+/**
  * Add an animation to the keyframe animator
  *
  * @param {object} animation The animation object to add
@@ -45070,6 +45367,20 @@ var av = Autodesk.Viewing,
     avp = av.Private;
 
 
+//default parameters for WebGL initialization
+av.InitParametersSetting = {
+    canvas: null,
+    antialias: false,
+    alpha: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: false,
+    stencil: false,
+    depth: false,
+    devicePixelRatio: null
+};
+
+
+
 /** @constructor */
 function Viewer3DImpl(thecanvas, theapi)
 {
@@ -45121,6 +45432,13 @@ function Viewer3DImpl(thecanvas, theapi)
 
     var _modelQueue = new avp.RenderScene();
 
+    setInterval(function() {
+        if (_isLoading) {
+            return;
+        }
+        _this.log({ category: 'runtime_stats', fps: _this.fps() });
+    }, 60000);
+
     function createRenderer(canvas) {
 
         //TODO: improve the pixel scale heuristics below
@@ -45133,7 +45451,7 @@ function Viewer3DImpl(thecanvas, theapi)
         //    _settings.antialias = false;
 
         //Expose the pramaters to outside so that we could set these params on HTML.
-        var params = Autodesk.Viewing.InitParametersSetting.getInstance().params;
+        var params = Autodesk.Viewing.InitParametersSetting;
         params.canvas=canvas;
         params.devicePixelRatio=dpr;
         
@@ -45191,10 +45509,10 @@ function Viewer3DImpl(thecanvas, theapi)
     function updateAnimations(highResTimeStamp) {
         if (_this.keyFrameAnimator) {
             var delta = _lastHighResTimeStamp > 0 ? (highResTimeStamp - _lastHighResTimeStamp) / 1000 : 0;
-            var needsUpdate = _this.keyFrameAnimator.update(delta);
-            if (needsUpdate) {
+            var updateFlags = _this.keyFrameAnimator.update(delta);
+            if (updateFlags) {
                 _this.sceneUpdated(true);
-                if (needsUpdate & _this.keyFrameAnimator.UPDATE_CAMERA)
+                if (updateFlags & _this.keyFrameAnimator.UPDATE_CAMERA)
                     return true;
             }
         }
@@ -45213,7 +45531,9 @@ function Viewer3DImpl(thecanvas, theapi)
             _this.invalidate(true, true, true);
             _needsResize = false;
             _this.api.fireEvent({
-                type: Autodesk.Viewing.VIEWER_RESIZE_EVENT
+                type: Autodesk.Viewing.VIEWER_RESIZE_EVENT,
+                width: _newWidth,
+                height: _newHeight
             });
         }
     }
@@ -45473,7 +45793,7 @@ function Viewer3DImpl(thecanvas, theapi)
 
         //Do animations -- this has to be done
         //before the scene update below
-        var animationMoved = _this.keyFrameAnimator ? updateAnimations(highResTimeStamp) : false;
+        var animationMoved = updateAnimations(highResTimeStamp);
 
         var controlsMoved = _this.controls.update(highResTimeStamp);
 
@@ -45605,6 +45925,9 @@ function Viewer3DImpl(thecanvas, theapi)
         }
         //Render selection highlight / pivot / HUD overlays and post-processing stuff
         if (_overlayDirty) {
+
+            _renderer.renderScenePart(_this.sceneAfter, true, true, true);
+
             if ((!q.isEmpty() && q.isDone()) || _this.showOverlaysWhileMoving) {
                 _this.renderOverlays();
 
@@ -45617,7 +45940,7 @@ function Viewer3DImpl(thecanvas, theapi)
             } else {
                 _renderer.clearAllOverlays();
             }
-            _renderer.renderScenePart(_this.sceneAfter, true, true, true);
+
             _renderer.composeFinalFrame((moved || q.isEmpty() || !q.isDone()) && _this.skipAOWhenMoving, q && q.isDone());
 
             updateFPS(highResTimeStamp);
@@ -46294,8 +46617,9 @@ function Viewer3DImpl(thecanvas, theapi)
         }
 
         // grab the environment preset data from the file.
-        if (!is2d && !this.setLightPresetFromFile(model))
+        if (!is2d && !this.setLightPresetFromFile(model)) {
             this.setLightPreset(_currentLightPreset, true);
+        }
 
         this.fireRenderOptionChanged();
         this.invalidate(true);
@@ -46371,6 +46695,7 @@ function Viewer3DImpl(thecanvas, theapi)
     };
 
 
+    // Gets called by the active Loader
     this.onLoadComplete = function (model)
     {
         _isLoading = false;
@@ -46408,19 +46733,17 @@ function Viewer3DImpl(thecanvas, theapi)
                     that.keyFrameAnimator.add(svf.animations.animations[a]);
                 }
                 that.keyFrameAnimator.goto(0);
-                that.api.fireEvent({
-                    type: Autodesk.Viewing.ANIMATION_READY_EVENT
-                });
+                that.api.fireEvent({ type: Autodesk.Viewing.ANIMATION_READY_EVENT });
             }
             that.api.removeEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, initAnimations);
         }
-
         // init animations after object tree created and geometry loaded
         if (model.isObjectTreeCreated()) {
             initAnimations();
         } else {
             this.api.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, initAnimations);
         }
+
 
         // Fire the event so we know the geometry is done loading.
         this.api.fireEvent({
@@ -46446,11 +46769,17 @@ function Viewer3DImpl(thecanvas, theapi)
         if (!_modelQueue.removeModel(model))
             return; //model was not found
 
+        if (this.keyFrameAnimator) {
+            this.keyFrameAnimator.destroy();
+            this.keyFrameAnimator = null;
+        }
+
         model.dtor(this.glrenderer());
 
         _materials.cleanup(model.getData());
 
-        model.getData().propWorker.dtor();
+        if (model.isLoadDone())
+            model.getData().propWorker.dtor();
         if (model.loader)
             model.loader.dtor();
 
@@ -46463,6 +46792,8 @@ function Viewer3DImpl(thecanvas, theapi)
             if (!_modelQueue.isEmpty())
                 this.model = _modelQueue.getModels()[0];
         }
+
+        this.api.fireEvent({type: av.MODEL_UNLOADED_EVENT, model: model});
 
         this.invalidate(true);
     };
@@ -46482,6 +46813,8 @@ function Viewer3DImpl(thecanvas, theapi)
 
         _renderer.beginScene(this.scene, this.camera, this.lights, true);
         _renderer.composeFinalFrame();
+
+        this.model = null;
 
         var models = _modelQueue.getModels();
         for (var i=models.length-1; i>=0; i--)
@@ -46949,8 +47282,8 @@ function Viewer3DImpl(thecanvas, theapi)
         }
 
         var bgEnvironment = model.getMetadata('renderEnvironmentBackgroundFromEnvironment', 'value', null);
-        if (bgEnvironment) {
-            this.toggleEnvMapBackground(true);
+        if (bgEnvironment !== null) {
+            this.toggleEnvMapBackground(bgEnvironment);
         }
 
         // Environment rotation, assumed to be in radians
@@ -47036,18 +47369,6 @@ function Viewer3DImpl(thecanvas, theapi)
         this.api.fireEvent({type:Autodesk.Viewing.CUTPLANES_CHANGE_EVENT});
     };
 
-    this.setCutPlanesOutlineColor = function(color) {
-        _materials.setCutPlanesOutlineColor(color);
-        this.invalidate(true, false, false);
-        this.api.fireEvent({type:Autodesk.Viewing.CUTPLANES_CHANGE_EVENT});
-    };
-
-    this.setCutPlanesOutlineThickness = function(thickness) {
-        _materials.setCutPlanesOutlineThickness(thickness);
-        this.invalidate(true, false, false);
-        this.api.fireEvent({type:Autodesk.Viewing.CUTPLANES_CHANGE_EVENT});
-    };
-
     this.fireRenderOptionChanged = function() {
 
         //If SAO is changing and we are using multiple
@@ -47080,8 +47401,8 @@ function Viewer3DImpl(thecanvas, theapi)
 
     // Add "meshes" parameter, after we get meshes of the object using id buffer,
     // then we just need to ray intersect this object instead of all objects of the model.
-    this.rayIntersect = function(ray, ignoreTransparent, fragIds) {
-        var result = _modelQueue.rayIntersect(ray.origin, ray.direction, ignoreTransparent, fragIds);
+    this.rayIntersect = function(ray, ignoreTransparent, dbIds) {
+        var result = _modelQueue.rayIntersect(ray.origin, ray.direction, ignoreTransparent, dbIds);
 
         if (this.sceneAfter.children.length) {
             var raycaster = new THREE.Raycaster(ray.origin, ray.direction, this.camera.near, this.camera.far);
@@ -47089,15 +47410,8 @@ function Viewer3DImpl(thecanvas, theapi)
             VBIntersector.intersectObject(this.sceneAfter, raycaster, intersects, true);
 
             if (intersects.length) {
-
-                for (var i=0; i<intersects.length; i++) {
-
-                    if (intersects[i].distance > result.distance)
-                        break;
-
-                    result = intersects[i];
-
-                    break;
+                if (!result || intersects[0].distance < result.distance) {
+                    result = intersects[0];
                 }
             }
         }
@@ -47133,14 +47447,14 @@ function Viewer3DImpl(thecanvas, theapi)
 
         // Add "meshes" parameter, after we get meshes of the object using id buffer,
         // then we just need to ray intersect this object instead of all objects of the model.
-        return function (vpVec, ignoreTransparent, fragIds) {
+        return function (vpVec, ignoreTransparent, dbIds) {
             if (!_modelQueue) {
                 return {};
             }
 
             this.viewportToRay(vpVec, _ray);
 
-            return this.rayIntersect(_ray, ignoreTransparent, fragIds);
+            return this.rayIntersect(_ray, ignoreTransparent, dbIds);
         };
 
     }();
@@ -47302,19 +47616,7 @@ function Viewer3DImpl(thecanvas, theapi)
 
             var dbId = _renderer.idAtPixel(vpVec.x, vpVec.y);
 
-            var fragIds;
-
-            if (dbId >= 0) {
-
-                fragIds = [];
-
-                this.model.getData().instanceTree.enumNodeFragments(dbId, function(fragId) {
-                    fragIds.push(fragId);
-                }, true);
-
-            }
-
-            result = this.castRayViewport(vpVec, ignoreTransparent, fragIds);
+            result = this.castRayViewport(vpVec, ignoreTransparent, dbId > 0 ? [dbId] : null);
 
         }
 
@@ -47346,6 +47648,34 @@ function Viewer3DImpl(thecanvas, theapi)
         this.rolloverObjectViewport(this.clientToViewport(clientX, clientY));
     };
 
+    this.rolloverObjectNode = function(dbId) {
+
+        var dbIds = [];
+        var it = _this.model.getData().instanceTree;
+
+        if (it) {
+
+            it.enumNodeChildren(dbId, function(childId) {
+                dbIds.push(childId);
+            }, true);
+
+            // Sort the array to get the dbIds range, it should exclude the first node which
+            // is local root, since its dbId may not be serial number like its descendants.
+            if (dbIds.length > 1) {
+                var temp = dbIds.shift();
+                dbIds.sort(function(a,b) {return a-b;});
+                dbIds.unshift(temp);
+            }
+
+        }
+        else {
+            dbIds.push(dbId);
+        }
+
+        if (_renderer.rolloverObjectViewport(null, null, dbIds))
+            this.invalidate(false, false, true);
+    };
+
     // https://github.com/ebidel/filer.js/blob/master/src/filer.js
     function dataURLToBlob(dataURL) {
         var BASE64_MARKER = ';base64,';
@@ -47370,6 +47700,50 @@ function Viewer3DImpl(thecanvas, theapi)
 
         return new Blob([uInt8Array], {type: contentType});
     }
+
+    //this function get a blob object
+    this.getScreenShotBuffer = function (w, h, cb) {
+        _renderer.presentBuffer();
+        var blobobj = _this.canvas.toDataURL("image/png");
+
+        if (!w || !h)
+            return blobobj;
+
+        // calc resize and center
+        var nw, nh, nx = 0, ny = 0;
+        if (w > h || (_newWidth / _newHeight < w / h)) {
+            nw = w;
+            nh = _newHeight / _newWidth * w;
+            ny = h / 2 - nh / 2;
+        }
+        else {
+            nh = h;
+            nw = _newWidth / _newHeight * h;
+            nx = w / 2 - nw / 2;
+        }
+
+        var blobURL = window.URL.createObjectURL(dataURLToBlob(_this.canvas.toDataURL("image/png")));
+        // new image from blobURL
+        var img = new Image();
+        img.src = blobURL;
+
+        // create working canvas
+        var tmpCanvas = document.createElement("canvas");
+        var ctx = tmpCanvas.getContext("2d");
+        tmpCanvas.width = w;
+        tmpCanvas.height = h;
+
+        // draw image on canvas
+        img.onload = function () {
+            ctx.drawImage(img, nx, ny, nw, nh);
+            var newobj = tmpCanvas.toDataURL("image/png");
+            var newBlobURL = window.URL.createObjectURL(dataURLToBlob(tmpCanvas.toDataURL("image/png")));
+            if (cb)
+                cb(newobj);
+            else
+                window.open(newBlobURL);
+        };
+    };
 
     // we use Blob URL, Chrome crashes when opening dataURL that is too large
     // https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL
@@ -47462,7 +47836,14 @@ function Viewer3DImpl(thecanvas, theapi)
 
     this.matman = function() { return _materials; };
 
-    this.fps = function() { return 1000.0 / _frameTimeAvg; }
+    this.fps = function() { return 1000.0 / _frameTimeAvg; };
+
+    this.setFPSTargets = function(min, target, max) {
+        MAX_FRAME_TIME = 1000 / max;
+        MIN_FRAME_TIME = 1000 / min;
+        TARGET_FRAME_TIME = 1000 / target;
+        this.targetFrameTime = TARGET_FRAME_TIME;
+    };
 
     //========================================================================
 
@@ -47905,7 +48286,13 @@ function Viewer3DImpl(thecanvas, theapi)
         this.p2p.hangup();
         this.viewtx.detach(theapi);
         this.messageClient.disconnect();
-    }
+    };
+
+    this.log = function(event) {
+        if (avp.logger) {
+            avp.logger.log(event);
+        }
+    };
 }
 
 Viewer3DImpl.prototype.constructor = Viewer3DImpl;
@@ -52097,6 +52484,11 @@ ModelStructurePanel.prototype.createUI = function()
             that.instanceTree.enumNodeChildren(dbId, callback);
         };
 
+        delegate.onTreeNodeHover = function(tree, node, event)
+        {
+            that.onHover(node, event);
+        };
+
         return delegate;
     };
 
@@ -52303,6 +52695,15 @@ ModelStructurePanel.prototype.onTitleClick = function(event) {
  * @param {Event} event
  */
 ModelStructurePanel.prototype.onTitleDoubleClick = function(event) {
+};
+
+/**
+ * Override this to do something when the user hovers on a tree node
+ *
+ * @param {Object} node - A node in an {@link Autodesk.Viewing.Model}
+ * @param {Event} event
+*/
+ModelStructurePanel.prototype.onHover = function(node, event) {
 };
 
 /**
@@ -52743,6 +53144,21 @@ PropertyPanel.prototype.displayCategory = function (category, parent, options) {
     return [name];
 };
 
+function replaceUrls(s) {
+    s = String(s); // Make sure we only get Strings here!
+    var t = ' target="blank" class="propertyLink" ';
+    var patternMap = [{
+      pattern: /\b(?:https?|ftp):\/\/[a-z0-9-+&@#\/%?=~_|!:,.;]*[a-z0-9-+&@#\/%=~_|]/gim,
+      value: '<a' + t + 'href="$&">$&</a>'
+    }, {
+      pattern: /(^|[^\/])(www\.[\S]+(\b|$))/gim,
+      value: '$1<a' + t + 'href="http://$2">$2</a>'
+    }];
+    return patternMap.reduce(function(a, b){
+      return a.replace(b.pattern, b.value);
+    }, s);
+}
+
 /**
  * Creates and adds the HTML elements to display the given property.
  *
@@ -52773,7 +53189,12 @@ PropertyPanel.prototype.displayProperty = function (property, parent, options) {
 
     var value = document.createElement('div');
     value.textContent = property.value;
-    value.title = property.value;
+
+    var s = property.value;
+    value.title = s;
+    s = replaceUrls(s);
+    value.innerHTML = s;
+
     value.className = 'propertyValue';
 
     parent.appendChild(name);
@@ -53559,6 +53980,19 @@ Autodesk.Viewing.Private.formatValueWithUnits = function (value, units, type, pr
         return sign + formatNumber(mValue, 0) + ' m ' + formatNumber(cmValue, precision) + ' cm';
     }
 
+    function formatFeetAndDecimalInches(value, precision) {
+        var sign = '';
+        if (value < 0) {
+            sign = '-';
+            value = Math.abs(value);
+        }
+        var modfValue = modf(value),
+            ftValue = modfValue.intPart,
+            inValue = modfValue.fracPart * 12.0;
+
+        return sign + formatNumber(ftValue, 0) + '\' ' + formatNumber(inValue, precision) + '\"';
+    }
+
     var result;
 
     if (precision === undefined) {
@@ -53571,28 +54005,28 @@ Autodesk.Viewing.Private.formatValueWithUnits = function (value, units, type, pr
     } else if ((type === 2 || type === 3) && isNaN(value)) {
         result = 'NaN';
 
-    } else if (units === 'ft' || units === 'feet' || units === 'foot') {
+    } else if (units === 'ft-and-fractional-in') {
         result = formatFeet(value * 12.0, precision);
 
-    } else if (units === 'ft^2' || units === 'feet^2' || units === 'foot^2') {
+    } else if (units === 'ft-and-fractional-in^2') {
         result = formatFeet(value * 12.0, precision) + ' ' + String.fromCharCode(0xb2);
 
-    } else if (units === 'in' || units === 'inch') {
-        result = formatFeet(value, precision);
+    } else if (units === 'ft-and-decimal-in') {
+        result = formatFeetAndDecimalInches(value, precision);
 
-    } else if (units === 'in^2' || units === 'inch^2') {
-        result = formatFeet(value, precision) + ' ' + String.fromCharCode(0xb2);
+    } else if (units === 'ft-and-decimal-in^2') {
+        result = formatFeetAndDecimalInches(value, precision) + ' ' + String.fromCharCode(0xb2);
 
-    } else if (units === 'decimal-in') {
+    } else if (units === 'decimal-in' || units === 'in' || units === 'inch') {
         result = formatNumber(value, precision) + '\"';
 
-    } else if (units === 'decimal-in^2') {
+    } else if (units === 'decimal-in^2' || units === 'in^2' || units === 'inch^2') {
         result = formatNumber(value, precision) + '\"' + ' ' + String.fromCharCode(0xb2);
 
-    } else if (units === 'decimal-ft') {
+    } else if (units === 'decimal-ft' || units === 'ft' || units === 'feet' || units === 'foot') {
         result = formatNumber(value, precision) + '\'';
 
-    } else if (units === 'decimal-ft^2') {
+    } else if (units === 'decimal-ft^2' || units === 'ft^2' || units === 'feet^2' || units === 'foot^2') {
         result = formatNumber(value, precision) + '\'' + ' ' + String.fromCharCode(0xb2);
 
     } else if (units === 'fractional-in') {
@@ -53645,6 +54079,8 @@ Autodesk.Viewing.Private.convertUnits = function (fromUnits, toUnits, d, type) {
         case "m" : toFactor = 1; break;
         case "in": toFactor = 39.37007874; break;
         case "ft": toFactor = 3.280839895; break;
+        case "ft-and-fractional-in": toFactor = 3.280839895; break;
+        case "ft-and-decimal-in": toFactor = 3.280839895; break;
         case "decimal-in": toFactor = 39.37007874; break;
         case "decimal-ft": toFactor = 3.280839895; break;
         case "fractional-in": toFactor = 39.37007874; break;
@@ -53658,6 +54094,8 @@ Autodesk.Viewing.Private.convertUnits = function (fromUnits, toUnits, d, type) {
         case "m" : fromFactor = 1; break;
         case "in": fromFactor = 0.0254; break;
         case "ft": fromFactor = 0.3048; break;
+        case "ft-and-fractional-in": fromFactor = 0.3048; break;
+        case "ft-and-decimal-in": fromFactor = 0.3048; break;
         case "decimal-in": fromFactor = 0.0254; break;
         case "decimal-ft": fromFactor = 0.3048; break;
         case "fractional-in": fromFactor = 0.0254; break;
@@ -55761,6 +56199,14 @@ TreeDelegate.prototype.getTreeNodeClass = function (node) {
 };
 
 /**
+ * Override this method to do something when the user hovers on a tree node
+ * @param {Tree} tree
+ * @param {Object} node - Node in the model Document
+ * @param {Event} event
+*/
+TreeDelegate.prototype.onTreeNodeHover = function (tree, node, event) {};
+
+/**
  * Tree view control
  * @constructor
  * @param {TreeDelegate} delegate
@@ -55781,7 +56227,7 @@ var Tree = function (delegate, root, parentContainer, options) {
     this.nodeIdToNode = {};
 
     var rootContainer = this.myRootContainer = this.createHtmlElement_(parentContainer, 'div', className);
-    
+
     var rootElem = this.rootElem = this.createElement_(root, rootContainer, options, 0);
 
     this.setInputHandlers_();
@@ -55978,7 +56424,7 @@ Tree.prototype.isSelected = function (node) {
 
 Tree.prototype.scrollTo = function (node) {
     var elem = this.getElementForNode(node);
-    
+
     if (elem) {
         var total = elem.offsetTop;
         elem = elem.parentNode;
@@ -55986,7 +56432,7 @@ Tree.prototype.scrollTo = function (node) {
             total += elem.offsetTop;
             elem = elem.parentNode;
         }
-            
+
         this.myRootContainer.parentNode.scrollTop = total;
     }
 };
@@ -55999,10 +56445,10 @@ Tree.prototype.scrollTo = function (node) {
  * @returns {boolean} - true if the class was added, false otherwise
  */
 Tree.prototype.addClass = function (node, className, recursive) {
-    
+
     var elem = this.getElementForNode(node);
     if (elem) {
-    
+
         if (recursive) {
             //It is intentional that the recursive add starts at the parent.
             elem = elem.parentNode;
@@ -56014,7 +56460,7 @@ Tree.prototype.addClass = function (node, className, recursive) {
         } else {
             elem.classList.add(className);
         }
-        
+
         return true;
     }
 
@@ -56120,7 +56566,7 @@ Tree.prototype.createElement_ = function (node, parentElement, options, depth) {
         elem = createElementForNode(parentElement, 'group', 'expanded', node);
         tree.nodeToElement[nodeId] = elem;
         tree.nodeIdToNode[nodeId] = node;
-            
+
         var whichDepth = tree.myOptions.excludeRoot ? 1 : 0;
 
         if (depth == whichDepth)
@@ -56207,7 +56653,9 @@ Tree.prototype.setInputHandlers_ = function() {
         if (node === NODE_NOT_FOUND) return;
         tree.myDelegate.onTreeNodeClick(tree, node, event);
         event.stopPropagation();
-        event.preventDefault();
+        if(!event.target.classList.contains('propertyLink')) {
+          event.preventDefault();
+        }
     }, false);
 
     rootElem.addEventListener('dblclick', function (event) {
@@ -56222,6 +56670,22 @@ Tree.prototype.setInputHandlers_ = function() {
         var node = getNodeFromElement(event.target);
         if (node === NODE_NOT_FOUND) return;
         tree.myDelegate.onTreeNodeRightClick(tree, node, event);
+        event.stopPropagation();
+        event.preventDefault();
+    }, false);
+
+    rootElem.addEventListener('mouseover', function (event) {
+        var node = getNodeFromElement(event.target);
+        if (node === NODE_NOT_FOUND) return;
+        tree.myDelegate.onTreeNodeHover(tree, node, event);
+        event.stopPropagation();
+        event.preventDefault();
+    }, false);
+
+    rootElem.addEventListener('mouseout', function (event) {
+        // When the mouse leaves the element, set node to -1 (background), no highlight,
+        var node = -1;
+        tree.myDelegate.onTreeNodeHover(tree, node, event);
         event.stopPropagation();
         event.preventDefault();
     }, false);
@@ -56271,7 +56735,8 @@ Tree.prototype.iterate = function (node, callback) {
 avp.TreeDelegate = avu.TreeDelegate = TreeDelegate;
 avp.Tree = avu.Tree = Tree;
 
-})();;
+})();
+;
 (function() {
 
 'use strict';
@@ -57276,7 +57741,7 @@ UnifiedCamera.prototype.getCameraChangedEvent = function() {
 Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
 
 };/** @license Copyright (c) 2013 Autodesk Inc. */
-/** Version : 1.2.22 */
+/** Version : @buildnum@ */
 
 (function() {
 
@@ -57299,6 +57764,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     av.GEOMETRY_LOADED_EVENT          = 'geometryLoaded';
     av.OBJECT_TREE_CREATED_EVENT      = 'propertyDbLoaded';
     av.OBJECT_TREE_UNAVAILABLE_EVENT  = 'propertyDbUnavailable';
+    av.MODEL_UNLOADED_EVENT           = 'modelUnloaded';
 
 
     av.SELECTION_CHANGED_EVENT     = 'selection';
@@ -57365,7 +57831,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         "optimizeNavigation": isMobile,
         "fusionOrbit": true,
         "fusionOrbitConstrained": true,
-        "useFirstPersonNav" : false,
+        "useFirstPersonNavigation" : true, // Replaces the "Walk" tool with the "First Person" tool
         "envMapBackground" : false,
         "renderPrism" : true
     };
@@ -57386,7 +57852,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      *  @property {av.Navigation} navigation - The Navigation api object.
      *  @property {av.ToolController} toolController - The ToolController object.
      *  @property {av.ViewingUtilities} utilities - The ViewingUtilities object.
-	 *  @memberof Autodesk.Viewing
+	 *  @alias Autodesk.Viewing.Viewer3D
      */
     var Viewer3D = function(container, config)
     {
@@ -57673,7 +58139,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         }
 
         // the implementation of the canvas
-        this.impl  = new avp.Viewer3DImpl(this.canvas, this);
+        this.impl = new avp.Viewer3DImpl(this.canvas, this);
         this.impl.controls = this.createControls();
         this.setDefaultNavigationTool( "orbit" );
         this.model = null;
@@ -58223,6 +58689,13 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         this.impl.setViewFromViewBox(this.model, viewbox, name, false);
     };
 
+    /**
+     * Changes the active layer state.<br>
+     * Get a list of all available layerStates and their active status through
+     * [getLayerStates()]{@link Autodesk.Viewing.Viewer3D#getLayerStates}.
+     *
+     * @param {String} stateName - Name of the layer state to activate
+     */
     Viewer3D.prototype.activateLayerState = function(stateName)
     {
         if (stateName && stateName.length) {
@@ -58267,8 +58740,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     };
 
     /**
-     * Returns information for each layer state: name, description, active.
-     * @returns {?Array}
+     * Returns information for each layer state: name, description, active.<br>
+     * Activate a state through [activateLayerState()]{@link Autodesk.Viewing.Viewer3D#activateLayerState}.
+     * @returns {Array}
      */
     Viewer3D.prototype.getLayerStates = function () {
         var model = this.model,
@@ -58527,6 +59001,10 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             self.stats.isolate_count++;
             self.impl.visibilityManager.isolate(node);
         });
+
+        var logger = avp.logger;
+        if (logger)
+            logger.log({category:"isolate"});
     };
 
 
@@ -58598,6 +59076,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     Viewer3D.prototype.clearSelection = function()
     {
         this.impl.selector.clearSelection();
+        var logger = avp.logger;
+        if (logger)
+            logger.log({category:"clearselection"});
     };
 
     /**
@@ -58721,6 +59202,10 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         if (this.model.is2d()) {
             this.setLayerVisible(null, true);
         }
+
+        var logger = avp.logger;
+        if (logger)
+            logger.log({category:"showall"});
     };
 
 
@@ -58957,10 +59442,6 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             }
 
             this._pushedTool = null;
-
-            var logger = avp.logger;
-            if (logger)
-                logger.log({category:"tool_changed", name:toolName});
         }
 
         var isDefault = !toolName || toolName === this.getDefaultNavigationToolName();
@@ -59090,8 +59571,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     };
 
     /**
-     * Fits camera to objects by ID - Fits entire model if none provided.
-     * @param {array| int} objectIds array of Ids
+     * Fits camera to objects by ID - Fits entire model if no id is provided.
+     * @param {array| int} [objectIds] array of Ids, or null.
      */
     Viewer3D.prototype.fitToView = function(objectIds){
 
@@ -59141,6 +59622,11 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
 
         var propertyDB = model.getData().propertydb,
             propertyDBFileExists = propertyDB && propertyDB.attrs.length > 0;
+
+        var logger = avp.logger;
+        if (logger) {
+            logger.log({ category: 'navigation', name: 'fit' });
+        }
 
         // This doesn't guarantee that an object tree will be created but it will be pretty likely
         if (!model.is2d() && propertyDBFileExists && objectIds !== null && objectIds !== undefined) {
@@ -59645,45 +60131,12 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     };
 
     /**
-     * Set cut planes outline color
-     *
-     * Not applicable to 2D
-     *
-     * @param {THREE.Color} color
-     */
-    Viewer3D.prototype.setCutPlanesOutlineColor = function(color) {
-        if( this.model && this.model.is2d() )
-        {
-            console.warn("Viewer3D.setCutPlanesOutlineColor is not applicable to 2D");
-            return;
-        }
-
-        this.impl.setCutPlanesOutlineColor(color);
-    };
-
-    /**
-     * Set cut planes outline thickness
-     *
-     * Not applicable to 2D
-     *
-     * @param {float} thickness
-     */
-    Viewer3D.prototype.setCutPlanesOutlineThickness = function(thickness) {
-        if( this.model && this.model.is2d() )
-        {
-            console.warn("Viewer3D.setCutPlanesOutlineThickness is not applicable to 2D");
-            return;
-        }
-
-        this.impl.setCutPlanesOutlineThickness(thickness);
-    };
-
-    /**
      * Captures the current screen image as Blob URL
      * Blob URL can be used like a regular image url (e.g., window.open, img.src, etc)
      * If no parameters are given, returns an image as Blob URL, with dimensions equal to current canvas dimensions
      * If width and height are given, returns asynchronously and calls the callback with the resized image as Blob URL
-     * If no callback is given, displays the image in a new window
+     * If no callback is given, displays the image in a new window.<br>
+     * See also [getScreenShotBuffer()]{@link Autodesk.Viewing.Viewer3D#getScreenShotBuffer}.
      * @param  {int}      [w]  width of the requested image
      * @param  {int}      [h]  height of the requested image
      * @param  {Function} [cb] callback
@@ -59693,15 +60146,16 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         return this.impl.getScreenShot(w, h, cb);
     };
 
-
-
-
-
-
-
-
-
-
+    /**
+     * Alternative call to [getScreenShot()]{@link Autodesk.Viewing.Viewer3D#getScreenShot}
+     * which internally uses additional steps (more processing) to generate the screenshot.
+     * @param  {int}      [w]  width of the requested image
+     * @param  {int}      [h]  height of the requested image
+     * @param  {Function} [cb] callback
+     */
+    Viewer3D.prototype.getScreenShotBuffer = function (w, h, cb) {
+        return this.impl.getScreenShotBuffer(w, h, cb);
+    };
 
     /**
      * Sets the object context menu.
@@ -59717,7 +60171,23 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             this.contextMenu.hide();
         }
 
-        this.contextMenu = contextMenu;
+        this.contextMenu = contextMenu || null; // to avoid undefined
+    };
+
+    /**
+     * Activates the default context menu.<br>
+     * Contains options Isolate, Hide selected, Show all objects, Focus and Clear selection.
+     *
+     * @returns {boolean} Whether the default context menu was successfully set (true) or not (false)
+     */
+    Viewer3D.prototype.setDefaultContextMenu = function() {
+
+        var ave = Autodesk.Viewing.Extensions;
+        if (ave && ave.ViewerObjectContextMenu) {
+            this.setContextMenu(new ave.ViewerObjectContextMenu(this));
+            return true;
+        }
+        return false;
     };
 
     Viewer3D.prototype.triggerContextMenu = function (event) {
@@ -59736,7 +60206,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         if (this.config && this.config.onTriggerSelectionChangedCallback) {
             this.config.onTriggerSelectionChangedCallback(dbId);
         }
-    }
+    };
 
     Viewer3D.prototype.triggerDoubleTapCallback = function (event) {
         if (this.config && this.config.onTriggerDoubleTapCallback) {
@@ -59936,9 +60406,97 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
 
     };
 
+    /**
+     * Set model units
+     * @param Model units
+     */
+    Viewer3D.prototype.setModelUnits = function(modelUnits) {
+        if (this.model) {
+            this.model.getData().overriddenUnits = modelUnits;
+        }
+    };
+
+    /**
+     * Calculates the pixel position in client space coordinates of a point in world space.<br>
+     * See also
+     * [clientToWorld()]{@link Autodesk.Viewing.Viewer3D#clientToWorld}.
+     * @param {THREE.Vector3} point Point in world space coordinates.
+     * @returns {THREE.Vector3} Point transformed and projected into client space coordinates.
+     */
+    Viewer3D.prototype.worldToClient = function(point) {
+
+        var p = new THREE.Vector4(point.x, point.y, point.z, 1);
+        p.applyMatrix4(this.impl.camera.matrixWorldInverse);
+        p.applyMatrix4(this.impl.camera.projectionMatrix);
+
+        // Don't want to mirror values with negative z (behind camera)
+        if (p.w > 0)
+        {
+            p.x /= p.w;
+            p.y /= p.w;
+            p.z /= p.w;
+        }
+
+        return this.impl.viewportToClient(p.x, p.y);
+    };
+
+    /**
+     * Given coordinates in pixel screen space it returns information of the underlying geometry node.
+     * Hidden nodes will not be taken into account. Returns null if there is no geometry in the specified location.
+     * For 2d models, it will return null outside the paper.<br>
+     * See also
+     * [worldToClient()]{@link Autodesk.Viewing.Viewer3D#worldToClient}.
+     *
+     * @param {Number} clientX - X coordinate where 0 is left
+     * @param {Number} clientY - Y coordinate where 0 is top
+     * @returns {Object|null} contains point attribute. 3d models have additional attributes.
+     */
+    Viewer3D.prototype.clientToWorld = function(clientX, clientY) {
+
+        var result = null;
+        var model = this.model;
+        var modelData = model.getData();
+
+        if (model.is2d()) {
+            var collision =  this.impl.intersectGround(clientX, clientY);
+            if (collision) {
+                collision.z = 0;
+                var bbox = modelData.bbox;
+                if (modelData.hidePaper || bbox.containsPoint(collision)) {
+                    result = {
+                          point: collision
+                    };
+                }
+            }
+        } else {
+            var unproject = function(clientX, clientY, z, viewer) {
+                var point = viewer.impl.clientToViewport(clientX, clientY);
+                point.z = z;
+                point.unproject(viewer.impl.camera);
+                return point;
+            };
+            var getMouseRay = function(clientX, clientY, viewer) {
+                var rayOrigin = unproject(clientX, clientY, -1, viewer);
+                var rayDirection = unproject(clientX, clientY, 1, viewer);
+                rayDirection.sub(rayOrigin);
+                rayDirection.normalize();
+                return new THREE.Ray(rayOrigin, rayDirection);
+            };
+
+            var ray = getMouseRay(clientX, clientY, this);
+            var raycaster = new THREE.Raycaster();
+            raycaster.set(ray.origin, ray.direction);
+            var renderQueue = this.impl.modelQueue();
+            result = renderQueue.rayIntersect(ray.origin, ray.direction);
+        }
+
+        return result;
+    };
+
 Autodesk.Viewing.Viewer3D = Viewer3D;
 
-})();;
+})();
+;
 /**
  * Error code constants
  *
@@ -59981,53 +60539,7 @@ Autodesk.Viewing.ErrorCodes = {
     /** Collaboration server error */
     RTC_ERROR: 11
 
-};;/**
- * Created by yinli on 7/9/2015.
- */
-
-AutodeskNamespace('Autodesk.Viewing');
-Autodesk.Viewing.InitParametersSetting = (function () {
-
-    function Singleton(args) {
-
-        var args = args || {};
-        
-        //default parameters
-        this.params = {
-            canvas: null,
-            antialias: false,
-            alpha: false,
-            premultipliedAlpha: false,
-            preserveDrawingBuffer: false,
-            stencil: false,
-            depth: false,
-            devicePixelRatio: null
-        };
-        //Iterate args and set corresponding properties to params.
-        for(var p in args){
-            if (this.params.hasOwnProperty(p))
-            {
-                this.params[p]=args[p];
-            }
-        }
-        
-    }
-
-
-    var instance;
-
-    var _static = {
-        name: 'InitParameters',
-
-        getInstance: function (args) {
-            if (instance === undefined) {
-                instance = new Singleton(args);
-            }
-            return instance;
-        }
-    };
-    return _static;
-})();;/** @license Copyright (c) 2013 Autodesk Inc. */
+};;/** @license Copyright (c) 2013 Autodesk Inc. */
 /** Version : @buildnum@ */
 
 (function() {
@@ -60100,6 +60612,8 @@ function extractOAuth2AccessToken(input) {
  * is stored as a cookie):
  * https://viewing-dev.api.autodesk.com/viewingservice/v1/bubbles/[urn]
  *
+ * @class
+ * @memberof Autodesk.Viewing
  * @alias Autodesk.Viewing.Document
  *
  *  @param {Object} dataJSON - json data representing the document
@@ -60156,29 +60670,20 @@ var Document = function( dataJSON, path )
     }
     annotateViews(dataJSON);
 
-    // Traverse the document and populate the parents table (for each node, store its parent id).
+    // Traverse the document and populate the parent pointers (for each node, store its parent).
     //
-    this.parents = {};
-    function setParent( itemId, parentId ) {
-        self.parents[itemId] = parentId;
-    }
-
-    function traverse( data, parentId, func ) {
-        if (!data)
+    function traverse( item ) {
+        if (!item)
             return;
 
-        var itemId = data.guid;
-        if (itemId) {
-            func.apply(this,[ itemId, parentId ]);
-
-            var len = data.children ? data.children.length : 0;
-            for(var i=0; i < len; i++)
-            {
-                traverse( data.children[i], itemId, func );
-            }
+        var len = item.children ? item.children.length : 0;
+        for(var i=0; i < len; i++)
+        {
+            item.children[i].parent = item;
+            traverse(item.children[i]);
         }
     }
-    traverse( this.myData, null, setParent );
+    traverse(this.myData);
 };
 
 Document.prototype.constructor = Document;
@@ -60187,7 +60692,6 @@ Document.prototype.constructor = Document;
  * Static method to load the model data from the cloud.
  *
  *  @example
- *      &lt;script&gt;
  *         // Load the model from the cloud
  *         var urn = 'dXJuOmFkc2suczM6ZGVyaXZlZC5maWxlOnRyYW5zbGF0aW9uXzI1X3Rlc3RpbmcvRFdGL0Nhci5kd2Y=';
  *         var seedFile  = "https://viewing-dev.api.autodesk.com/viewingservice/v1/" + urn;
@@ -60197,7 +60701,6 @@ Document.prototype.constructor = Document;
  *         var root  = model.getRootItem(); // top item of the hierarchy of the model data
  *         var item  = model.getItemById( "XXX02UUEs");
  *         var path = model.getFullPath(); // should be 'path'
- *     &lt;/script&gt;
  *
  *  @param {string} seedFile - The cloud urn of the file.
  *  @param {function(object)} onSuccessCallback - A function that is called when load succeeds.
@@ -60489,7 +60992,7 @@ Document.prototype.getItemById = function(id)
             if ( key === 'guid' && val === id )
                 return data;
 
-            if (val !== null && typeof(val) === "object") {
+            if (val !== null && typeof(val) === "object" && key !== "parent") {
                 //going on step down in the object tree!!
                 var item = traverse( val );
                 if (item)
@@ -60571,12 +61074,17 @@ Document.prototype.getNumViews = function (item) {
 };
 
 /**
- * Return parent id of the given item.
- * @param {string} itemId - guid of the item.
+ * @deprecated Simply use item.parent instead.
+ * Return parent ID of the given document node ID.
+ * @param {string} item - the node ID.
  * @returns {string}
  */
 Document.prototype.getParentId = function (itemId) {
-    return this.parents[itemId];
+    var item = this.getItemById(itemId);
+    if (!item)
+        return null;
+    var parent = item.parent;
+    return parent ? parent.guid : null;
 };
 
 
@@ -60588,30 +61096,28 @@ Document.prototype.getParentId = function (itemId) {
  * @param {bool} - if true the top messages that apply to the whole file are excluded.
  * @returns {Object} - returns an array of messages.
  */
-Document.prototype.getMessages = function( itemId, excludeGlobal ) {
+Document.prototype.getMessages = function( item, excludeGlobal ) {
 
     var messages = [];
-    if (!itemId)
+    if (!item)
         return messages;
 
-    var rootId = null;
+    var root = null;
     if (excludeGlobal)
-        rootId = this.getRootItem().guid;
+        root = this.getRootItem();
 
-    var currentId = itemId;
-    var parentId  = this.parents[currentId];
-    while (currentId) {
-        if (excludeGlobal && parentId===rootId)
+    var current = item;
+    while (current) {
+
+        if (excludeGlobal && parent===root)
             break;
 
-        var currentItem = this.getItemById( currentId );
-        if (currentItem && currentItem.messages) {
-            for (var i=0; i<currentItem.messages.length; i++){
-                messages.push( currentItem.messages[i] );
+        if (current.messages) {
+            for (var i=0; i<current.messages.length; i++){
+                messages.push( current.messages[i] );
             }
         }
-        currentId = parentId;
-        parentId = this.parents[currentId];
+        current = current.parent;
     }
     return messages;
 };
@@ -61119,7 +61625,7 @@ Autodesk.Viewing.Navigation.prototype.orient = function()
 Autodesk.Viewing.Navigation.prototype.fov2fl = function ( fov )
 {
     // Note: the size of the 35mm camera back is 36x24mm.  Since we are setting and
-    // getting the vertical FOV, we need to use the vertical .ment of 24mm, or
+    // getting the vertical FOV, we need to use the vertical measurement of 24mm, or
     // rather half of that (12.0) in our calculations.
     var k35mmVerticalCameraBackSize = 12.0;
 
@@ -62135,15 +62641,25 @@ ViewingApplication.prototype.selectItem = function(item, onSuccessCallback, onEr
     var urnToLoad = this.myDocument.getViewablePath(item);
 
     if (urnToLoad) {
-        var viewerType, viewItem, title, viewGeometryItem;
+        var viewerType, viewItem, title, viewGeometryItem, modelUnits;
         if (item.type === 'geometry' && item.role === '3d') {
             // This is for the case that initial view is a child of geometry in some DWF files
             // Set this view's camera as initial camera
-            var children = item.children;
-            if (children) {
-                for (var i in children) {
-                    if (children.hasOwnProperty(i) && children[i].type === 'view') {
-                        viewItem = children[i];
+            //var children = item.children;
+            //if (children) {
+            //    for (var i in children) {
+            //        if (children.hasOwnProperty(i) && children[i].type === 'view') {
+            //            viewItem = children[i];
+            //            break;
+            //        }
+            //    }
+            //}
+            // This is for Revit files that have model units in bubble.json
+            var properties = item.properties;
+            if (properties) {
+                for (var i in properties) {
+                    if (properties.hasOwnProperty(i) && properties[i]._UnitLinear) {
+                        modelUnits = properties[i]._UnitLinear;
                         break;
                     }
                 }
@@ -62192,7 +62708,7 @@ ViewingApplication.prototype.selectItem = function(item, onSuccessCallback, onEr
 
         // Check if there are any warnign or errors from translators.
         // Exclude the global ones (ones from the root node).
-        var messages = this.myDocument.getMessages( item.guid, true );
+        var messages = this.myDocument.getMessages( item, true );
 
         if(viewerType) {
             var self = this;
@@ -62202,6 +62718,9 @@ ViewingApplication.prototype.selectItem = function(item, onSuccessCallback, onEr
             if (viewItem && viewItem.camera) {
                 onLoadCallback = function() {
                     self.myCurrentViewer.setViewFromArray(viewItem.camera, viewItem.name);
+                    if (modelUnits) {
+                        self.myCurrentViewer.setModelUnits(modelUnits);
+                    }
                     if(onSuccessCallback) {
                         onSuccessCallback(self.myCurrentViewer, item, messages );
                     }
@@ -62209,6 +62728,9 @@ ViewingApplication.prototype.selectItem = function(item, onSuccessCallback, onEr
             } else if (viewItem && viewItem.viewbox) {
                 onLoadCallback = function() {
                     self.myCurrentViewer.setViewFromViewBox(viewItem.viewbox, viewItem.name);
+                    if (modelUnits) {
+                        self.myCurrentViewer.setModelUnits(modelUnits);
+                    }
                     if(onSuccessCallback) {
                         onSuccessCallback(self.myCurrentViewer, item, messages );
                     }
@@ -62216,12 +62738,18 @@ ViewingApplication.prototype.selectItem = function(item, onSuccessCallback, onEr
             } else if (urnAlreadyLoaded) {
                 onLoadCallback = function() {
                     self.myCurrentViewer.setViewFromFile();
+                    if (modelUnits) {
+                        self.myCurrentViewer.setModelUnits(modelUnits);
+                    }
                     if(onSuccessCallback) {
                         onSuccessCallback(self.myCurrentViewer, item, messages );
                     }
                 };
             } else {
                 onLoadCallback = function() {
+                    if (modelUnits) {
+                        self.myCurrentViewer.setModelUnits(modelUnits);
+                    }
                     if(onSuccessCallback) {
                         onSuccessCallback(self.myCurrentViewer, item, messages );
                     }
@@ -62587,10 +63115,16 @@ var av = Autodesk.Viewing,
         SETTINGSTOOLSID: "settingsTools"
     };
 
-
-//==============================================================================
-// Builds on the basic Viewer3D by adding various common GUI elements.
-//==============================================================================
+    /**
+     * Builds on the basic [Viewer3D]{@link Autodesk.Viewing.Viewer3D} by adding various common GUI elements.
+     *
+     * @class
+     * @param {HTMLElement} container - The viewer container.
+     * @param {Object} config - The initial settings object. See base class for details.
+     * @alias Autodesk.Viewing.GuiViewer3D
+     * @extends Autodesk.Viewing.Viewer3D
+     * @constructor
+     */
     var GuiViewer3D = function (container, config) {
         if (!config) config = {};
 
@@ -62613,19 +63147,6 @@ var av = Autodesk.Viewing,
 
     GuiViewer3D.prototype = Object.create(av.Viewer3D.prototype);
     GuiViewer3D.prototype.constructor = GuiViewer3D;
-
-    GuiViewer3D.prototype.resize = function () {
-        av.Viewer3D.prototype.resize.call(this);
-
-        this.resizePanels();
-        
-        if (this.viewCubeUi && this.viewCubeUi.cube)
-            this.viewCubeUi.cube.refreshCube();
-
-        if (this.centerToolBar) {
-            this.centerToolBar();
-        }
-    };
 
     GuiViewer3D.prototype.initialize = function () {
         var viewerErrorCode = av.Viewer3D.prototype.initialize.call(this);
@@ -62655,7 +63176,7 @@ var av = Autodesk.Viewing,
 
         // Context menu
         if (!this.contextMenu) {
-            this.setContextMenu(new ave.ViewerObjectContextMenu(this));
+            this.setDefaultContextMenu();
         }
 
         // Create a progress bar. Shows streaming.
@@ -62702,6 +63223,20 @@ var av = Autodesk.Viewing,
             // Leaving code here just in case it becomes necessary.
             //this.envSelect.setSelectedIndex(viewer.impl.currentLightPreset());
             //this.viewerOptionButton.displayLines.setValue(viewer.prefs.lineRendering);
+        });
+
+        this.addEventListener(av.VIEWER_RESIZE_EVENT, function (event) {
+
+            viewer.resizePanels();
+
+            if (viewer.viewCubeUi && viewer.viewCubeUi.cube)
+                viewer.viewCubeUi.cube.refreshCube();
+
+            viewer.updateToolbarButtons(event.width, event.height);
+
+            if (viewer.centerToolBar) {
+                viewer.centerToolBar();
+            }
         });
 
         this.initEscapeHandlers();
@@ -62820,21 +63355,24 @@ var av = Autodesk.Viewing,
             this.renderoptions = null;
         }
 
+        // Need to remove this event listener, in case that viewcube will show up when
+        // changing sheets from 3D to 2D and the 3D model doesn't fully loaded.
+        this.removeEventListener(av.GEOMETRY_LOADED_EVENT, this.initViewCube);
     };
 
     GuiViewer3D.prototype.loadModel = function (url, options, onSuccessCallback, onErrorCallback) {
         var viewer = this;
 
-        var initViewCube = function () {
+        this.initViewCube = function () {
             viewer.displayViewCube(viewer.prefs.viewCube);
-            viewer.removeEventListener(av.GEOMETRY_LOADED_EVENT, initViewCube);
+            viewer.removeEventListener(av.GEOMETRY_LOADED_EVENT, viewer.initViewCube);
         };
 
         var disabledExtensions = this.config.disabledExtensions;
 
         if (url.indexOf(".f2d") != -1 && !this.impl.model) {
             this.createUI("2d");
-            if (viewer.prefs.useFirstPersonNav)
+            if (viewer.prefs.useFirstPersonNavigation)
                 this.unloadExtension('Autodesk.FirstPerson');
             else
                 this.unloadExtension('Autodesk.Beeline');
@@ -62861,7 +63399,7 @@ var av = Autodesk.Viewing,
             if (this.getDefaultNavigationToolName().indexOf("orbit") === -1)
                 this.setDefaultNavigationTool("orbit");
 
-            if (viewer.prefs.useFirstPersonNav)
+            if (viewer.prefs.useFirstPersonNavigation)
                 this.loadExtension('Autodesk.FirstPerson', null);
             else
                 this.loadExtension('Autodesk.Beeline', null);
@@ -62882,9 +63420,7 @@ var av = Autodesk.Viewing,
                 this.loadExtension('Autodesk.Section', null);
             }
 
-            this.loadExtension('Autodesk.GamepadModule', null);
-
-            this.addEventListener(av.GEOMETRY_LOADED_EVENT, initViewCube);
+            this.addEventListener(av.GEOMETRY_LOADED_EVENT, this.initViewCube);
         }
 
 
@@ -63836,10 +64372,7 @@ var av = Autodesk.Viewing,
                 break;
         }
 
-        //ADN FIX
-        if(this.settingsTools.fullscreenbutton) {
-          this.settingsTools.fullscreenbutton.setIcon(cls);
-        }
+        this.settingsTools.fullscreenbutton.setIcon(cls);
     };
 
     GuiViewer3D.prototype.localize = function () {
@@ -64048,6 +64581,11 @@ var av = Autodesk.Viewing,
                 button.setState(avu.Button.State.ACTIVE);
                 tooltip.style.display = "none";
                 viewer.explodeSubmenu.style.display = "";
+
+                // Explode is not handled via ToolController; log it separately for now
+                if (avp.logger) {
+                    avp.logger.log({category: 'tool_changed', name: 'explode'});
+                }
             }
             else if (state === avu.Button.State.ACTIVE) {
                 button.setState(avu.Button.State.INACTIVE);
@@ -64189,7 +64727,56 @@ var av = Autodesk.Viewing,
 
         this.toolbar.container.addEventListener("click", handleModality, true);
     };
-    
+
+    /**
+     * Changes visibility of buttons in toolbar to accommodate as many as possible
+     * given the available space.  Think of it as a media query applied to the viewer
+     * canvas only (as opposed to the whole website)
+     */
+    GuiViewer3D.prototype.updateToolbarButtons = function(width, height) {
+
+        var toolbar = this.getToolbar(false);
+        if (!toolbar) return;
+
+        //console.log("resized " + width);
+        var ctrl, display;
+
+        // 310px threshold
+        display = width > 310 ? "block" : "none";
+        ctrl = this.modelTools.getControl('toolbar-explodeTool');
+        if (ctrl) ctrl.setDisplay(display);
+
+        // 380px threshold
+        display = width > 380 ? "block" : "none";
+        ctrl = this.modelTools.getControl('toolbar-collaborateTool');
+        if (ctrl) ctrl.setDisplay(display);
+
+        // 515px threshold
+        display = width > 515 ? "block" : "none";
+        ctrl = this.navTools.getControl('toolbar-cameraSubmenuTool');
+        if (ctrl) ctrl.setDisplay(display);
+
+        // 700px threshold
+        display = width > 700 ? "block" : "none";
+        ctrl = this.modelTools.getControl('toolbar-measureTool');
+        if (ctrl) ctrl.setDisplay(display);
+        ctrl = this.modelTools.getControl('toolbar-sectionTool');
+        if (ctrl) ctrl.setDisplay(display);
+
+        // 740px threshold
+        display = width > 740 ? "block" : "none";
+        ctrl = this.navTools.getControl('toolbar-beelineTool');
+        if (ctrl) ctrl.setDisplay(display);
+        ctrl = this.navTools.getControl('toolbar-firstPersonTool');
+        if (ctrl) ctrl.setDisplay(display);
+        ctrl = this.navTools.getControl('toolbar-zoomTool');
+        if (ctrl) ctrl.setDisplay(display);
+        ctrl = this.navTools.getControl('toolbar-panTool');
+        if (ctrl) ctrl.setDisplay(display);
+        ctrl = this.navTools.getControl('toolbar-orbitTools');
+        if (ctrl) ctrl.setDisplay(display);
+    };
+
     avp.GuiViewer3D = GuiViewer3D;
 
 })();
@@ -64444,6 +65031,11 @@ Control.prototype.getDimensions = function() {
 
     return {width: clientRect.width, height: clientRect.height};
 };
+
+Control.prototype.setDisplay = function(value) {
+    this.container.style.display = value;
+};
+
 Autodesk.Viewing.UI.Control = Control;
 
 })();;
@@ -64916,7 +65508,7 @@ Button.prototype.onClick = function(event) {
 };
 
 /**
- * Override this method to be notified when the mouse enters the buton.
+ * Override this method to be notified when the mouse enters the button.
  * @param {MouseEvent} event
  */
 Button.prototype.onMouseOver = function(event) {
@@ -65525,6 +66117,10 @@ var av = Autodesk.Viewing,
         this.handleAction(["focus"], node);
     };
 
+    ave.ViewerModelStructurePanel.prototype.onHover = function (node, event) {
+        this.viewer.impl.rolloverObjectNode(node);
+    };
+
     ave.ViewerModelStructurePanel.prototype.onRightClick = function (node, event) {
         // Sometimes CTRL + LMB maps to a right click on a mac. Redirect it.
         if (this.isMac && event.ctrlKey && event.button === 0) {
@@ -66114,7 +66710,7 @@ ViewerSettingsPanel.prototype.createNavigationPanel = function()
                 viewer.unloadExtension('Autodesk.FirstPerson', null);
                 viewer.loadExtension('Autodesk.Beeline', null);
             }
-        }, "useFirstPersonNav");
+        }, "useFirstPersonNavigation");
 
     }
 
@@ -66260,7 +66856,7 @@ ViewerObjectContextMenu.prototype.buildMenu = function (event, status) {
 
     if (!is2d) {
 
-        var viewport = this.viewer.navigation.getScreenViewport();
+        var viewport = this.viewer.container.getBoundingClientRect();
         var canvasX = event.clientX - viewport.left;
         var canvasY = event.clientY - viewport.top;
 
@@ -66509,8 +67105,7 @@ CAMModelStructurePanel.prototype.setModel = function (instanceTree, modelTitle) 
     that.sortCamNodes(instanceTree, function(){
         ave.ViewerModelStructurePanel.prototype.setModel.call(that, instanceTree, modelTitle);
         that.SetCAMNodeVisible(false);
-        ns.showStructurePanel = ns.showStructurePanel === undefined ? true : ns.showStructurePanel;
-        that.setVisible(ns.showStructurePanel);
+        that.setVisible(true);
 
 		// expand the setup node, and resize to fit.
 		that.ExpandSetupNodes();
@@ -66720,8 +67315,7 @@ CAMModelStructurePanel.prototype.ExpandSetupNodes = function () {
 
 ns.CAMModelStructurePanel = CAMModelStructurePanel;
 
-})();
-;
+})();;
 (function() {
 
 'use strict';
@@ -66740,300 +67334,52 @@ var AnimationExtension = function(viewer, options) {
     this.animTools = null;
     this.animToolsId = "animationTools";
     this.playButton = null;
-    this.prevExplodeValue = 0;
     this.prevAnimationTime = -1;
 };
 
 AnimationExtension.prototype = Object.create(av.Extension.prototype);
 AnimationExtension.prototype.constructor = AnimationExtension;
 
+/**
+ * Converts seconds into Hours:Minutes:Seconds String
+ * @param {Number} time in seconds
+ * @returns {string}
+ * @private
+ */
+function convertSecsToHMS(time) {
+    var sign = "";
+    if (time < 0) {sign="-"; time = -time;}
+    var hrs = ~~(time / 3600);
+    var mins = ~~((time % 3600) / 60);
+    var secs = time % 60;
+    var ret = sign;
+    if (hrs > 0)
+        ret += hrs + ":" + (mins < 10 ? "0" : "");
+    ret += mins + ":" + (secs < 10 ? "0" : "");
+    ret += secs.toFixed(2);
+    return ret;
+}
+
 AnimationExtension.prototype.load = function() {
-    var that = this;
     var viewer = this.viewer;
-    var impl = viewer.impl;
 
-    function updatePlayButton(button, isPaused) {
-        if (!isPaused) {
-            button.setIcon('toolbar-animationPauseIcon');
-            button.setToolTip('Pause');
-        } else {
-            button.setIcon('toolbar-animationPlayIcon');
-            button.setToolTip('Play');
-        }
-    }
+    this.onPlayCallbackBinded = this.onPlayCallback.bind(this);
+    this.onCameraChangeBinded = this.onCameraChange.bind(this);
+    this.onExplodeBinded = this.onExplode.bind(this);
+    this.onResizeBinded = this.onResize.bind(this);
+    this.onEscapeBinded = this.onEscape.bind(this);
 
-    function hideAnimateToolbar() {
-        viewer.toolbar.removeClass('toolbar-animationMenuplacer');
-        that.animTools.setVisible(false);
-    }
+    viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.onCameraChangeBinded);
+    viewer.addEventListener(Autodesk.Viewing.EXPLODE_CHANGE_EVENT, this.onExplodeBinded);
+    viewer.addEventListener(Autodesk.Viewing.VIEWER_RESIZE_EVENT, this.onResizeBinded);
+    viewer.addEventListener(Autodesk.Viewing.ESCAPE_EVENT, this.onEscapeBinded);
 
-    function resetExplode(value, setSlider) {
-        if (!viewer.model.is2d() && viewer.getExplodeScale() !== 0) {
-            that.prevExplodeValue = viewer.explodeSlider.value;
-            if (setSlider) viewer.explodeSlider.value = value;
-            viewer.explode(value);
-        }
-    }
-
-    function updateToolbarBackground(input) {
-        var percentage = input.value;
-        var col1 = "#ffffff", col2 = "#393939";
-        input.style.background = "-webkit-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        input.style.background = "-moz-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        input.style.background = "-ms-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        input.style.background = "-o-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        input.style.background = "linear-gradient(to right,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-    }
-
-    function convertSecsToHMS(time) {
-        var sign = "";
-        if (time < 0) {sign="-"; time = -time;}
-        var hrs = ~~(time / 3600);
-        var mins = ~~((time % 3600) / 60);
-        var secs = time % 60;
-        var ret = sign;
-        if (hrs > 0)
-            ret += hrs + ":" + (mins < 10 ? "0" : "");
-        ret += mins + ":" + (secs < 10 ? "0" : "");
-        ret += secs.toFixed(2);
-        return ret;
-    }
-
-    // Add the ui.
-    if (this.viewer.toolbar && this.viewer.toolbar.modelTools && this.viewer.toolbar.modelTools.getNumberOfControls() > 0) {
-        onToolbarCreated();
+    // init animations after object tree created and geometry loaded
+    if (viewer.model && viewer.model.isObjectTreeCreated()) {
+        this.onAnimationReady();
     } else {
-        this.viewer.addEventListener(av.TOOLBAR_CREATED_EVENT, onToolbarCreated);
-    }
-
-    function onToolbarCreated(e) {
-        viewer.removeEventListener(av.TOOLBAR_CREATED_EVENT, onToolbarCreated);
-
-        that.toolbar = new AVU.ToolBar('animation-toolbar');
-        that.toolbar.addClass('toolbar-animationSubtoolbar');
-        viewer.container.appendChild(that.toolbar.container);
-
-        that.animTools = new AVU.ControlGroup(that.animToolsId);
-        that.animTools.setVisible(false);
-        that.toolbar.addControl(that.animTools);
-
-        // play button at first of modelTools
-        that.playButton = new AVU.Button('toolbar-animationPlay');
-        that.playButton.setToolTip('Play');
-        that.playButton.onClick = function(e) {
-            resetExplode(0);
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                // restore previous animaton if set
-                if (that.prevAnimationTime > 0) {
-                    animator.goto(that.prevAnimationTime);
-                    that.prevAnimationTime = -1;
-                }
-                animator.play(0, function(value) {
-                    input.value = value;
-                    lapse.value = convertSecsToHMS(animator.currentTime);
-                    lapseLeft.value = convertSecsToHMS(animator.currentTime-animator.duration);
-                    if (value >= 100) {
-                        updatePlayButton(that.playButton, true);
-                    }
-                    updateToolbarBackground(input);
-                });
-                updatePlayButton(that.playButton, animator.isPaused);
-                viewer.toolbar.addClass('toolbar-animationMenuplacer');
-                that.animTools.setVisible(true);
-                if (!that.animTools.isPositionAdjusted) {
-                    adjustToolbarPosition();
-                    that.animTools.isPositionAdjusted = true;
-                }
-            }
-        };
-        that.playButton.setIcon('toolbar-animationPlayIcon');
-        viewer.modelTools.addControl(that.playButton);
-
-        // explode button
-        that.onExplodeChange = function() {
-            // reset animation
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                if (animator.currentTime !== 0) {
-                    that.prevAnimationTime = animator.currentTime;
-                    animator.goto(0);
-                }
-                updatePlayButton(that.playButton, true);
-            }
-            hideAnimateToolbar();
-        };
-        viewer.addEventListener(Autodesk.Viewing.EXPLODE_CHANGE_EVENT, that.onExplodeChange);
-
-        // override reset button's onClick method
-        if (viewer.modelTools.resetModelButton) {
-            viewer.modelTools.resetModelButton.onClick = function(e) {
-                viewer.showAll();
-                var animator = viewer.impl.keyFrameAnimator;
-                if (animator !== undefined && animator) {
-                    animator.goto(0);
-                    input.value = 0;
-                    lapse.value = convertSecsToHMS(0);
-                    lapseLeft.value = convertSecsToHMS(-animator.duration);
-                    updatePlayButton(that.playButton, true);
-                }
-                resetExplode(0, true);
-
-                updateToolbarBackground(input);
-            };
-        }
-
-        // backward button
-        that.animTools.backwardButton = new AVU.Button('toolbar-animationBackward');
-        that.animTools.backwardButton.setToolTip('Previous keyframe');
-        that.animTools.backwardButton.onClick = function(e) {
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                animator.prev();
-                input.value = animator.duration > 0 ? animator.currentTime / animator.duration * 100 : 0;
-                lapse.value = convertSecsToHMS(animator.currentTime);
-                lapseLeft.value = convertSecsToHMS(animator.currentTime-animator.duration);
-                updatePlayButton(that.playButton, animator.isPaused);
-                updateToolbarBackground(input);
-            }
-        };
-        that.animTools.backwardButton.addClass('toolbar-animationButton');
-        that.animTools.backwardButton.setIcon('toolbar-animationBackwardIcon');
-        that.animTools.addControl(that.animTools.backwardButton);
-
-        // forward button
-        that.animTools.forwardButton = new AVU.Button('toolbar-animationForward');
-        that.animTools.forwardButton.setToolTip('Next keyframe');
-        that.animTools.forwardButton.onClick = function(e) {
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                animator.next();
-                input.value = animator.duration > 0 ? animator.currentTime / animator.duration * 100 : 0;
-                lapse.value = convertSecsToHMS(animator.currentTime);
-                lapseLeft.value = convertSecsToHMS(animator.currentTime-animator.duration);
-                updatePlayButton(that.playButton, animator.isPaused);
-                updateToolbarBackground(input);
-            }
-        };
-        that.animTools.forwardButton.addClass('toolbar-animationButton');
-        that.animTools.forwardButton.setIcon('toolbar-animationForwardIcon');
-        that.animTools.addControl(that.animTools.forwardButton);
-
-        // current time lapse
-        that.animTools.timeText = new AVU.Control('toolbar-animationTimeLapse');
-        var lapse = document.createElement("input");
-        lapse.type = "text";
-        lapse.value = "0";
-        lapse.className = "animationTimeLapse";
-        lapse.disabled = true;
-        that.animTools.timeText.container.appendChild(lapse);
-        that.animTools.timeText.addClass('toolbar-animationButton');
-        that.animTools.addControl(that.animTools.timeText);
-
-        // timeline
-        that.animTools.timeline = new AVU.Control('toolbar-animationTimeline');
-        var input = that.animTools.input = document.createElement("input");
-        input.type = "range";
-        input.value = "0";
-        input.className = "animationTimeline";
-        that.animTools.timeline.container.appendChild(input);
-        input.addEventListener("input", function(e) {
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                var time = input.value * animator.duration / 100;
-                lapse.value = convertSecsToHMS(time);
-                lapseLeft.value = convertSecsToHMS(time-animator.duration);
-                animator.goto(time);
-                updatePlayButton(that.playButton, animator.isPaused);
-                updateToolbarBackground(input);
-            }
-        });
-        // tooltip for slider
-        var inputTooltip = document.createElement("div");
-        inputTooltip.className = "adsk-control-tooltip";
-        inputTooltip.textContent = Autodesk.Viewing.i18n.translate("Click-drag to scrub");
-        that.animTools.timeline.container.appendChild(inputTooltip);
-        input.addEventListener("mouseover", function(e) {
-            if (e.target === input)
-                inputTooltip.style.visibility = "visible";
-        });
-        input.addEventListener("mouseout", function(e) {
-            if (e.target === input)
-                inputTooltip.style.visibility = "hidden";
-        });
-
-        that.animTools.timeline.addClass('toolbar-animationButton');
-        that.animTools.timeline.addClass('toolbar-animationTimeline');
-        that.animTools.addControl(that.animTools.timeline);
-
-        // remaining time lapse
-        that.animTools.timeLeftText = new AVU.Control('toolbar-animationRemainingTime');
-        var lapseLeft = document.createElement("input");
-        lapseLeft.type = "text";
-        lapseLeft.value = "0";
-        lapseLeft.className = "animationTimeLapse";
-        lapseLeft.disabled = true;
-        that.animTools.timeLeftText.container.appendChild(lapseLeft);
-        that.animTools.timeLeftText.addClass('toolbar-animationButton');
-        that.animTools.addControl(that.animTools.timeLeftText);
-
-        // close button
-        that.animTools.closeButton = new AVU.Button('toolbar-animationClose');
-        that.animTools.closeButton.setToolTip('Close animation timeline');
-        that.animTools.closeButton.onClick = function(e) {
-            hideAnimateToolbar();
-        };
-        that.animTools.closeButton.setIcon('toolbar-animationCloseIcon');
-        that.animTools.closeButton.addClass('toolbar-animationButton');
-        that.animTools.addControl(that.animTools.closeButton);
-
-        that.onEscape = function (event) {
-            var animator = viewer.impl.keyFrameAnimator;
-            if (animator !== undefined && animator) {
-                if (!animator.isPaused)
-                    animator.pause();
-                else
-                    hideAnimateToolbar();
-                updatePlayButton(that.playButton, animator.isPaused);
-            }
-        };
-        viewer.addEventListener(Autodesk.Viewing.ESCAPE_EVENT, that.onEscape);
-
-        that.onCameraChange = function() {
-            if (viewer.toolController.cameraUpdated) {
-                var animator = viewer.impl.keyFrameAnimator;
-                if (animator !== undefined && animator) {
-                    if (animator.isPlaying && !animator.isPaused) {
-                        animator.pause();
-                        updatePlayButton(that.playButton, animator.isPaused);
-                    }
-                }
-            }
-        };
-        viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, that.onCameraChange);
-
-        that.onResize = function() {
-            if (viewer.container.clientWidth < (isTouchDevice() ? 560 : 600)) {
-                that.toolbar.setCollapsed(true);
-            } else {
-                that.toolbar.setCollapsed(false);
-                adjustToolbarPosition();
-            }
-        };
-        viewer.addEventListener(Autodesk.Viewing.VIEWER_RESIZE_EVENT, that.onResize);
-    }
-
-    function adjustToolbarPosition() {
-        // set timeline width
-        var fullwidth = viewer.toolbar.getDimensions().width;
-        var viewportWidth = viewer.container.getBoundingClientRect().width;
-        if (fullwidth > viewportWidth)
-            fullwidth = viewer.modelTools.getDimensions().width;
-        var inputWidth = fullwidth - (2 * that.animTools.backwardButton.getDimensions().width + 3 * that.animTools.timeText.getDimensions().width + that.animTools.closeButton.getDimensions().width) + 12;
-        that.animTools.input.style.width = inputWidth + 'px';
-
-        // center toolbar
-        that.toolbar.container.style.left = 'calc(50% - ' + fullwidth/2 + 'px)';
+        this.onAnimationReadyBinded = this.onAnimationReady.bind(this);
+        viewer.addEventListener(Autodesk.Viewing.ANIMATION_READY_EVENT, this.onAnimationReadyBinded);
     }
 
     return true;
@@ -67042,12 +67388,16 @@ AnimationExtension.prototype.load = function() {
 AnimationExtension.prototype.unload = function () {
     var viewer = this.viewer;
 
-    // stop animations
-    var animator = viewer.impl.keyFrameAnimator;
-    if (animator) {
-        animator.stop();
+    if (this.onAnimationReadyBinded) {
+        viewer.removeEventListener(Autodesk.Viewing.ANIMATION_READY_EVENT, this.onAnimationReadyBinded);
+        this.onAnimationReadyBinded = null;
     }
-    viewer.impl.keyFrameAnimator = null;
+
+    // stop animations
+    this.rewind();
+    viewer.impl.invalidate(true, true, true); // Required to reset animations when Extension unloads and viewer remains.
+
+    this.onPlayCallbackBinded = null;
 
     if (this.animTools) {
         this.animTools.removeControl(this.animTools.timeText.getId());
@@ -67064,18 +67414,541 @@ AnimationExtension.prototype.unload = function () {
         this.toolbar = null;
     }
 
-    var toolbar = viewer.getToolbar(false);
-    if (toolbar) {
-        toolbar.getControl(av.TOOLBAR.MODELTOOLSID).removeControl(this.playButton.getId());
+    if (this.playButton) {
+        var toolbar = viewer.getToolbar(false);
+        if (toolbar) {
+            toolbar.getControl(av.TOOLBAR.MODELTOOLSID).removeControl(this.playButton.getId());
+        }
     }
 
     // Remove event listeners
-    viewer.removeEventListener(av.EXPLODE_CHANGE_EVENT, this.onExplodeChange);
-    viewer.removeEventListener(av.ESCAPE_EVENT, this.onEscape);
-    viewer.removeEventListener(av.CAMERA_CHANGE_EVENT, this.onCameraChange);
-    viewer.removeEventListener(av.VIEWER_RESIZE_EVENT, this.onResize);
+    viewer.removeEventListener(av.CAMERA_CHANGE_EVENT, this.onCameraChangeBinded);
+    viewer.removeEventListener(av.EXPLODE_CHANGE_EVENT, this.onExplodeBinded);
+    viewer.removeEventListener(av.VIEWER_RESIZE_EVENT, this.onResizeBinded);
+    viewer.removeEventListener(av.ESCAPE_EVENT, this.onEscapeBinded);
+
+    if (this.onToolbarCreatedBinded) {
+        viewer.removeEventListener(av.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
+        this.onToolbarCreatedBinded = null;
+    }
 
     return true;
+};
+
+/**
+ * Plays the animation. Invoke pause() to stop the animation.
+ */
+AnimationExtension.prototype.play = function() {
+
+    if (this.isPlaying()) {
+        return;
+    }
+
+    this.resetExplode(0, true);
+
+    var viewer = this.viewer;
+    var animator = viewer.impl.keyFrameAnimator;
+    if (!animator) return;
+
+    // restore previous animation if set
+    if (this.prevAnimationTime > 0) {
+        animator.goto(this.prevAnimationTime);
+        this.prevAnimationTime = -1;
+    }
+
+    animator.play(0, this.onPlayCallbackBinded);
+
+    this.updatePlayButton(animator.isPaused);
+    if (viewer.toolbar) {
+        viewer.toolbar.addClass('toolbar-animationMenuplacer');
+    }
+    if (this.animTools) {
+        this.animTools.setVisible(true);
+        if (!this.animTools.isPositionAdjusted) {
+            this.adjustToolbarPosition();
+            this.animTools.isPositionAdjusted = true;
+        }
+    }
+};
+
+/**
+ * Pauses an active animation. Can resume by calling play()
+ */
+AnimationExtension.prototype.pause = function() {
+
+    if (this.isPaused()) {
+        return;
+    }
+
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return;
+    animator.pause();
+
+    // UI stuff
+    this.updatePlayButton(animator.isPaused);
+};
+
+/**
+ * Whether the animation is currently playing.
+ * Always returns the opposite of isPaused()
+ * @returns {Boolean}
+ */
+AnimationExtension.prototype.isPlaying = function() {
+
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return false;
+    return animator.isPlaying && !animator.isPaused;
+};
+
+/**
+ * Wether the animation is currently paused.
+ * Always returns the opposite of isPlaying()
+ * @returns {Boolean}
+ */
+AnimationExtension.prototype.isPaused = function() {
+
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return false;
+    return animator.isPaused;
+};
+
+/**
+ * Pauses and rewinds the animation.
+ */
+AnimationExtension.prototype.rewind = function() {
+    this.setTimelineValue(0);
+};
+
+/**
+ * Sets the animation at the very beginning (0), at the end(1) or anywhere in between.
+ * For example, use value 0.5 to set the animation half way through it's completion.
+ * Will pause a playing animation.
+ *
+ * @param {Number} scale - value between 0 and 1
+ */
+AnimationExtension.prototype.setTimelineValue = function(scale) {
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return;
+    scale = Math.min(Math.max(0,scale), 1);
+    var time = scale * animator.duration;
+    animator.goto(time);
+    this.updateUI();
+};
+
+/**
+ * Sets animation onto the previous keyframe.
+ * Will pause the animation if playing.
+ */
+AnimationExtension.prototype.prevKeyframe = function() {
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return;
+    animator.prev();
+    this.updateUI();
+};
+
+/**
+ * Sets animation onto the next keyframe.
+ * Will pause the animation if playing.
+ */
+AnimationExtension.prototype.nextKeyframe = function() {
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return;
+    animator.next();
+    this.updateUI();
+};
+
+/**
+ * Returns how many seconds does the animation take to complete.
+ * See also:
+ * - getDurationLabel()
+ * - getCurrentTime()
+ * @return {Number}
+ */
+AnimationExtension.prototype.getDuration = function() {
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return 0;
+    return animator.duration;
+};
+
+/**
+ * Returns duration as a formatted String h:mm:ss (hours:minutes:seconds)
+ * See also:
+ * - getDuration()
+ * - getCurrentTimeLabel()
+ * @returns {string}
+ */
+AnimationExtension.prototype.getDurationLabel = function() {
+    return convertSecsToHMS(this.getDuration());
+};
+
+/**
+ * Returns the elapsed time (in seconds) of the animation.
+ * See also:
+ * - getDuration()
+ * - getCurrentTimeLabel()
+ * @return {Number}
+ */
+AnimationExtension.prototype.getCurrentTime = function() {
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!animator) return 0;
+    return animator.currentTime;
+};
+
+/**
+ * Returns the current animation time as a formatted String h:mm:ss (hours:minutes:seconds)
+ * See also:
+ * - getCurrentTime()
+ * - getDurationLabel()
+ * @returns {string}
+ */
+AnimationExtension.prototype.getCurrentTimeLabel = function() {
+    return convertSecsToHMS(this.getCurrentTime());
+};
+
+
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onAnimationReady = function() {
+    var viewer = this.viewer;
+
+    if (this.onAnimationReadyBinded) {
+        viewer.removeEventListener(Autodesk.Viewing.ANIMATION_READY_EVENT, this.onAnimationReadyBinded);
+        this.onAnimationReadyBinded = null;
+    }
+
+    // Check for animator class
+    if (!viewer.impl.keyFrameAnimator)
+        return;
+
+    // Add the ui only if an animation is available.
+    if (viewer.toolbar && viewer.modelTools) {
+        this.onToolbarCreated();
+    } else {
+        this.onToolbarCreatedBinded = this.onToolbarCreated.bind(this);
+        viewer.addEventListener(av.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
+    }
+};
+
+/**
+ *
+ * @private
+ */
+AnimationExtension.prototype.updateUI = function() {
+
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (!this.animTools || !animator) {
+        return;
+    }
+    this.animTools.input.value = animator.duration > 0 ? animator.currentTime / animator.duration * 100 : 0;
+    this.animTools.lapse.value = convertSecsToHMS(animator.currentTime);
+    this.animTools.lapseLeft.value = convertSecsToHMS(animator.currentTime-animator.duration);
+    this.updatePlayButton(animator.isPaused);
+    this.updateToolbarBackground();
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onPlayCallback = function(value) {
+
+    // TODO: We should be able to replace this whole method body with a call to update().
+    // The only problem for now is taht we would also need to change KeyFrameAnimator because
+    // the onPlayCallback() is being invoked BEFORE the animation is paused.
+    if (!this.animTools) return;
+
+    var animator = this.viewer.impl.keyFrameAnimator;
+    this.animTools.input.value = value;
+    this.animTools.lapse.value = convertSecsToHMS(animator.currentTime);
+    this.animTools.lapseLeft.value = convertSecsToHMS(animator.currentTime-animator.duration);
+
+    if (value >= 100) {
+        this.updatePlayButton(true);
+    }
+    this.updateToolbarBackground();
+};
+
+/**
+ *
+ * @param isPaused
+ * @private
+ */
+AnimationExtension.prototype.updatePlayButton = function(isPaused) {
+    if (!this.playButton) return;
+    if (isPaused) {
+        this.playButton.setIcon('toolbar-animationPlayIcon');
+        this.playButton.setToolTip('Play');
+    } else {
+        this.playButton.setIcon('toolbar-animationPauseIcon');
+        this.playButton.setToolTip('Pause');
+    }
+};
+
+/**
+ * Helper function that resets model explosion.
+ * @param value
+ * @param setSlider
+ * @private
+ */
+AnimationExtension.prototype.resetExplode = function(value, setSlider) {
+    var viewer = this.viewer;
+    if (!viewer.model.is2d() && viewer.getExplodeScale() !== 0) {
+        if (setSlider && viewer.explodeSlider) { // explodeSlider is only in GuiViewer3D instances
+            viewer.explodeSlider.value = value;
+        }
+        viewer.explode(value);
+    }
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.adjustToolbarPosition = function() {
+    // set timeline width
+    var viewer = this.viewer;
+    if (!viewer.toolbar) return;
+    var fullwidth = viewer.toolbar.getDimensions().width;
+    var viewportWidth = viewer.container.getBoundingClientRect().width;
+    if (fullwidth > viewportWidth)
+        fullwidth = viewer.modelTools.getDimensions().width;
+    var inputWidth = fullwidth - (2 *
+        this.animTools.backwardButton.getDimensions().width + 3 *
+        this.animTools.timeText.getDimensions().width + this.animTools.closeButton.getDimensions().width) + 12;
+    this.animTools.input.style.width = inputWidth + 'px';
+
+    // center toolbar
+    this.toolbar.container.style.left = 'calc(50% - ' + fullwidth/2 + 'px)';
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.hideAnimateToolbar = function() {
+    if (this.viewer.toolbar) {
+        this.viewer.toolbar.removeClass('toolbar-animationMenuplacer');
+    }
+    if (this.animTools) {
+        this.animTools.setVisible(false);
+    }
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.updateToolbarBackground = function() {
+    if (!this.animTools) return;
+    var input = this.animTools.input;
+    var percentage = input.value;
+    var col1 = "#ffffff", col2 = "#393939";
+    input.style.background = "-webkit-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+    input.style.background = "-moz-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+    input.style.background = "-ms-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+    input.style.background = "-o-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+    input.style.background = "linear-gradient(to right,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onCameraChange = function() {
+    if (this.viewer.toolController.cameraUpdated) {
+        var animator = this.viewer.impl.keyFrameAnimator;
+        if (!animator) return;
+        if (animator.isPlaying && !animator.isPaused) {
+            animator.pause();
+            this.updatePlayButton(animator.isPaused);
+        }
+    }
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onResize = function() {
+    if (!this.toolbar) return;
+    if (this.viewer.container.clientWidth < (isTouchDevice() ? 560 : 600)) {
+        this.toolbar.setCollapsed(true);
+    } else {
+        this.toolbar.setCollapsed(false);
+        this.adjustToolbarPosition();
+    }
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onEscape = function () {
+
+    if (this.isPlaying()) {
+        this.pause();
+    } else {
+        this.hideAnimateToolbar();
+    }
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onExplode = function() {
+    // reset animation
+    var animator = this.viewer.impl.keyFrameAnimator;
+    if (animator) {
+        if (animator.currentTime !== 0) {
+            this.prevAnimationTime = animator.currentTime;
+            animator.goto(0);
+        }
+        this.updatePlayButton(true);
+    }
+    this.hideAnimateToolbar();
+};
+
+/**
+ * @private
+ */
+AnimationExtension.prototype.onToolbarCreated = function() {
+
+    var viewer = this.viewer;
+    var that = this;
+
+    if (this.onToolbarCreatedBinded) {
+        viewer.removeEventListener(av.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
+        this.onToolbarCreatedBinded = null;
+    }
+
+    this.toolbar = new AVU.ToolBar('animation-toolbar');
+    this.toolbar.addClass('toolbar-animationSubtoolbar');
+    viewer.container.appendChild(this.toolbar.container);
+
+    this.animTools = new AVU.ControlGroup(this.animToolsId);
+    this.animTools.setVisible(false);
+    this.toolbar.addControl(this.animTools);
+
+    // play button at first of modelTools
+    this.playButton = new AVU.Button('toolbar-animationPlay');
+    this.playButton.setIcon('toolbar-animationPlayIcon');
+    this.playButton.setToolTip('Play');
+    this.playButton.onClick = function() {
+        if (that.isPaused()) {
+            that.play();
+        } else {
+            that.pause();
+        }
+    };
+    viewer.modelTools.addControl(this.playButton);
+
+    // override reset button's onClick method
+    if (viewer.modelTools.resetModelButton) {
+        viewer.modelTools.resetModelButton.onClick = function(e) {
+            viewer.showAll();
+            var animator = viewer.impl.keyFrameAnimator;
+            if (animator) {
+                animator.goto(0);
+                input.value = 0;
+                lapse.value = convertSecsToHMS(0);
+                lapseLeft.value = convertSecsToHMS(-animator.duration);
+                that.updatePlayButton(true);
+            }
+            that.resetExplode(0, true);
+            that.updateToolbarBackground();
+        };
+    }
+
+    // backward button
+    this.animTools.backwardButton = new AVU.Button('toolbar-animationBackward');
+    this.animTools.backwardButton.setToolTip('Previous keyframe');
+    this.animTools.backwardButton.onClick = function(e) {
+        var animator = viewer.impl.keyFrameAnimator;
+        if (animator !== undefined && animator) {
+            animator.prev();
+            that.updateUI();
+        }
+    };
+    this.animTools.backwardButton.addClass('toolbar-animationButton');
+    this.animTools.backwardButton.setIcon('toolbar-animationBackwardIcon');
+    this.animTools.addControl(this.animTools.backwardButton);
+
+    // forward button
+    this.animTools.forwardButton = new AVU.Button('toolbar-animationForward');
+    this.animTools.forwardButton.setToolTip('Next keyframe');
+    this.animTools.forwardButton.onClick = function(e) {
+        var animator = viewer.impl.keyFrameAnimator;
+        if (animator !== undefined && animator) {
+            animator.next();
+            that.updateUI();
+        }
+    };
+    this.animTools.forwardButton.addClass('toolbar-animationButton');
+    this.animTools.forwardButton.setIcon('toolbar-animationForwardIcon');
+    this.animTools.addControl(this.animTools.forwardButton);
+
+    // current time lapse
+    this.animTools.timeText = new AVU.Control('toolbar-animationTimeLapse');
+    var lapse = this.animTools.lapse = document.createElement("input");
+    lapse.type = "text";
+    lapse.value = "0";
+    lapse.className = "animationTimeLapse";
+    lapse.disabled = true;
+    this.animTools.timeText.container.appendChild(lapse);
+    this.animTools.timeText.addClass('toolbar-animationButton');
+    this.animTools.addControl(this.animTools.timeText);
+
+    // timeline
+    this.animTools.timeline = new AVU.Control('toolbar-animationTimeline');
+    var input = this.animTools.input = document.createElement("input");
+    input.type = "range";
+    input.value = "0";
+    input.className = "animationTimeline";
+    this.animTools.timeline.container.appendChild(input);
+    input.addEventListener("input", function(e) {
+        var animator = viewer.impl.keyFrameAnimator;
+        if (animator !== undefined && animator) {
+            var time = input.value * animator.duration / 100;
+            lapse.value = convertSecsToHMS(time);
+            lapseLeft.value = convertSecsToHMS(time-animator.duration);
+            animator.goto(time);
+            that.updatePlayButton(animator.isPaused);
+            that.updateToolbarBackground();
+        }
+    });
+    // tooltip for slider
+    var inputTooltip = document.createElement("div");
+    inputTooltip.className = "adsk-control-tooltip";
+    inputTooltip.textContent = Autodesk.Viewing.i18n.translate("Click-drag to scrub");
+    this.animTools.timeline.container.appendChild(inputTooltip);
+    input.addEventListener("mouseover", function(event) {
+        if (event.target === input)
+            inputTooltip.style.visibility = "visible";
+    });
+    input.addEventListener("mouseout", function(event) {
+        if (event.target === input)
+            inputTooltip.style.visibility = "hidden";
+    });
+
+    this.animTools.timeline.addClass('toolbar-animationButton');
+    this.animTools.timeline.addClass('toolbar-animationTimeline');
+    this.animTools.addControl(this.animTools.timeline);
+
+    // remaining time lapse
+    this.animTools.timeLeftText = new AVU.Control('toolbar-animationRemainingTime');
+    var lapseLeft = this.animTools.lapseLeft = document.createElement("input");
+    lapseLeft.type = "text";
+    lapseLeft.value = "0";
+    lapseLeft.className = "animationTimeLapse";
+    lapseLeft.disabled = true;
+    this.animTools.timeLeftText.container.appendChild(lapseLeft);
+    this.animTools.timeLeftText.addClass('toolbar-animationButton');
+    this.animTools.addControl(this.animTools.timeLeftText);
+
+    // close button
+    this.animTools.closeButton = new AVU.Button('toolbar-animationClose');
+    this.animTools.closeButton.setToolTip('Close animation timeline');
+    this.animTools.closeButton.onClick = function() {
+        that.hideAnimateToolbar();
+    };
+    this.animTools.closeButton.setIcon('toolbar-animationCloseIcon');
+    this.animTools.closeButton.addClass('toolbar-animationButton');
+    this.animTools.addControl(this.animTools.closeButton);
 };
 
 //TODO: Is it really necessary to expose it other than to ExtensionManager?
@@ -69037,7 +69910,6 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.constructor = Aut
 Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.load = function() {
     var self = this;
     var viewer = this.viewer;
-    var toolbar = viewer.getToolbar(true);
     var AVU = Autodesk.Viewing.UI;
 
     // Register tool
@@ -69046,7 +69918,7 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.load = function()
 
     // Add UI
     // Add beeline button
-    this.createUI(toolbar);
+    this.createUI();
 
     // Add hotkey
     var previousTool;
@@ -69060,15 +69932,16 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.load = function()
         return true;
     }
     this.HOTKEYS_ID = "Autodesk.Beeline.Hotkeys";
-    var hotkeys = [];
-    hotkeys.push({
-        keycodes: [
-            Autodesk.Viewing.theHotkeyManager.KEYCODES.CONTROL,
-            Autodesk.Viewing.theHotkeyManager.KEYCODES.ALT
-        ],
-        onPress: onPress,
-        onRelease: onRelease
-    });
+    var hotkeys = [
+        {
+            keycodes: [
+                Autodesk.Viewing.theHotkeyManager.KEYCODES.CONTROL,
+                Autodesk.Viewing.theHotkeyManager.KEYCODES.ALT
+            ],
+            onPress: onPress,
+            onRelease: onRelease
+        }
+    ];
     Autodesk.Viewing.theHotkeyManager.pushHotkeys(this.HOTKEYS_ID, hotkeys);
 
     // Register listeners
@@ -69077,9 +69950,10 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.load = function()
             return;
         }
 
-        var state = e.active ? AVU.Button.State.ACTIVE : AVU.Button.State.INACTIVE;
-
-        self.beelineButton.setState(state);
+        if (self.beelineButton) {
+            var state = e.active ? AVU.Button.State.ACTIVE : AVU.Button.State.INACTIVE;
+            self.beelineButton.setState(state);
+        }
     };
 
     viewer.addEventListener(Autodesk.Viewing.TOOL_CHANGE_EVENT, this.onToolChanged);
@@ -69087,14 +69961,17 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.load = function()
     return true;
 };
 
-Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.createUI = function(toolbar)
+Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.createUI = function()
 {
+    var viewer = this.viewer;
+    if (!viewer.getToolbar || !viewer.getSettingsPanel) return; // Add support for Viewer3D instance
+
+    var toolbar = viewer.getToolbar(true);
+
     var AVU = Autodesk.Viewing.UI;
     var navTools = toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID);
 
     var beelineButtonId = "toolbar-beelineTool";
-
-    var viewer = this.viewer;
 
     /*var options = {
         defaultTooltipValue: "Walk to (double-click to Walk through)"
@@ -69154,15 +70031,20 @@ Autodesk.Viewing.Extensions.Beeline.BeelineExtension.prototype.unload = function
     Autodesk.Viewing.theHotkeyManager.popHotkeys(this.HOTKEYS_ID);
 
     // Remove the UI
-    var toolbar = viewer.getToolbar(false);
-    if (toolbar) {
-        toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID).removeControl(this.beelineButton.getId());
+    if (this.beelineButton) {
+        // Button is created only if toolbar API is available
+        var toolbar = viewer.getToolbar(false);
+        if (toolbar) {
+            toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID).removeControl(this.beelineButton.getId());
+        }
+        this.beelineButton = null;
     }
-    this.beelineButton = null;
 
     // Remove the options from the Viewer SettingsPanel.
-    this.viewer.getSettingsPanel(false).removeCheckbox(this.viewerOption_LookHorId);
-    this.viewer.getSettingsPanel(false).removeCheckbox(this.viewerOption_LookVertId);
+    if (viewer.getSettingsPanel) {
+        viewer.getSettingsPanel(false).removeCheckbox(this.viewerOption_LookHorId);
+        viewer.getSettingsPanel(false).removeCheckbox(this.viewerOption_LookVertId);
+    }
 
     //Uh, why does the viewer need to keep track of this in addition to the tool stack?
     if (viewer.getActiveNavigationTool() == this.tool.getName())
@@ -70024,10 +70906,18 @@ av.theExtensionManager.registerExtension('Autodesk.DefaultTools.NavTools', NavTo
 
 var avem = AutodeskNamespace('Autodesk.Viewing.Extensions.Measure'),
     av = Autodesk.Viewing,
-    avu = av.UI,
-    ave = av.Extensions;
-    
+    avu = av.UI;
 
+/**
+ * @class
+ * Extension used to support distance and angle measure for 2d and 3d models.
+ *
+ * @tutorial feature_measure
+ * @param {Autodesk.Viewing.Viewer3D} viewer - the viewer to be extended.
+ * @param {Object} options - An optional dictionary of options for this extension.
+ * @alias Autodesk.Viewing.Extensions.Measure.MeasureExtension
+ * @constructor
+*/
 var MeasureExtension = function(viewer, options) {
     Autodesk.Viewing.Extension.call(this, viewer, options);
 };
@@ -70042,6 +70932,10 @@ MeasureExtension.prototype.onToolbarCreated = function() {
     this.createUI();
 };
 
+/**
+ * Load measure extension.
+ * @returns {boolean} true if measure extension is loaded successfully.
+*/
 MeasureExtension.prototype.load = function() {
 
     var self   = this;
@@ -70057,7 +70951,6 @@ MeasureExtension.prototype.load = function() {
         self.enableMeasureTool(false);
     }});
     viewer.toolController.registerTool(this.tool);
-    //this.tool.register();
 
     if (this.viewer.toolbar) {
         this.createUI();
@@ -70066,12 +70959,13 @@ MeasureExtension.prototype.load = function() {
         this.viewer.addEventListener(av.TOOLBAR_CREATED_EVENT, this.bindedOnToolbarCreated);
     }
 
-    //this.snapper = new Autodesk.Viewing.Extensions.Measure.Snapper(viewer);
-    //viewer.toolController.registerTool(this.snapper);
-
     return true;
 };
 
+/**
+ * Unload measure extension.
+ * @returns {boolean} true if measure extension is unloaded successfully.
+*/
 MeasureExtension.prototype.unload = function () {
     var viewer = this.viewer;
 
@@ -70083,52 +70977,146 @@ MeasureExtension.prototype.unload = function () {
     }
 
     // Deregister tool
-    //this.tool.deregister();
     viewer.toolController.deregisterTool(this.tool);
     this.tool = null;
 
-    //viewer.toolController.deregisterTool(this.snapper);
-    //this.snapper = null;
-
     return true;
+};
+
+/**
+ * Whether the measure tool is currently active.
+ * @return {Boolean}
+ */
+MeasureExtension.prototype.isActive = function() {
+    return this.tool.isActive();
+};
+
+/**
+ * Enable/disable the measure tool.
+ * @param {boolean} active - true to activate, false to deactivate.
+ * @returns {boolean} true if a change in activeness occurred.
+ */
+MeasureExtension.prototype.setActive = function(active) {
+    return this.enableMeasureTool(active);
+};
+
+/**
+ * Toggles activeness of the measure tool.
+ *
+ * @return {Boolean} Whether the tool is active
+ */
+MeasureExtension.prototype.toggle = function() {
+    if (this.isActive()) {
+        this.enableMeasureTool(false);
+    } else {
+        this.enableMeasureTool(true);
+    }
+    return this.isActive();
+};
+
+/**
+ * Get the current measurement in the measure tool.
+ * @param {String} [unitType] - Optional measure unit, [ 'decimal-ft', 'ft', 'ft-and-decimal-in',
+ *                            'decimal-in', 'fractional-in', 'm', 'cm', 'mm', 'm-and-cm' ]
+ * @param {Number} [precision] - Optional measure precision index,  [ 0 - 0, 1 - 0.1, 2 - 0.01, 3 - 0.001, 4 - 0.0001, 5 - 0.00001 ]
+ *                             when units type is 'ft', 'in' or 'fractional-in' [ 0 - 1, 1 - 1/2, 2 - 1/4, 3 - 1/8, 4 - 1/16, 5 - 1/32, 6 - 1/64 ]
+ * @return {Object|null} Containing properties of the current measurement, or null.
+ */
+MeasureExtension.prototype.getMeasurement = function(unitType, precision) {
+    var measurement = null;
+    if (this.isActive()) {
+        measurement = this.tool.getMeasurement(unitType, precision);
+    }
+    return measurement;
+};
+
+/**
+ * Get all available units in measure tool.
+ *
+ * @return {Array} Containing all available units.
+*/
+MeasureExtension.prototype.getUnitOptions = function() {
+    var units = [
+        { name: 'Unknown', type: '' },
+        { name: 'Decimal feet', type: 'decimal-ft' },
+        { name: 'Feet and fractional inches', type: 'ft' },
+        { name: 'Feet and decimal inches', type: 'ft-and-decimal-in' },
+        { name: 'Decimal inches', type: 'decimal-in' },
+        { name: 'Fractional inches', type: 'fractional-in' },
+        { name: 'Meters', type: 'm' },
+        { name: 'Centimeters', type: 'cm' },
+        { name: 'Millimeters', type: 'mm' },
+        { name: 'Meters and centimeters', type: 'm-and-cm' }
+    ];
+
+    return units;
+};
+
+/**
+ * Get all available precisions in measure tool.
+ * @param {Boolean} isFractional - set true to get fractional precisions
+ * @return {Array} Containing all available precisions.
+*/
+MeasureExtension.prototype.getPrecisionOptions = function(isFractional) {
+
+    if (isFractional)
+        var precisions = ['1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/64'];
+    else
+        var precisions = ['0', '0.1', '0.01', '0.001', '0.0001', '0.00001'];
+
+    return precisions;
+};
+
+/**
+ * Get the default measure unit in measure tool.
+ *
+ * @return {String} The default measure unit.
+*/
+MeasureExtension.prototype.getDefaultUnit = function() {
+    var unit = this.viewer.model.getDisplayUnit();
+
+    return unit;
 };
 
 /**
  * Enable/disable the measure tool.
  * @param {boolean} enable - true to enable, false to disable.
  * @returns {boolean} true if the tool state was changed.
+ * @private
  */
 MeasureExtension.prototype.enableMeasureTool = function(enable) {
-    if (this.tool) {
-        var toolController = this.viewer.toolController,
-            isActive = this.tool.isActive();
+    var toolController = this.viewer.toolController,
+        isActive = this.tool.isActive();
 
-        if (enable && !isActive) {
-            toolController.activateTool("measure");
-            //toolController.activateTool("snapper");
+    if (enable && !isActive) {
+        toolController.activateTool("measure");
+        if (this.measureToolButton) {
             this.measureToolButton.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
-            return true;
-
-        } else if (!enable && isActive) {
-            toolController.deactivateTool("measure");
-            //toolController.deactivateTool("snapper");
-            this.measureToolButton.setState(Autodesk.Viewing.UI.Button.State.INACTIVE);
-            return true;
         }
+        return true;
+
+    } else if (!enable && isActive) {
+        toolController.deactivateTool("measure");
+        if (this.measureToolButton) {
+            this.measureToolButton.setState(Autodesk.Viewing.UI.Button.State.INACTIVE);
+        }
+        return true;
     }
     return false;
 };
 
+
+
+    /**
+ * Create measure button in toolbar.
+ * @private
+*/
 MeasureExtension.prototype.createUI = function()
 {
     var self   = this;
     var viewer = this.viewer;
 
     this.measureToolButton = null;
-
-    // Do not add Measure Tool for 2d.
-    //if (!viewer.model || viewer.model.is2d())
-    //    return;
 
     var toolbar = viewer.getToolbar(true);
     var modelTools = toolbar.getControl(av.TOOLBAR.MODELTOOLSID);
@@ -70164,6 +71152,10 @@ MeasureExtension.prototype.createUI = function()
     av.theHotkeyManager.pushHotkeys(this.escapeHotkeyId, hotkeys);
 };
 
+/**
+ * Destroy measure button in toolbar.
+ * @private
+*/
 MeasureExtension.prototype.destroyUI = function()
 {
     var viewer = this.viewer;
@@ -70193,7 +71185,6 @@ MeasureExtension.prototype.destroyUI = function()
 };
 
 avem.MeasureExtension = MeasureExtension;
-
 av.theExtensionManager.registerExtension('Autodesk.Measure', MeasureExtension);
 
 
@@ -70314,14 +71305,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
         _isDragging = false;
 
         if (!_units) {
-
-            if (_viewer.model && _viewer.model.is2d()) {
-                //Fusion360 request: set default units to millimeter.
-                _units = _viewer.model.getUnitString2d() || Autodesk.Viewing.ModelUnits.MILLIMETER;
-            }
-            else {
-                _units = _viewer.model.getUnitString();
-            }
+            _units = _viewer.model.getDisplayUnit();
         }
 
         if (_viewer.model && _viewer.model.is2d()) {
@@ -70408,6 +71392,34 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
     this.getAngle = function() {
 
             return Autodesk.Viewing.Private.formatValueWithUnits(_angle, String.fromCharCode(0xb0), 3, _precision);
+    };
+
+    /**
+     * TODO: We need to flesh out the return value here.
+     *
+     * @param unitType
+     * @param precision
+     * @returns {Object}
+     */
+    this.getMeasurement = function(unitType, precision) {
+
+        _units = unitType || _units;
+        _precision = precision || _precision;
+
+        var geomTypes = ['Vertex', 'Edge', 'Face', 'Circular Arc', 'Curved Edge', 'Curved Face'];
+
+        var measurement = {
+            from: geomTypes[this.getFirstGeometry().type],
+            to: geomTypes[this.getSecondGeometry().type],
+            distance: this.getDistance('xyz'),
+            deltaX: this.getDistance('x'),
+            deltaY: this.getDistance('y'),
+            deltaZ: this.getDistance('z'),
+            angle: this.getAngle(),
+            unitType: _units,
+            precision: _precision
+        };
+        return measurement;
     };
 
     this.clearMeasurement = function() {
@@ -70518,6 +71530,10 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
         return _indicator.getFaceArea(face);
     };
 
+    this.getCircularArcRadius = function (edge) {
+        return _indicator.getCircularArcRadius(edge);
+    };
+
     this.isolateMeasurement = function () {
         if (_firstClickNode && _secondClickNode) {
             var nodeList = [_firstClickNode, _secondClickNode];
@@ -70527,6 +71543,65 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
 
     this.clearIsolate = function() {
         _viewer.showAll();
+    };
+
+    this.isIdenticalEdges = function() {
+
+        if (_firstClick.vertices.length === _secondClick.vertices.length) {
+
+            for (var i = 0; i < _firstClick.vertices.length; i++) {
+                if (!_firstClick.vertices[i].equals(_secondClick.vertices[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return false;
+    };
+
+    this.isIdenticalFaces = function() {
+
+        if (_firstClick.faceId && _secondClick.faceId) {
+            if (_firstClick.fragId === _secondClick.fragId && _firstClick.faceId === _secondClick.faceId) {
+                return true;
+            }
+        }
+        else {
+            if (_firstClick.vertices.length === _secondClick.vertices.length) {
+
+                for (var i = 0; i < _firstClick.vertices.length; i++) {
+                    if (!_firstClick.vertices[i].equals(_secondClick.vertices[i])) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    this.isIdenticalGeometries = function() {
+
+        if (_firstClickGeometry === _secondClickGeometry) {
+
+            switch (_firstClickGeometry) {
+
+                case SNAP_VERTEX:
+                    if (_firstClick.equals(_secondClick))
+                        return true;
+                    break;
+                case SNAP_EDGE: return this.isIdenticalEdges(); break;
+                case SNAP_FACE: return this.isIdenticalFaces(); break;
+                case SNAP_CIRCULARARC: return this.isIdenticalEdges(); break;
+                case SNAP_CURVEDEDGE: return this.isIdenticalEdges(); break;
+                case SNAP_CURVEDFACE: return this.isIdenticalFaces(); break;
+                default: break;
+            }
+        }
+
+        return false;
     };
 
     // ------------------------
@@ -70564,7 +71639,10 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 }
                 else if (_firstClickGeometry === SNAP_CIRCULARARC) {
 
+                    // TODO: need to get rid of _firstCircularArcCenter, use _firstClick.center instead.
                     _firstCircularArcCenter = _snapper.getCircularArcCenter();
+                    _firstClick.center = _snapper.getCircularArcCenter();
+                    _firstClick.radius = _snapper.getCircularArcRadius();
                     _indicator.showFirstEdge(_firstClick, _firstIntersectPoint);
                 }
                 else if (_firstClickGeometry === SNAP_CURVEDFACE) {
@@ -70583,6 +71661,16 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 _secondIntersectPoint = _snapper.getIntersectPoint();
 
                 _secondClick = _snapper.getGeometry();
+
+                if (_secondClickGeometry === SNAP_CIRCULARARC) {
+                    _secondClick.center = _snapper.getCircularArcCenter();
+                    _secondClick.radius = _snapper.getCircularArcRadius();
+                }
+
+                // Do not measure between identical geometries since the measurement is always 0.
+                if (this.isIdenticalGeometries()) {
+                    return false;
+                }
 
                 if (_firstClickGeometry === SNAP_VERTEX && _secondClickGeometry === SNAP_VERTEX) { // do vertex to vertex measure
 
@@ -70849,7 +71937,13 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                         _distances.y = Math.abs(ep1.y - ep2.y);
                         _distances.z = Math.abs(ep1.z - ep2.z);
 
-                        if (_measurePanel) _measurePanel.showDistanceResult();
+                        if (_measurePanel) {
+                            // Add hideXYZ option because parallel faces should only display distance, not XYZ per Fusion's request
+                            if (_firstClickGeometry === SNAP_FACE && _secondClickGeometry === SNAP_FACE)
+                                _measurePanel.showDistanceResult(true);
+                            else
+                                _measurePanel.showDistanceResult();
+                        }
                     }
 
                     if (_measurePanel) {
@@ -70979,6 +72073,12 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
 
     this.handleDoubleTap = function(event) {
         return true;
+    };
+
+    this.handleResize = function() {
+        if (_indicator) {
+            _indicator.updateLabelPositions();
+        }
     };
 
     // Create UI and initially hide it.
@@ -71453,6 +72553,23 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             return Autodesk.Viewing.Private.formatValueWithUnits(length, _units, 3, _precision);
         };
 
+        this.getCircularArcRadius = function(edge) {
+
+            var radius = edge.radius;
+
+            if (radius) {
+                if (_viewer.model.is2d()) {
+                    var pt1 = edge.center.clone();
+                    var pt2 = edge.vertices[0].clone();
+                    _viewer.model.pageToModel(pt1, pt2, _firstViewportIndex);
+                    radius = pt1.distanceTo(pt2);
+                }
+
+                radius = Autodesk.Viewing.Private.convertUnits(_viewer.model.getUnitString(), _units, radius);
+                return Autodesk.Viewing.Private.formatValueWithUnits(radius, _units, 3, _precision);
+            }
+        };
+
         this.getFaceArea = function(face) {
 
             var area = 0;
@@ -71681,7 +72798,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
         };
 
         // Draw distance measurement
-        this.drawLine = function( p1, p2 )
+        this.drawLine = function( p1, p2, /*optional*/ hideXYZ )
         {
             function updateLine(name, x1, y1, z1, x2, y2, z2, showAxis) {
                 var item = _lines[name],
@@ -71798,7 +72915,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 y = Math.abs(up.y),
                 z = Math.abs(up.z);
 
-            var showAxis = displayAxis(p1, p2);
+            var showAxis = hideXYZ ? false : displayAxis(p1, p2);
 
             if (z > x && z > y) { // z up
                 updateLine('x', p1.x, p1.y, p1.z, p2.x, p1.y, p1.z, showAxis);
@@ -72297,7 +73414,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 this.drawExtensionFace(extendFace, p1, n1);
                 //this.drawExtensionLinePointToPoint(p1, X0);
 
-                this.drawLine(p2, X0);
+                this.drawLine(p2, X0, true);
                 return [p2, X0, angle];
             }
             else {
@@ -73840,9 +74957,10 @@ var MeasurePanel = function(measureTool, viewer, id, title, options)
 
     this.units = [
         { name: 'Unknown', units: '', matches: [''] },                                      // localized in OptionDropDown() call below
-        { name: 'Decimal feet', units: 'decimal-ft', matches: ['decimal-ft'] },             // localized in OptionDropDown() call below
-        { name: 'Feet and fractional inches', units: 'ft', matches: ['ft', 'in'] },         // localized in OptionDropDown() call below
-        { name: 'Decimal inches', units: 'decimal-in', matches: ['decimal-in'] },           // localized in OptionDropDown() call below
+        { name: 'Decimal feet', units: 'decimal-ft', matches: ['ft', 'decimal-ft'] },             // localized in OptionDropDown() call below
+        { name: 'Feet and fractional inches', units: 'ft-and-fractional-in', matches: ['ft-and-fractional-in'] },         // localized in OptionDropDown() call below
+        { name: 'Feet and decimal inches', units: 'ft-and-decimal-in', matches: ['ft-and-decimal-in'] }, // localized in OptionDropDown() call below
+        { name: 'Decimal inches', units: 'decimal-in', matches: ['in', 'decimal-in'] },           // localized in OptionDropDown() call below
         { name: 'Fractional inches', units: 'fractional-in', matches: ['fractional-in'] },  // localized in OptionDropDown() call below
         { name: 'Meters', units: 'm', matches: ['m'] },                                     // localized in OptionDropDown() call below
         { name: 'Centimeters', units: 'cm', matches: ['cm'] },                              // localized in OptionDropDown() call below
@@ -73863,6 +74981,9 @@ var MeasurePanel = function(measureTool, viewer, id, title, options)
         self.measureTool.setUnits(toUnits);
         self.updatePanel();
         self.setupPrecision();
+        if (avp.logger) {
+            avp.logger.log({ category: 'pref_changed', name: 'measure/units', value: toUnits });
+        }
     });
 
     this.precisionList = new avp.OptionDropDown("Precision", this.tbody, [], -1);
@@ -73870,6 +74991,9 @@ var MeasurePanel = function(measureTool, viewer, id, title, options)
         var index = self.precisionList.selectedIndex;
         self.measureTool.setPrecision(index);
         self.updatePanel();
+        if (avp.logger) {
+            avp.logger.log({ category: 'pref_changed', name: 'measure/precision', value: index });
+        }
     });
     this.setupPrecision();
 
@@ -73882,6 +75006,9 @@ var MeasurePanel = function(measureTool, viewer, id, title, options)
         }
         else {
             self.measureTool.clearIsolate();
+        }
+        if (avp.logger) {
+            avp.logger.log({ category: 'pref_changed', name: 'measure/isolate', value: enable });
         }
     });
 
@@ -73980,9 +75107,7 @@ MeasurePanel.prototype.setupPrecision = function setupPrecision () {
     var selectedUnits = this.measureTool.getUnits(),
         precisions;
 
-    if (selectedUnits === 'ft' ||
-        selectedUnits === 'in' ||
-        selectedUnits === 'fractional-in') {
+    if (selectedUnits === 'ft-and-fractional-in' || selectedUnits === 'fractional-in') {
         precisions = ['1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/64'];
     } else {
         precisions = ['0', '0.1', '0.01', '0.001', '0.0001', '0.00001'];
@@ -74093,21 +75218,34 @@ MeasurePanel.prototype.updatePanel = function updatePanel() {
 
 };
 
-MeasurePanel.prototype.showDistanceResult = function showDistanceResult() {
+MeasurePanel.prototype.showDistanceResult = function showDistanceResult(/*optional*/hideXYZ) {
     this.results.style.display = "block";
     this.initialDiv.style.display = "none";
     this.angleDiv.style.display = "none";
     this.angleIcon.style.display = "none";
     this.distanceDiv.style.display = "inline-block";
     this.distIcon.style.display = "inline-block";
-    this.deltaButton.style.display = "inline-block";
-    if (this.isDeltaExpanded) {
-        this.deltaXDiv.style.display = "block";
-        this.deltaYDiv.style.display = "block";
-        if (this.viewer.model && !this.viewer.model.is2d()) {
-            this.deltaZDiv.style.display = "block";
+
+    // Add hideXYZ option because parallel faces should only display distance, not XYZ per Fusion's request
+    if (!hideXYZ) {
+        this.deltaButton.style.display = "inline-block";
+        if (this.isDeltaExpanded) {
+            this.deltaXDiv.style.display = "block";
+            this.deltaYDiv.style.display = "block";
+            if (this.viewer.model && !this.viewer.model.is2d()) {
+                this.deltaZDiv.style.display = "block";
+            }
         }
     }
+    else {
+        this.deltaButton.style.display = "none";
+        if (this.isDeltaExpanded) {
+            this.deltaXDiv.style.display = "none";
+            this.deltaYDiv.style.display = "none";
+            this.deltaZDiv.style.display = "none";
+        }
+    }
+
     this.resizeToContent();
 };
 
@@ -74143,19 +75281,22 @@ MeasurePanel.prototype.showSelection1 = function showSelection1() {
     else if (result.type === SNAP_EDGE || result.type === SNAP_CURVEDEDGE) { // Edge
 
         this.selection1Result.setAttribute("data-i18n", "Edge");
-        this.selection1Result.textContent = av.i18n.translate("Edge") + " - ~ " + this.measureTool.getEdgeLength(result.geometry);
+        this.selection1Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getEdgeLength(result.geometry);
         this.selection1Result.style.display = "inline-block";
     }
     else if (result.type === SNAP_FACE || result.type === SNAP_CURVEDFACE) { // Face
 
         this.selection1Result.setAttribute("data-i18n", "Face");
-        this.selection1Result.textContent = av.i18n.translate("Face") + " - ~ " + this.measureTool.getFaceArea(result.geometry);
+        this.selection1Result.textContent = av.i18n.translate("Face") + " ~ " + this.measureTool.getFaceArea(result.geometry);
         this.selection1Result.style.display = "inline-block";
     }
     else if (result.type === SNAP_CIRCULARARC) { // Circular Arc
 
         this.selection1Result.setAttribute("data-i18n", "Edge");
-        this.selection1Result.textContent = av.i18n.translate("Edge") + " - ~ " + this.measureTool.getEdgeLength(result.geometry);
+        if (result.geometry.radius)
+            this.selection1Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getCircularArcRadius(result.geometry) + " (R)";
+        else
+            this.selection1Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getEdgeLength(result.geometry);
         this.selection1Result.style.display = "inline-block";
     }
 
@@ -74179,19 +75320,22 @@ MeasurePanel.prototype.showSelection2 = function showSelection2() {
     else if (result.type === SNAP_EDGE || result.type === SNAP_CURVEDEDGE) { // Edge
 
         this.selection2Result.setAttribute("data-i18n", "Edge");
-        this.selection2Result.textContent = av.i18n.translate("Edge") + " - ~ " + this.measureTool.getEdgeLength(result.geometry);
+        this.selection2Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getEdgeLength(result.geometry);
         this.selection2Result.style.display = "inline-block";
     }
     else if (result.type === SNAP_FACE || result.type === SNAP_CURVEDFACE) { // Face
 
         this.selection2Result.setAttribute("data-i18n", "Face");
-        this.selection2Result.textContent = av.i18n.translate("Face") + " - ~ " + this.measureTool.getFaceArea(result.geometry);
+        this.selection2Result.textContent = av.i18n.translate("Face") + " ~ " + this.measureTool.getFaceArea(result.geometry);
         this.selection2Result.style.display = "inline-block";
     }
     else if (result.type === SNAP_CIRCULARARC) { // Circular Arc
 
         this.selection2Result.setAttribute("data-i18n", "Edge");
-        this.selection2Result.textContent = av.i18n.translate("Edge") + " - ~ " + this.measureTool.getEdgeLength(result.geometry);
+        if (result.geometry.radius)
+            this.selection2Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getCircularArcRadius(result.geometry) + " (R)";
+        else
+            this.selection2Result.textContent = av.i18n.translate("Edge") + " ~ " + this.measureTool.getEdgeLength(result.geometry);
         this.selection2Result.style.display = "inline-block";
     }
 
@@ -74274,7 +75418,8 @@ MeasurePanel.prototype.clearResult = function clearResult() {
 
 avem.MeasurePanel = MeasurePanel;
 
-})();;AutodeskNamespace('Autodesk.Viewing.Extensions.Measure');
+})();
+;AutodeskNamespace('Autodesk.Viewing.Extensions.Measure');
 
 var SNAP_VERTEX = 0;
 var SNAP_EDGE = 1;
@@ -74320,6 +75465,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
     var _viewportIndex2d = null;
 
     var _circularArcCenter = null;
+    var _circularArcRadius = null;
 
     this.isActive = function() {
         return _active;
@@ -74420,6 +75566,10 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
         return _circularArcCenter;
     };
 
+    this.getCircularArcRadius = function() {
+        return _circularArcRadius;
+    };
+
     this.getDetectRadius = function() {
         return _radius;
     };
@@ -74505,6 +75655,10 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 if (!_geomFace) {
                     _geomFace = this.faceSnappingWithTopology(face, geometry, facesTopology, mesh);
 
+                    if (_geomFace) {
+                        _geomFace.fragId = fragId;
+                    }
+
                     var normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
                     _faceNormal = face.normal.applyMatrix3(normalMatrix).normalize();
                 }
@@ -74534,6 +75688,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                     var center = this.edgeIsCircle(_geomEdge);
                     if (center) {
                         _circularArcCenter = center;
+                        _circularArcRadius = center.distanceTo(_geomEdge.vertices[0]);
                         _geomHighlighted = SNAP_CIRCULARARC;
                     }
                     else if (this.edgeIsCurved(_geomEdge)) {
@@ -74628,6 +75783,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
             for (var i = 0; i < facesTopology.length; i++) {
 
                 var indexList = facesTopology[i].indexList;
+                var faceId = facesTopology[i].id;
                 for (var j = 0; j < indexList.length; j += 3) {
 
                     if (face.a === indexList[j]) {
@@ -74686,6 +75842,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
 
         if (geom.vertices.length > 0) {
 
+            geom.faceId = faceId;
             geom.applyMatrix(mesh.matrixWorld);
             return geom;
         }
@@ -75316,6 +76473,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
         this.lineGeom = new THREE.Geometry();
         this.circularArc = null;
         this.circularArcCenter;
+        this.circularArcRadius;
         this.ellipticalArc = null;
         this.ellipticalArcCenter;
 
@@ -75371,6 +76529,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
             arc.applyMatrix(new THREE.Matrix4().makeTranslation(cx, cy, intersectPoint.z));
             this.circularArc = arc;
             this.circularArcCenter = new THREE.Vector3(cx, cy, intersectPoint.z);
+            this.circularArcRadius = radius;
 
             this.vpIdCircular = vpId;
         }
@@ -75472,6 +76631,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 _geomEdge = gc.circularArc;
                 this.drawLine(_geomEdge);
                 _circularArcCenter = gc.circularArcCenter;
+                _circularArcRadius = gc.circularArcRadius;
                 _geomHighlighted = SNAP_CIRCULARARC;
             }
 
@@ -75501,6 +76661,7 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 this.drawLine(_geomEdge);
                 // Before we have measure design for elliptical arc, measure the center for now
                 _circularArcCenter = gc.ellipticalArcCenter;
+                _circularArcRadius = null;
                 _geomHighlighted = SNAP_CIRCULARARC;
             }
 
@@ -75900,12 +77061,12 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
  * First Person View tool for LMV
  *
  * This tool provides a first person view with movement using the standard WASD keys
- * to foreward/backward/left/right and the QE keys to move vertically.  The mouse or
- * cursor is used to orient the view.  Movement is always along or perpindicular to
+ * to forward/backward/left/right and the QE keys to move vertically.  The mouse or
+ * cursor is used to orient the view.  Movement is always along or perpendicular to
  * the view direction.
  *
  * The SHIFT key may be used when moving to increase the speed.  Or the default
- * movement speed may be increased/descreased with the MINUS or EQUAL keys.  The
+ * movement speed may be increased/decreased with the MINUS or EQUAL keys.  The
  * ZERO (0) will reset to the default speed values.
  *
  * @author Hans Kellner (Oct 2014)
@@ -76051,7 +77212,9 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
 
         addCrosshair();
 
-        _gamepadModule.activate(this.getName());
+        if (_gamepadModule) {
+            _gamepadModule.activate(this.getName());
+        }
     };
 
     this.deactivate = function(name)
@@ -76098,7 +77261,7 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
     function getEventModifierState(event)
     {
         if ( !!_touchType )
-            return true;
+            return false;
 
         var ctrlKey = event.ctrlKey || (_isMac && event.metaKey);
         var metaKey = event.metaKey && !_isMac;
@@ -76113,6 +77276,12 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
 
     this.handleGesture = function( event )
     {
+        // Convert Hammer touch-event X,Y into mouse-event X,Y.
+        if (event.pointers && event.pointers.length > 0) {
+            event.pageX = event.pointers[0].pageX;
+            event.pageY = event.pointers[0].pageY;
+        }
+
         switch( event.type )
         {
             case "dragstart":
@@ -76152,6 +77321,9 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
 
             _mouseXstart = event.pageX - window.innerWidth / 2;
             _mouseYstart = event.pageY - window.innerHeight / 2;
+
+            _lastX = event.pageX;
+            _lastY = event.pageY;
 
             _deltaYaw = _deltaPitch = 0;
             _mouseDX = _mouseDY = 0;
@@ -76430,10 +77602,7 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
         }
 
         if ( _moveForward ) {
-            console.log("PUSH");
-            console.log(localCam.position);
             localCam.translateZ(-actualMoveSpeed);
-            console.log(localCam.position);
         }
 
         if ( _moveBackward ) {
@@ -76671,7 +77840,9 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
     };
 
     removeCrosshair = function() {
-        if (this.crosshair) this.crosshair.remove();
+        if (this.crosshair && this.crosshair.parentNode) {
+             this.crosshair.parentNode.removeChild(this.crosshair);
+        }
     };
 };
 
@@ -76686,6 +77857,16 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
 
 AutodeskNamespace('Autodesk.Viewing.Extensions.FirstPerson');
 
+    /**
+     * @class
+     * Activates a First Person navigation tool, similar to those found in videogames.<br>
+     * It will also replace the default walk tool button when GuiViewer3D is present.
+     *
+     * @extends {Autodesk.Viewing.Extension}
+     * @param {Autodesk.Viewing.Viewer3D} viewer
+     * @param {Object} [options] - not used
+     * @constructor
+     */
 Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension = function(viewer, options) {
     Autodesk.Viewing.Extension.call(this, viewer, options);
 };
@@ -76696,7 +77877,6 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.construct
 Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.load = function() {
     var self = this;
     var viewer = this.viewer;
-    var toolbar = viewer.getToolbar(true);
     var avu = Autodesk.Viewing.UI;
 
     // Register tool
@@ -76704,17 +77884,17 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.load = fu
     viewer.toolController.registerTool(this.tool);
 
     // Add the ui to the viewer.
-    this.createUI(toolbar);
+    this.createUI();
 
     // Register listeners
     this.onToolChanged = function (e) {
         if (e.toolName.indexOf('firstperson') === -1) {
             return;
         }
-
-        var state = e.active ? avu.Button.State.ACTIVE : avu.Button.State.INACTIVE;
-
-        self.firstPersonToolButton.setState(state);
+        if (self.firstPersonToolButton) {
+            var state = e.active ? avu.Button.State.ACTIVE : avu.Button.State.INACTIVE;
+            self.firstPersonToolButton.setState(state);
+        }
     };
 
     viewer.addEventListener(Autodesk.Viewing.TOOL_CHANGE_EVENT, this.onToolChanged);
@@ -76722,12 +77902,14 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.load = fu
     return true;
 };
 
-Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.createUI = function(toolbar)
+Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.createUI = function()
 {
-    var self   = this;
     var viewer = this.viewer;
-    var avu = Autodesk.Viewing.UI;
+    if (!viewer.getToolbar) return; // Adds support for Viewer3D instance
 
+    var self   = this;
+    var avu = Autodesk.Viewing.UI;
+    var toolbar = viewer.getToolbar(true);
     var navTools = toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID);
 
     // Create a button for the tool.
@@ -76763,11 +77945,13 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonExtension.prototype.unload = 
     Autodesk.Viewing.theHotkeyManager.popHotkeys(this.HOTKEYS_ID);
 
     // Remove the UI
-    var toolbar = viewer.getToolbar(false);
-    if (toolbar) {
-        toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID).removeControl(this.firstPersonToolButton.getId());
+    if (this.firstPersonToolButton) {
+        var toolbar = viewer.getToolbar(false);
+        if (toolbar) {
+            toolbar.getControl(Autodesk.Viewing.TOOLBAR.NAVTOOLSID).removeControl(this.firstPersonToolButton.getId());
+        }
+        this.firstPersonToolButton = null;
     }
-    this.firstPersonToolButton = null;
 
     //Uh, why does the viewer need to keep track of this in addition to the tool stack?
     if (viewer.getActiveNavigationTool() == this.tool.getName())
@@ -78899,7 +80083,7 @@ AutodeskNamespace('Autodesk.Viewing.Private.Collaboration');
 
             function popupRemover() {
                 if (panel) panel.setVisible(false);
-                scope.p2p.removeEventListener(popupRemover);
+                scope.p2p.removeEventListener("dataChannelAdded", popupRemover);
                 scope.addCrosshair();
             }
             scope.p2p.addEventListener("dataChannelAdded", popupRemover);
@@ -78925,7 +80109,8 @@ AutodeskNamespace('Autodesk.Viewing.Private.Collaboration');
 
 
 
-})();;(function(){
+})();
+;(function(){
 
 AutodeskNamespace('Autodesk.Viewing.Extensions.GamepadModule');
 
@@ -79471,35 +80656,33 @@ Autodesk.Viewing.Extensions.Section.SectionExtension = function(viewer, options)
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype = Object.create(Autodesk.Viewing.Extension.prototype);
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.constructor = Autodesk.Viewing.Extensions.Section.SectionExtension;
 
+
+/**
+ * Registers the SectionTool, hotkeys and event handlers.
+ *
+ * @returns {boolean}
+ */
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.load = function() {
     var that = this;
     var viewer = this.viewer;
 
     this.tool = new Autodesk.Viewing.Extensions.Section.SectionTool(viewer);
     viewer.toolController.registerTool(this.tool);
+    this.sectionStyle = null;
+    this.supportedStyles = ["X", "Y", "Z", "BOX"];
 
-    var toolbar = viewer.getToolbar ? viewer.getToolbar(true) : undefined;
-    if (toolbar) {
-        var modelTools = toolbar.getControl(Autodesk.Viewing.TOOLBAR.MODELTOOLSID);
-        if (modelTools && modelTools.getNumberOfControls() > 0) {
-            onToolbarCreated();
+    if (viewer.getToolbar) {
+        var toolbar = viewer.getToolbar(true);
+        if (toolbar) {
+            this.onToolbarCreated();
         } else {
-            viewer.addEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, onToolbarCreated);
+            this.onToolbarCreatedBinded = this.onToolbarCreated.bind(this);
+            viewer.addEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
         }
-    } else {
-        viewer.addEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, onToolbarCreated);
     }
 
-    function onToolbarCreated() {
-        viewer.removeEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, onToolbarCreated);
-        that.createUI();
-    }
-
-    viewer.addEventListener(Autodesk.Viewing.RESET_EVENT, function () {
-        if (that.tool) {
-            that.tool.resetSection();
-        }
-    });
+    this.onResetBinded = this.onReset.bind(this);
+    viewer.addEventListener(Autodesk.Viewing.RESET_EVENT, this.onResetBinded);
 
     this.HOTKEYS_ID = "Autodesk.Section.Hotkeys";
     var hotkeys = [{
@@ -79515,29 +80698,148 @@ Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.load = function()
     return true;
 };
 
-Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.enableSectionTool = function(enable) {
-    if (this.tool) {
-        var toolController = this.viewer.toolController,
-            isActive = this.tool.isActive();
+/**
+ * Unregisters the SectionTool, hotkeys and event handlers.
+ *
+ * @returns {boolean}
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.unload = function () {
+    var viewer = this.viewer;
 
-        if (enable && !isActive) {
-            toolController.activateTool("section");
-            this.sectionToolButton.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
-            return true;
+    // remove hotkey
+    Autodesk.Viewing.theHotkeyManager.popHotkeys(this.HOTKEYS_ID);
 
-        } else if (!enable && isActive) {
-            toolController.deactivateTool("section");
-            this.sectionToolButton.setState(Autodesk.Viewing.UI.Button.State.INACTIVE);
-            return true;
+    this.destroyUI();
+
+    viewer.removeEventListener(Autodesk.Viewing.RESET_EVENT, this.onResetBinded);
+    this.onResetBinded = null;
+
+    if (this.onToolbarCreatedBinded) {
+        viewer.removeEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
+        this.onToolbarCreatedBinded = null;
+    }
+
+    viewer.toolController.deregisterTool(this.tool);
+    this.tool = null;
+
+    return true;
+};
+
+/**
+ * Whether the section planes are active or not.
+ *
+ * @returns {boolean}
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.isActive = function() {
+    return this.tool.isActive();
+};
+
+/**
+ * Toggles activeness of section planes.
+ *
+ * @returns {boolean} Whether the section plane is active or not.
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.toggle = function() {
+    if (this.isActive()) {
+        this.enableSectionTool(false);
+    } else {
+        var style = this.sectionStyle || "X";
+        this.setSectionStyle(style, true);
+    }
+    return this.isActive(); // Need to check for isActive() again.
+};
+
+/**
+ * Returns the current type of plane that will cut-though the geometry.
+ *
+ * @returns {null|String} Either "X" or "Y" or "Z" or "BOX" or null.
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.getSectionStyle = function() {
+    return this.sectionStyle;
+};
+
+/**
+ * Sets the Section plane style.
+ *
+ * @param {String} style - Accepted values are 'X', 'Y', 'Z' and 'BOX' (in Caps)
+ * @param {Boolean} [preserveSection] - Whether sending the current style value resets the cut planes.
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.setSectionStyle = function(style, preserveSection) {
+
+    if (this.supportedStyles.indexOf(style) === -1) {
+        return false;
+    }
+
+    var bActive = this.isActive();
+    var bNewStyle = (this.sectionStyle !== style) || !preserveSection;
+    this.sectionStyle = style;
+
+    if (bActive && bNewStyle) {
+        this.tool.setSection(style);
+    }
+    else if (!bActive) {
+        this.enableSectionTool(true);
+        if (bNewStyle) {
+            this.tool.setSection(style);
+        } else {
+            this.tool.attachControl(true);
         }
+    }
+    return true;
+};
+
+
+/**
+ *
+ * @param enable
+ * @returns {boolean}
+ * @private
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.enableSectionTool = function(enable) {
+    var toolController = this.viewer.toolController,
+        isActive = this.tool.isActive();
+
+    if (enable && !isActive) {
+        toolController.activateTool("section");
+        if (this.sectionToolButton) {
+            this.sectionToolButton.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
+        }
+        return true;
+
+    } else if (!enable && isActive) {
+        toolController.deactivateTool("section");
+        if (this.sectionToolButton) {
+            this.sectionToolButton.setState(Autodesk.Viewing.UI.Button.State.INACTIVE);
+        }
+        return true;
     }
     return false;
 };
 
+/**
+ * @private
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.onToolbarCreated = function() {
+    if (this.onToolbarCreatedBinded) {
+        this.viewer.removeEventListener(Autodesk.Viewing.TOOLBAR_CREATED_EVENT, this.onToolbarCreatedBinded);
+        this.onToolbarCreatedBinded = null;
+    }
+    this.createUI();
+};
+
+/**
+ * @private
+ */
+Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.onReset = function() {
+    this.tool.resetSection();
+};
+
+/***
+ * @private
+ */
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.createUI = function()
 {
     var viewer = this.viewer;
-    var that = this;
     var AVU = Autodesk.Viewing.UI;
 
     this.sectionToolButton = new AVU.ComboButton("toolbar-sectionTool");
@@ -79558,6 +80860,11 @@ Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.createUI = functi
     }
 };
 
+/**
+ *
+ * @param parentButton
+ * @private
+ */
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.createSubmenu = function(parentButton)
 {
     var that = this;
@@ -79579,6 +80886,7 @@ Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.createSubmenu = f
                 button.setState(AVU.Button.State.INACTIVE);
                 that.enableSectionTool(false);
             }
+            that.sectionStyle = name;
         };
     }
 
@@ -79653,6 +80961,9 @@ Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.createSubmenu = f
     viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, updateSectionButtons);
 };
 
+/**
+ * @private
+ */
 Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.destroyUI = function()
 {
     var viewer = this.viewer;
@@ -79670,20 +80981,6 @@ Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.destroyUI = funct
             this.sectionToolButton = null;
         }
     }
-};
-
-Autodesk.Viewing.Extensions.Section.SectionExtension.prototype.unload = function () {
-    var viewer = this.viewer;
-
-    // remove hotkey
-    Autodesk.Viewing.theHotkeyManager.popHotkeys(this.HOTKEYS_ID);
-
-    this.destroyUI();
-
-    viewer.toolController.deregisterTool(this.tool);
-    this.tool = null;
-
-    return true;
 };
 
 Autodesk.Viewing.theExtensionManager.registerExtension('Autodesk.Section', Autodesk.Viewing.Extensions.Section.SectionExtension);
@@ -79791,6 +81088,8 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
 
     function updateSections() {
         if (_sectionPlanes.length === 1) {
+            updatePlaneMeshes(true);
+            updateControls();
             updateCapMeshes(new THREE.Plane().setComponents(_sectionPlanes[0].x, _sectionPlanes[0].y, _sectionPlanes[0].z, _sectionPlanes[0].w));
         }
     }
@@ -79820,11 +81119,7 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
         init_three_triangulator();
         init_three_intersector();
     
-        var it = _viewer.model.getData().instanceTree;
-        if (!it)
-            return;
-        var frags = _viewer.model.getFragmentList();
-    
+
         var oldsection = _viewer.sceneAfter.getObjectByName("section");
         if (oldsection)
             _viewer.sceneAfter.remove(oldsection);
@@ -79860,208 +81155,225 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
         //half a percent of the model size is what we do here.
         var lineWidth = 0.5 * 5e-5 * worldBox.size().length();
 
-        //We have to go node by node and combine the fragments for each node into
-        //a single 2D slice polygon.
-        it.enumNodeChildren(_viewer.model.getRootId(), function(dbId) {
+        var models = _viewer.modelQueue().getModels();
 
-            if (it.isNodeHidden(dbId) || it.isNodeOff(dbId)) {
+        models.forEach(function(model) {
+
+            var it = model.getData().instanceTree;
+            if (!it)
                 return;
-            }
+            var frags = model.getFragmentList();
 
-            var intersects = [];
-            var m;
+            //We have to go node by node and combine the fragments for each node into
+            //a single 2D slice polygon.
+            it.enumNodeChildren(model.getRootId(), function(dbId) {
 
-            //All fragments that belong to the same node make part of the
-            //same object so we have to accumulate all their intersections into one list
-            it.enumNodeFragments(dbId, function(fragId) { 
-            
-                frags.getWorldBounds(fragId, box);
-                if (!avp.Intersector.intersectBoxPlane(plane, box))
+                if (it.isNodeHidden(dbId) || it.isNodeOff(dbId)) {
                     return;
-
-                m = frags.getVizmesh(fragId);
-
-                if (!m.geometry)
-                    return;
-                if (m.geometry.is2d || m.geometry.isLines)
-                    return;
-
-                avp.Intersector.intersectMeshPlane(plane, m, intersects);
-
-             }, false);
-
-
-            if (intersects.length) {
-
-                var bbox = new THREE.Box3();
-                avp.Intersector.convertToPlaneCoords(toPlaneCoords, intersects, bbox);
-
-                //Create the 2D line geometry
-                var vbb = new avp.VertexBufferBuilder(false, 8 * intersects.length);
-
-                var color = getDiffuseColor(m.material);
-                var r = 0|(color.r * 0.25)*255.5;
-                var g = 0|(color.g * 0.25)*255.5;
-                var b = 0|(color.b * 0.25)*255.5;
-
-                var c = 0xff000000 | (b<<16) | (g<<8) | r;
-
-                var cset = new avp.Triangulator.ContourSet(intersects, bbox);
-                cset.snapEdges();
-                cset.sanitizeEdges();
-                cset.stitchContours();
-
-                for (var j=0; j<cset.contours.length; j++) {
-
-                    var cntr = cset.contours[j];
-
-                    var r = 0|Math.random()*255.5;
-                    var g = 0|Math.random()*255.5;
-                    var b = 0|Math.random()*255.5;
-                    var rc = 0xff000000 | (b<<16) | (g<<8) | r;
-
-                    var isClosed = (cntr[0] === cntr[cntr.length-1]);
-
-                    for (var k=1; k<cntr.length; k++) {
-                        var pt1 = cset.pts[cntr[k-1]];
-                        var pt2 = cset.pts[cntr[k]];
-                        vbb.addSegment(pt1.x, pt1.y, pt2.x, pt2.y, 0, 0.01, /*isClosed ? c : rc*/c, dbId, 0);
-                    }
-
                 }
 
+                var intersects = [];
+                var m;
 
-                var mdata = { mesh: vbb.toMesh() };
+                //All fragments that belong to the same node make part of the
+                //same object so we have to accumulate all their intersections into one list
+                it.enumNodeFragments(dbId, function(fragId) {
 
-                BufferGeometryUtils.meshToGeometry(mdata);
+                    frags.getWorldBounds(fragId, box);
+                    if (!avp.Intersector.intersectBoxPlane(plane, box))
+                        return;
 
-                var bg2d = mdata.geometry;
-                bg2d.streamingDraw = true;
-                bg2d.streamingIndex = true;
+                    m = frags.getVizmesh(fragId);
 
-                var mesh2d = new THREE.Mesh(bg2d, mat2d);
+                    if (!m.geometry)
+                        return;
+                    if (m.geometry.is2d || m.geometry.isLines)
+                        return;
+                    if (!m.material.cutplanes)
+                        return;
 
-                mesh2d.matrix.copy(fromPaneCoords);
-                mesh2d.matrixAutoUpdate = false;
-                mesh2d.frustumCulled = false;
-                section2D.add(mesh2d);
+                    avp.Intersector.intersectMeshPlane(plane, m, intersects);
+
+                 }, false);
 
 
-                //Create triangulated capping polygon
-                if (true) {
+                if (intersects.length) {
 
-                    //Create the 3D mesh
-                    var tin = new avp.Triangulator.TriangulatedSurface(cset);
+                    var bbox = new THREE.Box3();
+                    avp.Intersector.convertToPlaneCoords(toPlaneCoords, intersects, bbox);
 
-                    if (tin.indices.length) {
+                    //Create the 2D line geometry
+                    var vbb = new avp.VertexBufferBuilder(false, 8 * intersects.length);
 
-                        var bg = new THREE.BufferGeometry();
+                    var color = getDiffuseColor(m.material);
+                    var r = 0|(color.r * 0.25)*255.5;
+                    var g = 0|(color.g * 0.25)*255.5;
+                    var b = 0|(color.b * 0.25)*255.5;
 
-                        var pos = new Float32Array(3*tin.pts.length);
-                        for (var j=0; j<tin.pts.length; j++) {
-                            pos[3*j] = tin.pts[j].x;
-                            pos[3*j+1] = tin.pts[j].y;
-                            pos[3*j+2] = 0;
+                    var c = 0xff000000 | (b<<16) | (g<<8) | r;
+
+                    var cset = new avp.Triangulator.ContourSet(intersects, bbox);
+                    cset.snapEdges();
+                    cset.sanitizeEdges();
+                    cset.stitchContours();
+
+                    for (var j=0; j<cset.contours.length; j++) {
+
+                        var cntr = cset.contours[j];
+
+                        var r = 0|Math.random()*255.5;
+                        var g = 0|Math.random()*255.5;
+                        var b = 0|Math.random()*255.5;
+                        var rc = 0xff000000 | (b<<16) | (g<<8) | r;
+
+                        var isClosed = (cntr[0] === cntr[cntr.length-1]);
+
+                        for (var k=1; k<cntr.length; k++) {
+                            var pt1 = cset.pts[cntr[k-1]];
+                            var pt2 = cset.pts[cntr[k]];
+                            vbb.addSegment(pt1.x, pt1.y, pt2.x, pt2.y, 0, 0.02, /*isClosed ? c : rc*/c, dbId, 0);
                         }
-                        bg.addAttribute("position", new THREE.BufferAttribute(pos, 3));
 
-                        var packNormals = m.material.packedNormals;
-                        var normal = packNormals ? new Uint16Array(2*tin.pts.length) : new Float32Array(3*tin.pts.length);
+                    }
 
-                        for (var j=0; j<tin.pts.length; j++) {
 
+                    var mdata = { mesh: vbb.toMesh() };
+
+                    BufferGeometryUtils.meshToGeometry(mdata);
+
+                    var bg2d = mdata.geometry;
+                    bg2d.streamingDraw = true;
+                    bg2d.streamingIndex = true;
+
+                    var mesh2d = new THREE.Mesh(bg2d, mat2d);
+
+                    mesh2d.matrix.copy(fromPaneCoords);
+                    mesh2d.matrixAutoUpdate = false;
+                    mesh2d.frustumCulled = false;
+                    section2D.add(mesh2d);
+
+
+                    //Create triangulated capping polygon
+                    if (true) {
+
+                        //Create the 3D mesh
+                        var tin = new avp.Triangulator.TriangulatedSurface(cset);
+
+                        if (tin.indices.length) {
+
+                            var bg = new THREE.BufferGeometry();
+
+                            var pos = new Float32Array(3*tin.pts.length);
+                            for (var j=0; j<tin.pts.length; j++) {
+                                pos[3*j] = tin.pts[j].x;
+                                pos[3*j+1] = tin.pts[j].y;
+                                pos[3*j+2] = 0;
+                            }
+                            bg.addAttribute("position", new THREE.BufferAttribute(pos, 3));
+
+                            var packNormals = m.material.packedNormals;
+                            var normal = packNormals ? new Uint16Array(2*tin.pts.length) : new Float32Array(3*tin.pts.length);
+
+                            for (var j=0; j<tin.pts.length; j++) {
+
+                                if (packNormals) {
+                                    var pnx = (0/*Math.atan2(0, 0)*/ / Math.PI + 1.0) * 0.5;
+                                    var pny = (1.0 + 1.0) * 0.5;
+
+                                    normal[j*2] = (pnx * 65535)|0;
+                                    normal[j*2+1] = (pny * 65535)|0;
+                                } else {
+                                    normal[3*j] = 0;
+                                    normal[3*j+1] = 0;
+                                    normal[3*j+2] = 1;
+                                }
+                            }
+
+                            bg.addAttribute("normal", new THREE.BufferAttribute(normal, packNormals ? 2 : 3));
                             if (packNormals) {
-                                var pnx = (0/*Math.atan2(0, 0)*/ / Math.PI + 1.0) * 0.5;
-                                var pny = (1.0 + 1.0) * 0.5;
-
-                                normal[j*2] = (pnx * 65535)|0;
-                                normal[j*2+1] = (pny * 65535)|0;
-                            } else {
-                                normal[3*j] = 0;
-                                normal[3*j+1] = 0;
-                                normal[3*j+2] = 1;
+                                bg.attributes.normal.bytesPerItem = 2;
+                                bg.attributes.normal.normalize = true;
                             }
-                        }
 
-                        bg.addAttribute("normal", new THREE.BufferAttribute(normal, packNormals ? 2 : 3));
-                        if (packNormals) {
-                            bg.attributes.normal.bytesPerItem = 2;
-                            bg.attributes.normal.normalize = true;
-                        }
+                            var index = new Uint16Array(tin.indices.length);
+                            index.set(tin.indices);
 
-                        var index = new Uint16Array(tin.indices.length);
-                        index.set(tin.indices);
+                            bg.addAttribute("index", new THREE.BufferAttribute(index, 1));
 
-                        bg.addAttribute("index", new THREE.BufferAttribute(index, 1));
+                            bg.streamingDraw = true;
+                            bg.streamingIndex = true;
 
-                        bg.streamingDraw = true;
-                        bg.streamingIndex = true;
+                            var mat = _viewer.matman().cloneMaterial(m.material);
 
-                        var mat = _viewer.matman().cloneMaterial(m.material);
+                            mat.packedNormals = packNormals;
+                            mat.cutplanes = null;
+                            mat.side = THREE.FrontSide;
+                            mat.depthTest = true;
+                            mat.map = null;
+                            mat.bumpMap = null;
+                            mat.normalMap = null;
+                            mat.alphaMap = null;
+                            mat.specularMap = null;
+                            mat.transparent = false;
+                            mat.depthWrite = true;
+                            mat.hatchPattern = true;
+                            mat.needsUpdate = true;
 
-                        mat.packedNormals = packNormals;
-                        mat.cutplanes = null;
-                        mat.side = THREE.FrontSide;
-                        mat.depthTest = true;
-                        mat.map = null;
-                        mat.bumpMap = null;
-                        mat.normalMap = null;
-                        mat.alphaMap = null;
-                        mat.specularMap = null;
-                        mat.transparent = false;
-                        mat.depthWrite = true;
-                        mat.hatchPattern = true;
-                        mat.needsUpdate = true;
-                        
-                        var angle = (m.material.id+2) * Math.PI * 0.125;
-                        var tan = Math.tan(angle);
-                        mat.hatchParams = new THREE.Vector2(tan, 10.0);
-                        mat.hatchTintColor = Autodesk.Viewing.Extensions.Section.tintColor;
-                        mat.hatchTintIntensity = Autodesk.Viewing.Extensions.Section.tintIntensity;
+                            var angle = (m.material.id+2) * Math.PI * 0.125;
+                            var tan = Math.tan(angle);
+                            mat.hatchParams = new THREE.Vector2(tan, 10.0);
+                            mat.hatchTintColor = Autodesk.Viewing.Extensions.Section.tintColor;
+                            mat.hatchTintIntensity = Autodesk.Viewing.Extensions.Section.tintIntensity;
 
-                        // If the material is prism, clear all the map definitions.
-                        if (mat.prismType != null) {
-                            mat.defines = {};
-                            mat.defines[mat.prismType.toUpperCase()] = "";
-                            if (mat.prismType == "PrismWood") {
-                                mat.defines["NO_UVW"] = "";
+                            // If the material is prism, clear all the map definitions.
+                            if (mat.prismType != null) {
+                                mat.defines = {};
+                                mat.defines[mat.prismType.toUpperCase()] = "";
+                                if (mat.prismType == "PrismWood") {
+                                    mat.defines["NO_UVW"] = "";
+                                }
                             }
+
+                            var capmesh = new THREE.Mesh(bg, mat);
+                            capmesh.matrix.copy(fromPaneCoords);
+                            capmesh.matrixAutoUpdate = false;
+                            capmesh.dbId = dbId;
+                            capmesh.fragId = intersects.fragId;
+
+                            section3D.add(capmesh);
                         }
 
-                        var capmesh = new THREE.Mesh(bg, mat);
-                        capmesh.matrix.copy(fromPaneCoords);
-                        capmesh.matrixAutoUpdate = false;
-                        capmesh.dbId = dbId;
-                        capmesh.fragId = intersects.fragId;
-
-                        section3D.add(capmesh);
                     }
 
                 }
 
-            }
 
+            }, true); //enumNodeChildren
 
-        }, true); //enumNodeChildren
-
+        }); //models.forEach
 
     }
 
-    function createPlaneMesh(plane, bbox, margin) {
-        var bbox = bbox || _viewer.getVisibleBounds();
-        var margin = margin || 0;
-        var normalZ = new THREE.Vector3(0, 0, 1);
-        var quat = new THREE.Quaternion().setFromUnitVectors(normalZ, plane.normal);
+    function createPlaneMesh(plane, bbox) {
+        var quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), plane.normal);
+        var geometry;
 
-        // project bbox to set plane size
-        var ptMax = plane.projectPoint(bbox.max);
-        var ptMin = plane.projectPoint(bbox.min);
-        var invQuat = quat.clone().inverse();
-        ptMax.applyQuaternion(invQuat);
-        ptMin.applyQuaternion(invQuat);
-        var size = new THREE.Vector3().subVectors(ptMax, ptMin);
-        var w = size.x * (1 + margin), h = size.y * (1 + margin);
-        var geometry = new THREE.PlaneBufferGeometry(w, h);
+        if (bbox) {
+            // project bbox to set plane size
+            var ptMax = plane.projectPoint(bbox.max);
+            var ptMin = plane.projectPoint(bbox.min);
+            var invQuat = quat.clone().inverse();
+            ptMax.applyQuaternion(invQuat);
+            ptMin.applyQuaternion(invQuat);
+            var size = new THREE.Vector3().subVectors(ptMax, ptMin);
+            geometry = new THREE.PlaneBufferGeometry(size.x, size.y);
+        } else {
+            // project bounding sphere
+            bbox = _viewer.getVisibleBounds();
+            var size = 2.0 * bbox.getBoundingSphere().radius;
+            geometry = new THREE.PlaneBufferGeometry(size, size);
+        }
+
         var material = new THREE.MeshBasicMaterial({
             opacity: 0,
             color: 0xffffff,
@@ -80093,12 +81405,13 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
         return mesh;
     }
 
-    function updatePlaneMeshes() {
+    function updatePlaneMeshes(rebuild) {
     
         traverseSections(function(child) {
             if (child instanceof AVES.SectionMesh) {
 
                 if (child.connectivity.length > 0) {
+                    // section box
                     var minv = new THREE.Matrix4().getInverse(child.matrixWorld);
                     var pt = new THREE.Vector3();
                     var pos = child.geometry.getAttribute('position');
@@ -80118,6 +81431,22 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
                         line.geometry.vertices[0].fromArray(pos.array, _outlineIndices[i][0] * pos.itemSize);
                         line.geometry.vertices[1].fromArray(pos.array, _outlineIndices[i][1] * pos.itemSize);
                         line.geometry.verticesNeedUpdate = true;
+                    }
+                } else {
+                    // section plane
+                    if (rebuild) {
+                        var bbox = _viewer.getVisibleBounds();
+                        var size = 2.0 * bbox.getBoundingSphere().radius;
+                        var pt = child.plane.projectPoint(bbox.center());
+                        child.geometry = new THREE.PlaneBufferGeometry(size, size);
+                        child.position.copy(pt);
+                        var pos = child.geometry.getAttribute('position');
+                        for (var i = 0; i < child.outlines.length; i++) {
+                            var line = child.outlines[i];
+                            line.geometry.vertices[0].fromArray(pos.array, _outlineIndices[i][0] * pos.itemSize);
+                            line.geometry.vertices[1].fromArray(pos.array, _outlineIndices[i][1] * pos.itemSize);
+                            line.geometry.verticesNeedUpdate = true;
+                        }
                     }
                 }
             }
@@ -80177,7 +81506,7 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
         }
         var group = new THREE.Group();
         var plane = new THREE.Plane(normal, 0);
-        var mesh = createPlaneMesh(plane, null, 0.05); // apply 5% margin
+        var mesh = createPlaneMesh(plane, null);
         group.add(mesh);
         _sectionPlanes.push(mesh.planeVec);
         _sectionGroups.push(group);
@@ -80391,15 +81720,6 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
             _transRotControl.detach();
             _transControl.detach();
         }
-    };
-
-    /**
-     * @deprecated
-     * Changes the outline color of the sectioned geometry.
-     * @param color
-     */
-    this.setOutlineColor = function(color) {
-        _viewer.setCutPlanesOutlineColor(color);
     };
 
     /**
@@ -84398,7 +85718,9 @@ var OSS_URL;
 var PROTEIN_ROOT = null;
 var PRISM_ROOT = null;
 var LOCALIZATION_REL_PATH = "";
-var LMV_VIEWER_VERSION = "1.2.22";
+var LMV_VIEWER_VERSION = "2.2";  // Gets replaced with content from deployment/package.json
+var LMV_VIEWER_PATCH = "29";// Gets replaced with build number from TeamCity
+var LMV_BUILD_TYPE = "Production"; // Either Development, Staging or Production
 var LMV_RESOURCE_VERSION = null;
 var LMV_RESOURCE_ROOT = "";
 
@@ -84415,9 +85737,6 @@ function stderr() {
 
     avp.env = null;
     avp.logger = null;
-// Callback function provided by client to get a new access token.
-// Viewer uses this to refresh token in a fixed interval.
-    avp.refreshToken = null;
 // GUID of the current active document item.
     avp.docItemId = null;
 
@@ -84835,24 +86154,6 @@ function stderr() {
         return auth;
     };
 
-    avp.refreshTokenAndCookie = function(onSuccess, onError) {
-
-        var token = null;
-        if (avp.refreshToken) {
-            token = avp.refreshToken();
-        }
-
-        if (token) {
-            avp.refreshCookie(token, onSuccess, onError);
-        }
-        else {
-            if (onError) {
-                onError(null);
-            }
-        }
-
-    };
-
     avp.initializeLogger = function (options) {
 
         var loggerConfig = {
@@ -84931,6 +86232,17 @@ function stderr() {
             return "";
         else
             return decodeURIComponent(results[1].replace(/\+/g, " "));
+    };
+
+    avp.urlIsApiViewingOrDev = function(url) {
+                // Dev API endpoints
+        return  url.indexOf('developer.api.autodesk.com') !== -1 ||
+                url.indexOf('developer-stg.api.autodesk.com') !== -1 ||
+                url.indexOf('developer-dev.api.autodesk.com') !== -1 ||
+                // Viewing API endpoints
+                url.indexOf('viewing.api.autodesk.com') !== -1 ||
+                url.indexOf('viewing-staging.api.autodesk.com') !== -1 ||
+                url.indexOf('viewing-dev.api.autodesk.com') !== -1;
     };
 
 // Return a default document URN for demo purpose.
@@ -85084,19 +86396,30 @@ function stderr() {
      *                                               function. Viewer relies on both getAccessToken and the expire time to automatically renew token, so
      *                                               it is critical that getAccessToken must be implemented as described here.
      *
-     *                                               A sample code snippet on getAccessToken function that could be implemented on client side:
-     *
-     *                                               function getAccessToken(onSuccess) {
-     *                                                 var accessToken, expire;
-     *                                                 // Code to retrieve and assign token value to accessToken and expire.
-     *                                                 onSuccess(accessToken, expire);
-     *                                               };
      *  @param {string} [options.accessToken] - An access token
-     *  @param {function} [options.refreshToken] - A callback function which when invoked will return a new access token
      *  @param {string} [options.webGLHelpLink] - A link to a help page on webGL if it's disabled.
-     *  @param {string} [options.language] - Preferred language code as defined in RFC 4646, such as "en", "de", "fr", etc. If no language is set, viewer will pick it up from the browser. If language is not as defined in RFC, viewer will fall back to "en" but the behavior is undefined.
+     *  @param {string} [options.language] - Preferred language code as defined in RFC 4646, such as "en", "de", "fr", etc.
+     *  If no language is set, viewer will pick it up from the browser. If language is not as defined in RFC,
+     *  viewer will fall back to "en" but the behavior is undefined.
      *
      *  @param {function} callback - A method the client executes when initialization is finished.
+     *
+     *  @example
+     *   var options = {
+     *      env: "Production",
+     *      language: "en",
+     *      webGLHelpLink: "http://my.webgl.help.link",
+     *      getAccessToken: function(onSuccess) {
+     *          var accessToken, expire;
+     *          // Code to retrieve and assign token value to
+     *          // accessToken and expire time in seconds.
+     *          onSuccess(accessToken, expire);
+     *      }
+     *   };
+     *   var callback = function() {
+     *      alert("initialization complete");
+     *   };
+     *   Autodesk.Viewing.Initializer(options, callback);
      */
     Autodesk.Viewing.Initializer = function (options, callback) {
 

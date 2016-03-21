@@ -12,11 +12,11 @@ const routes = (
     <Route name="embed" path="/embed" component={EmbedPage}>
     </Route>
 
-    <Route name="app" path="/" component={App}>
-      <IndexRedirect to="/viewer"/>
-      <Route name="home" path="home" component={HomePage}/>
-      <Route name="viewer" path="viewer" component={ViewerPage}/>
-    </Route>
+    //<Route name="app" path="/" component={App}>
+    //  <IndexRedirect to="/viewer"/>
+    //  <Route name="home" path="home" component={HomePage}/>
+    //  <Route name="viewer" path="viewer" component={ViewerPage}/>
+    //</Route>
   </div>
 );
 

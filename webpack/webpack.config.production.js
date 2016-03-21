@@ -81,9 +81,8 @@ module.exports = {
         }
       },
       {
-        test: /\.css?$/,
-        loaders: [ 'style', 'raw' ],
-        exclude: /node_modules/
+        test: /\.css$/,
+        loader: "style-loader!css-loader"
       },
       {
         test: /\.woff(2)?(\?v=[0-9]\.[0-9]\.[0-9])?$/,

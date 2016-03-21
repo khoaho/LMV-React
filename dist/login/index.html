@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
 
-    <title>Shell Prelude - Login</title>
+    <title>LMV React - Login</title>
 
     <style>
     /*******************
@@ -345,10 +345,10 @@
 
             <div class="header">
                 <h1>
-                    <div class="header-img">
+                    <div id="header-img-container" class="header-img">
                         <img height="32" width="32" src="icon.png"/>
                     </div>
-                    Shell Prelude
+                    LMV React
                 </h1>
             </div>
 
@@ -357,7 +357,7 @@
                 <input id="username"
                    type="text"
                    required class="input username"
-                   placeholder="Username or Email Address"/>
+                   placeholder="Login"/>
 
                 <input id="password"
                     required type="password"
@@ -430,6 +430,29 @@
                     window.location = '/login?status=failed';
 
                     return false;
+                }
+            });
+        }
+
+        function animate(){
+
+            $("#header-img-container").animate({
+                rotation: 360
+            }, {
+                step: function(now, tween) {
+                    if (tween.prop === "rotation") {
+                        $(this).css('transform', 'rotateY(' + now + 'deg)');
+                    }
+                },
+                easing: 'swing',
+                duration: 2000,
+                complete: function () {
+
+                    $("#header-img-container").css({
+                        rotation: 0
+                    });
+
+                    setTimeout(animate, 2000);
                 }
             });
         }
