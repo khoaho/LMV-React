@@ -70,6 +70,8 @@ export default class EmbedPage extends React.Component {
 
     System.import(url).then(()=> {
 
+      console.log('Loading ExtensionManager')
+
       viewer.loadExtension('_Viewing.Extension.ExtensionManager', {
         waitEventsList: [
           Autodesk.Viewing.GEOMETRY_LOADED_EVENT
@@ -85,12 +87,13 @@ export default class EmbedPage extends React.Component {
           Lockr: Lockr
         }
       });
+
+      viewer.load(path);
+
     }, (error)=>{
 
       console.log(error);
     });
-
-    viewer.load(path);
   }
 }
 
