@@ -1,0 +1,99 @@
+import { browserHistory, RouteHandler } from 'react-router'
+import React, { Component, PropTypes } from 'react'
+import { bindActionCreators } from 'redux'
+import { connect } from 'react-redux'
+
+import * as Actions from 'actions'
+import AppNavbar from 'AppNavbar'
+
+class App extends Component {
+
+  static propTypes = {
+    appState: PropTypes.object.isRequired,
+    actions: PropTypes.object.isRequired,
+    children: PropTypes.node
+  }
+
+  /////////////////////////////////////////////////////////////////
+  //
+  //
+  /////////////////////////////////////////////////////////////////
+  constructor(props, context) {
+
+    super(props, context);
+  }
+
+  /////////////////////////////////////////////////////////////////
+  //
+  //
+  /////////////////////////////////////////////////////////////////
+  render() {
+
+    const { children, actions, appState } = this.props;
+
+    return (
+      <div>
+        <AppNavbar appState={appState}/>
+        <div className="app">
+          { React.cloneElement(children, appState) }
+        </div>
+      </div>
+    );
+  }
+
+  /////////////////////////////////////////////////////////////////
+  //
+  //
+  /////////////////////////////////////////////////////////////////
+  async componentDidMount() {
+
+    getUser().then((user)=>{
+
+      this.props.actions.updateUser(user);
+    });
+  }
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+//
+/////////////////////////////////////////////////////////////////////
+function getUser(){
+
+  return new Promise((resolve, reject)=>{
+
+    $.get('/api/users/current', (user)=>{
+
+      return resolve(user);
+    });
+  });
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+//
+/////////////////////////////////////////////////////////////////////
+function mapStateToProps(state) {
+  return {
+    appState: state.appState
+  }
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+//
+/////////////////////////////////////////////////////////////////////
+function mapDispatchToProps(dispatch) {
+  return {
+    actions: bindActionCreators(Actions, dispatch)
+  }
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+//
+/////////////////////////////////////////////////////////////////////
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(App);

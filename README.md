@@ -2,8 +2,6 @@
 
 A React-based integration with Autodesk View & Data API (LMV)
 
-Based on [universal-react-flux-boilerplate](https://github.com/voronianski/universal-react-flux-boilerplate) by [Dmitri Voronianski](https://github.com/voronianski) 
-
 ## Setup/Usage Instructions
  
 * Request your own View & Data API keys from Autodesk developer portal: [developer.autodesk.com](http://developer.autodesk.com)
