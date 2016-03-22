@@ -15,8 +15,7 @@ export default class ViewerPage extends React.Component {
     const { user } = this.props;
 
     return (
-        <div className="viewer"
-             ref={(c)=>this.viewerContainer=c}>
+        <div className="viewer" ref={(c)=>this.viewerContainer=c}>
         </div>
     );
   }
