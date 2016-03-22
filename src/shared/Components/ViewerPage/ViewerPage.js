@@ -26,19 +26,19 @@ export default class ViewerPage extends React.Component {
   /////////////////////////////////////////////////////////////////
   async componentDidMount() {
 
-    //const { id } = getUrlParams();
-    //
-    //var model = await getModel(id);
-    //
-    //var LMVDocument = await ViewerToolkit.loadDocument(
-    //  model.urn, '/api/lmv/token');
-    //
-    //var pathCollection = await ViewerToolkit.getViewablePath(
-    //  LMVDocument);
-    //
-    //var path = pathCollection[0].path;
-    //
-    //this.loadViewable(model, path);
+    const { id } = getUrlParams();
+
+    var model = await getModel(id);
+
+    var LMVDocument = await ViewerToolkit.loadDocument(
+      model.urn, '/api/lmv/token');
+
+    var pathCollection = await ViewerToolkit.getViewablePath(
+      LMVDocument);
+
+    var path = pathCollection[0].path;
+
+    this.loadViewable(model, path);
 
     //var path = '/models/prelude/prelude.svf';
     //Autodesk.Viewing.Initializer ({env: 'Local'}, ()=> {
