@@ -2,7 +2,7 @@ import Lockr from 'lockr';
 import React from 'react';
 import {env} from 'c0nfig';
 import ViewerToolkit from 'ViewerToolkit';
-import 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager'
+import 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager';
 
 export default class EmbedPage extends React.Component {
 
@@ -15,8 +15,7 @@ export default class EmbedPage extends React.Component {
     const { user } = this.props;
 
     return (
-      <div className="embed"
-        ref={(c)=>this.viewerContainer=c}>
+      <div className="embed" ref={(c)=>this.viewerContainer=c}>
       </div>
     );
   }
