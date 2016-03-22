@@ -2,7 +2,6 @@ import Lockr from 'lockr';
 import React from 'react';
 import {env} from 'c0nfig';
 import ViewerToolkit from 'ViewerToolkit';
-//import ExtensionManager from 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager';
 
 export default class ViewerPage extends React.Component {
 

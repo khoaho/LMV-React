@@ -1,6 +1,7 @@
 import Lockr from 'lockr';
 import React from 'react';
 import {env} from 'c0nfig';
+import ViewerToolkit from 'ViewerToolkit';
 
 export default class EmbedPage extends React.Component {
 
