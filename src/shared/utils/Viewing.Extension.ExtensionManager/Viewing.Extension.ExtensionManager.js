@@ -41,7 +41,7 @@ class ExtensionManagerAPI {
   }
 }
 
-class ExtensionManager extends ExtensionBase {
+export default class ExtensionManager extends ExtensionBase {
 
   /////////////////////////////////////////////////////////////////
   // Class constructor
