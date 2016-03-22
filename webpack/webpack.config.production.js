@@ -64,6 +64,7 @@ module.exports = {
     extensions: ['', '.js', '.jsx', '.json'],
     root: [
       path.resolve('./src/shared'),
+      path.resolve('./src/shared/utils'),
       path.resolve('./src/shared/redux'),
       path.resolve('./src/shared/Components')
     ]

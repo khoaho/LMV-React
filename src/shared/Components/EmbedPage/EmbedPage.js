@@ -1,6 +1,8 @@
 import Lockr from 'lockr';
 import React from 'react';
 import {env} from 'c0nfig';
+import ViewerToolkit from 'ViewerToolkit';
+import 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager'
 
 export default class EmbedPage extends React.Component {
 
@@ -29,11 +31,11 @@ export default class EmbedPage extends React.Component {
 
     var model = await getModel(id);
 
-    var LMVDocument = await loadDocument(
+    var LMVDocument = await ViewerToolkit.loadDocument(
       model.urn,
-      () => getTokenSync('/api/lmv/token'));
+      '/api/lmv/token');
 
-    var pathCollection = await getViewablePath(
+    var pathCollection = await ViewerToolkit.getViewablePath(
       LMVDocument);
 
     var path = pathCollection[0].path;
@@ -66,133 +68,25 @@ export default class EmbedPage extends React.Component {
       ...(extIds ? extIds : '').split(';')
     ];
 
-    var url = '/api/extensions/script/_Viewing.Extension.ExtensionManager';
-
-    System.import(url).then(()=> {
-
-      console.log('Loading ExtensionManager')
-
-      viewer.loadExtension('_Viewing.Extension.ExtensionManager', {
-        waitEventsList: [
-          Autodesk.Viewing.GEOMETRY_LOADED_EVENT
-        ],
-        enabledList: enabledExtensions,
-        showHidden: env == 'development',
-        parentControl: ctrlGroup,
-        visible: false,
-        apiUrl: '/api',
-        model: model,
-        storage:{
-          enabled: false,
-          Lockr: Lockr
-        }
-      });
-
-      viewer.load(path);
-
-    }, (error)=>{
-
-      console.log(error);
+    viewer.loadExtension('_Viewing.Extension.ExtensionManager', {
+      waitEventsList: [
+        Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
+        Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT
+      ],
+      enabledList: enabledExtensions,
+      showHidden: env == 'development',
+      parentControl: ctrlGroup,
+      visible: false,
+      apiUrl: '/api',
+      model: model,
+      storage:{
+        enabled: false,
+        Lockr: Lockr
+      }
     });
+
+    viewer.load(path);
   }
-}
-
-/////////////////////////////////////////////////////////////////
-//
-//
-/////////////////////////////////////////////////////////////////
-function loadDocument(urn, tokenFunc) {
-
-  var promise = new Promise((resolve, reject)=> {
-
-    try{
-
-      var options = {
-        env: 'AutodeskProduction',
-        refreshToken: tokenFunc,
-        getAccessToken: tokenFunc
-      };
-
-      Autodesk.Viewing.Initializer (options, ()=> {
-
-        Autodesk.Viewing.Document.load(
-          (urn.indexOf('urn:') == 0 ? '' : 'urn:') + urn,
-          (LMVDocument)=> {
-
-            return resolve(LMVDocument);
-          });
-      });
-    }
-    catch (ex){
-
-      return reject('ex');
-    }
-  });
-
-  return promise;
-}
-
-///////////////////////////////////////////////////////////////////
-//
-//
-///////////////////////////////////////////////////////////////////
-function getViewablePath(LMVDocument) {
-
-  var viewablePath = [];
-
-  var rootItem = LMVDocument.getRootItem();
-
-  var path3d = Autodesk.Viewing.Document.getSubItemsWithProperties(
-    rootItem,
-    { 'type': 'geometry', 'role': '3d' },
-    true);
-
-  path3d.forEach(function(path){
-    viewablePath.push({
-      type: '3d',
-      name : path.name,
-      path: LMVDocument.getViewablePath(path)
-    });
-  });
-
-  var path2d = Autodesk.Viewing.Document.getSubItemsWithProperties(
-    rootItem,
-    { 'type': 'geometry', 'role': '2d' },
-    true);
-
-  path2d.forEach(function(path){
-    viewablePath.push({
-      type: '2d',
-      name : path.name,
-      path: LMVDocument.getViewablePath(path)
-    });
-  });
-
-  return viewablePath;
-}
-
-///////////////////////////////////////////////////////////////////
-//
-//
-///////////////////////////////////////////////////////////////////
-function getTokenSync(url) {
-
-  var xhr = new XMLHttpRequest();
-
-  xhr.open("GET", url, false);
-  xhr.send(null);
-
-  if(xhr.status != 200) {
-
-    console.log('xrh error: ');
-    console.log(xhr.statusText + ':' + xhr.status);
-    return '';
-  }
-
-  var response = JSON.parse(
-    xhr.responseText);
-
-  return response.access_token;
 }
 
 ///////////////////////////////////////////////////////////////////
