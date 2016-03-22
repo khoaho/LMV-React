@@ -1,8 +1,8 @@
 import Lockr from 'lockr';
 import React from 'react';
 import {env} from 'c0nfig';
-import ViewerToolkit from 'ViewerToolkit';
-import 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager';
+//import ViewerToolkit from 'ViewerToolkit';
+//import 'Viewing.Extension.ExtensionManager/Viewing.Extension.ExtensionManager';
 
 export default class EmbedPage extends React.Component {
 
@@ -26,20 +26,20 @@ export default class EmbedPage extends React.Component {
   /////////////////////////////////////////////////////////////////
   async componentDidMount() {
 
-    const { id } = getUrlParams();
-
-    var model = await getModel(id);
-
-    var LMVDocument = await ViewerToolkit.loadDocument(
-      model.urn,
-      '/api/lmv/token');
-
-    var pathCollection = await ViewerToolkit.getViewablePath(
-      LMVDocument);
-
-    var path = pathCollection[0].path;
-
-    this.loadViewable(model, path);
+    //const { id } = getUrlParams();
+    //
+    //var model = await getModel(id);
+    //
+    //var LMVDocument = await ViewerToolkit.loadDocument(
+    //  model.urn,
+    //  '/api/lmv/token');
+    //
+    //var pathCollection = await ViewerToolkit.getViewablePath(
+    //  LMVDocument);
+    //
+    //var path = pathCollection[0].path;
+    //
+    //this.loadViewable(model, path);
   }
 
   /////////////////////////////////////////////////////////////////
