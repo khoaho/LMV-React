@@ -45,9 +45,9 @@ module.exports = {
     }),
 
     new htmlWebpackPlugin({
-      viewer3D: 'libs/lmv/viewer3D.min.js',
+      viewer3D: '/libs/lmv/viewer3D.min.js',
       template: './layout/index.ejs',
-      bundle: 'js/bundle.min.js',
+      bundle: '/js/bundle.min.js',
       title: 'Viewer',
       minify: {
         removeComments: true,
