@@ -40,7 +40,7 @@ module.exports = {
     new htmlWebpackPlugin({
       viewer3D: 'libs/lmv/viewer3D.js',
       template: './layout/index.ejs',
-      title: 'Viewer | DEV',
+      title: 'LMV-React | DEV',
       bundle: 'bundle.js',
       minify: false,
       inject: false

@@ -48,21 +48,21 @@ import React from 'react';
 /////////////////////////////////////////////////////////////////////
 function authenticatePage(req, res, next) {
 
-  //if(env == 'production' && !req.user) {
-  //
-  //  res.redirect('/login');
-  //  return;
-  //}
+  if(env == 'production' && !req.user) {
+
+    res.redirect('/login');
+    return;
+  }
 
   next();
 }
 
 function authenticateAPI(req, res, next) {
 
-  //if(env == 'production' && !req.user) {
-  //  res.status(401);
-  //  return res.send('Unauthorized!');
-  //}
+  if(env == 'production' && !req.user) {
+    res.status(401);
+    return res.send('Unauthorized!');
+  }
 
   next();
 }

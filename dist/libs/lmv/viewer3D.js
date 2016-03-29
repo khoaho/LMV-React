@@ -1,25 +1,19 @@
 
-//This file is the first one when creating minified build
-//and is used to set certain flags that are needed
-//for the concatenated build.
+function getGlobal() {
+    return (typeof window !== "undefined" && window !== null)
+            ? window
+            : (typeof self !== "undefined" && self !== null)
+                ? self
+                : this;
+}
 
-var IS_CONCAT_BUILD = true;
-
-/** @define {string} */
-var BUILD_LMV_WORKER_URL = "lmvworker.js";
-var LMV_WORKER_URL = BUILD_LMV_WORKER_URL;
-
-var ENABLE_DEBUG = false;
-var ENABLE_TRACE = false;
-var ENABLE_INLINE_WORKER = true;
-;
 /**
  * Create namespace
  * @param {string} s - namespace (e.g. 'Autodesk.Viewing')
  * @return {Object} namespace
  */
 var AutodeskNamespace = function (s) {
-    var ns = typeof window !== "undefined" && window !== null ? window : self;
+    var ns = getGlobal();
 
     var parts = s.split('.');
     for (var i = 0; i < parts.length; ++i) {
@@ -40,7 +34,28 @@ AutodeskNamespace("Autodesk.Viewing.Shaders");
 AutodeskNamespace('Autodesk.Viewing.UI');
 
 AutodeskNamespace('Autodesk.LMVTK');
-;var _isIE11 = !!navigator.userAgent.match(/Trident\/7\./);
+
+Autodesk.Viewing.getGlobal = getGlobal;
+
+(typeof module !== "undefined") && (module.exports = { AutodeskNamespace: AutodeskNamespace,
+                                                       Autodesk: Autodesk });
+;
+function getGlobal() {
+    return (typeof window !== "undefined" && window !== null)
+            ? window
+            : (typeof self !== "undefined" && self !== null)
+                ? self
+                : GLOBAL;
+}
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+av.getGlobal = getGlobal;
+
+var isBrowser = av.isBrowser = (typeof navigator !== "undefined");
+
+var _isIE11 = av.isIE11 = isBrowser && !!navigator.userAgent.match(/Trident\/7\./);
 
 // fix IE events
 if(typeof window !== "undefined" && _isIE11){
@@ -162,19 +177,23 @@ function isTouchDevice() {
     return ('ontouchstart' in window);
 }
 
-function isIOSDevice() {
+av.isIOSDevice = function() {
+    if (!isBrowser) return false;
     return /ip(ad|hone|od)/.test(navigator.userAgent.toLowerCase());
-}
+};
 
-function isAndroidDevice() {
+av.isAndroidDevice = function() {
+    if (!isBrowser) return false;
     return (navigator.userAgent.toLowerCase().indexOf('android') !== -1);
-}
+};
 
-function isMobileDevice() {
-    return isIOSDevice() || isAndroidDevice();
-}
+av.isMobileDevice = function() {
+    if (!isBrowser) return false;
+    return av.isIOSDevice() || av.isAndroidDevice();
+};
 
 function isSafari() {
+    if (!isBrowser) return false;
     var _ua = navigator.userAgent.toLowerCase();
     return (_ua.indexOf("safari") !== -1) && (_ua.indexOf("chrome") === -1);
 }
@@ -254,10 +273,30 @@ function touchStartToClick(e) {
 //Safari doesn't have the Performance object
 //We only need the now() function, so that's easy to emulate.
 (function() {
-    var global = typeof window !== "undefined" && window !== null ? window : self;
+    var global = getGlobal();
     if (!global.performance)
         global.performance = Date;
-})();;/*! Hammer.JS - v2.0.4 - 2014-09-28
+})();
+
+;
+//This file is the first one when creating minified build
+//and is used to set certain flags that are needed
+//for the concatenated build.
+
+var av = Autodesk.Viewing;
+
+var global = av.getGlobal();
+
+global.IS_CONCAT_BUILD = true;
+
+/** @define {string} */
+global.BUILD_LMV_WORKER_URL = "lmvworker.js";
+global.LMV_WORKER_URL = global.BUILD_LMV_WORKER_URL;
+
+global.ENABLE_DEBUG = false;
+global.ENABLE_TRACE = false;
+global.ENABLE_INLINE_WORKER = true;
+;/*! Hammer.JS - v2.0.4 - 2014-09-28
  * http://hammerjs.github.io/
  *
  * Copyright (c) 2014 Jorik Tangelder;
@@ -4129,13 +4168,16 @@ var FileLoaderManager = function () {
     };
 };
 
-Autodesk.Viewing.FileLoaderManager = new FileLoaderManager();
+var av = Autodesk.Viewing;
+av.FileLoaderManager = new FileLoaderManager();
 
 })();;
 (function() {
 
+"use strict";
+
 var av = Autodesk.Viewing,
-    avp = Autodesk.Viewing.Private;
+    avp = av.Private;
 
 var fsNames = ['fullscreenchange', 'mozfullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'];
 
@@ -5073,7 +5115,7 @@ var pointInContour = function(x, y, cntr, pts) {
     return inside_flag;
 };
 
-var pointInPolygon = function(x, y, contours, points) {
+Model.prototype.pointInPolygon = function(x, y, contours, points) {
     var inside = false;
 
     for (var i=0; i<contours.length; i++) {
@@ -5147,37 +5189,37 @@ Model.prototype.pageToModel = function( point1, point2, vpId ) {
     var modelPt1 = new THREE.Vector3().set(point1.x, point1.y, 0).applyMatrix4(vpXform);
     var modelPt2 = new THREE.Vector3().set(point2.x, point2.y, 0).applyMatrix4(vpXform);
 
-    var paperDist = point1.distanceTo(point2);
-    var modelDist = modelPt1.distanceTo(modelPt2);
-
-    // TODO: If the scale is 1:1, then it's paper viewport. (Still have double for that)
-    if (Math.abs(modelDist - paperDist) < PRECISION) {
-        // viewport id is matched with clip id
-        var indices = this.pointInClip(point1, vpId);
-
-        var oldModelPt1 = modelPt1.clone();
-        var oldModelPt2 = modelPt2.clone();
-
-        for (var i = 0; i < indices.length; i++) {
-
-            var xform = this.getPageToModelTransform(indices[i]);
-
-            modelPt1.set(point1.x, point1.y, 0).applyMatrix4(xform);
-            modelPt2.set(point2.x, point2.y, 0).applyMatrix4(xform);
-
-            modelDist = modelPt1.distanceTo(modelPt2);
-            // TODO: If the scale is not 1:1, then it's model viewport. (Still have double for that)
-            if (Math.abs(modelDist - paperDist) > PRECISION) {
-                break;
-            }
-        }
-
-        // Don't find model viewport, then use its own viewport.
-        if (i >= indices.length) {
-            modelPt1 = oldModelPt1;
-            modelPt2 = oldModelPt2;
-        }
-    }
+    //var paperDist = point1.distanceTo(point2);
+    //var modelDist = modelPt1.distanceTo(modelPt2);
+    //
+    //// TODO: If the scale is 1:1, then it's paper viewport. (Still have double for that)
+    //if (Math.abs(modelDist - paperDist) < PRECISION) {
+    //    // viewport id is matched with clip id
+    //    var indices = this.pointInClip(point1, vpId);
+    //
+    //    var oldModelPt1 = modelPt1.clone();
+    //    var oldModelPt2 = modelPt2.clone();
+    //
+    //    for (var i = 0; i < indices.length; i++) {
+    //
+    //        var xform = this.getPageToModelTransform(indices[i]);
+    //
+    //        modelPt1.set(point1.x, point1.y, 0).applyMatrix4(xform);
+    //        modelPt2.set(point2.x, point2.y, 0).applyMatrix4(xform);
+    //
+    //        modelDist = modelPt1.distanceTo(modelPt2);
+    //        // TODO: If the scale is not 1:1, then it's model viewport. (Still have double for that)
+    //        if (Math.abs(modelDist - paperDist) > PRECISION) {
+    //            break;
+    //        }
+    //    }
+    //
+    //    // Don't find model viewport, then use its own viewport.
+    //    if (i >= indices.length) {
+    //        modelPt1 = oldModelPt1;
+    //        modelPt2 = oldModelPt2;
+    //    }
+    //}
 
     point1.x = modelPt1.x;
     point1.y = modelPt1.y;
@@ -5195,7 +5237,8 @@ Model.prototype.pointInClip = function(point, vpId) {
     var clips = this.myData.clips;
     var clipIds = []; // This will store ids of clip where point lies in
 
-    for (var i = 0; i < clips.length; i++) {
+    // clip index starts at 1
+    for (var i = 1; i < clips.length; i++) {
         // Don't need to check the point's own viewport's clip, it must be in that clip.
         if (i === vpId)
             continue;
@@ -5221,7 +5264,7 @@ Model.prototype.pointInClip = function(point, vpId) {
             pts.push(pt);
         }
 
-        var inside = pointInPolygon(point.x, point.y, contours, pts);
+        var inside = this.pointInPolygon(point.x, point.y, contours, pts);
         if (inside)
             clipIds.push(i);
     }
@@ -5229,7 +5272,33 @@ Model.prototype.pointInClip = function(point, vpId) {
     return clipIds;
 };
 
+Model.prototype.getClip = function(vpId) {
 
+    var clips = this.myData.clips;
+
+    var contour = [];
+    var contours = [];
+    var contourCounts = clips[vpId].contourCounts;
+    var points = clips[vpId].points;
+    var index = 0;
+    var pts = [];
+
+    // Reorganize contour data
+    for (var j = 0; j < contourCounts.length; j++) {
+        for (var k = 0; k < contourCounts[j]; k++) {
+            contour.push(index);
+            index++;
+        }
+        contours.push(contour);
+        contour = [];
+    }
+    for (var j = 0; j < points.length; j += 2) {
+        var pt = {x: points[j], y: points[j+1]};
+        pts.push(pt);
+    }
+
+    return { "contours" : contours, "points" : pts };
+};
 
 
 /**
@@ -5287,15 +5356,19 @@ Model.prototype.getAttributeToIdMap = function(onSuccessCallback, onErrorCallbac
 av.Model = Model;
 
 })();
-;AutodeskNamespace('Autodesk.Viewing.Private');
-
+;
 (function() {
 
-    var avp = Autodesk.Viewing.Private;
+    "use strict";
+
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     avp.inWorkerThread = (typeof self !== 'undefined') && (typeof window === 'undefined');
 
-    avp.ViewingService = {};
+    var ViewingService = {};
+
+    var warnedGzip = false;
 
     // Simplify Unix style file path. For example, turn '/a/./b/../../c/' into "/c".
     // Required to deal with OSS crappy URNs where there are embedded '..'.
@@ -5324,29 +5397,41 @@ av.Model = Model;
         return ret;
     };
 
-    /**
-     * Construct full URL given a potentially partial viewing service "urn:" prefixed resource
-     * @returns {string}
-     */
-    avp.ViewingService.generateUrl = function (baseUrl, api, path, options) {
+    function textToArrayBuffer(textBuffer, startOffset) {
+        var len = textBuffer.length - startOffset;
+        var arrayBuffer = new ArrayBuffer(len);
+        var ui8a = new Uint8Array(arrayBuffer, 0);
+        for (var i = 0, j = startOffset; i < len; i++, j++)
+            ui8a[i] = (textBuffer.charCodeAt(j) & 0xff);
+        return ui8a;
+    }
 
-        /*
+
+    ViewingService.OSS_PREFIX = "urn:adsk.objects:os.object:";
+
+    ViewingService.getDirectOSSUrl = function(options, path) {
         // When we see a resource is hosted on OSS (by checking the urn prefix where it contain a specific signature),
         // we'll construct the full OSS url that can be used to call the OSS GET object API.
         // The construction process will extract the OSS bucket name (which is the payload between the signature and the first forward slash first enoutered afterwards),
         // and then the object name (which is the payload left). The object name has to be URL encoded because OSS will choke on forward slash.
-        var ossPrefix = "urn:adsk.objects:os.object:";
-        var ossIndex = path.indexOf(ossPrefix);
+        var ossIndex = path.indexOf(ViewingService.OSS_PREFIX);
         if (ossIndex !== -1) {
-            var ossPath = path.substr(ossIndex + ossPrefix.length);
+            var ossPath = path.substr(ossIndex + ViewingService.OSS_PREFIX.length);
             var bucket = ossPath.substr(0, ossPath.indexOf("/"));
             var object = ossPath.substr(ossPath.indexOf("/") + 1);
             object = simplifyPath(object);
             var ret = options.oss_url + "/buckets/" + bucket + "/objects/" + encodeURIComponent(decodeURIComponent(object));
             return ret;
         }
-        */
+    };
 
+    /**
+     * Construct full URL given a potentially partial viewing service "urn:" prefixed resource
+     * @returns {string}
+     */
+    ViewingService.generateUrl = function (baseUrl, api, path) {
+
+        //Check if it's a viewing service item path
         if (path.indexOf('urn:') !== 0)
             return path;
 
@@ -5357,6 +5442,8 @@ av.Model = Model;
             path = path.substr(4);
         }
 
+        //TODO: WTF... we should not be checking the env parameter like this.
+        //Check the endpoint URL for being raw viewing service or something....
         if (api === "bubbles" && avp.env.indexOf('Autodesk') == 0) {
             // The bubbles API for PAAS endpoint (where environment is prefixed with 'Autodesk')
             // has no explicit 'bubble' in the URL path.
@@ -5368,6 +5455,25 @@ av.Model = Model;
         return res;
     };
 
+    function loadLocalFile(url, onSuccess, onFailure) {
+        //Always use async on Node
+        require('fs').readFile(url, function(error, data) {
+            if (error) {
+                onFailure(error);
+            } else {
+                if (data[0] == 31 && data[1] == 139) {
+                    require('zlib').gunzip(data, null, function(error, data) {
+                        if (error)
+                            onFailure(error);
+                        else
+                            onSuccess(data);
+                    });
+                } else {
+                    onSuccess(data);
+                }
+            }
+        });
+    }
 
     /**
      *  Performs a GET/HEAD request to Viewing Service.
@@ -5388,11 +5494,23 @@ av.Model = Model;
      *                               {boolean} [encodeUrn] - when true, encodes the document urn if found.
      *                               {boolean} [noBody] - when true, will perform a HEAD request
      */
-    avp.ViewingService.get = function (viewingServiceBaseUrl, api, url, onSuccess, onFailure, options) {
+    ViewingService.get = function (viewingServiceBaseUrl, api, url, onSuccess, onFailure, options) {
 
         var options = options ? options : {};
 
-        var url = avp.ViewingService.generateUrl(viewingServiceBaseUrl, api, url, options);
+        //NODE
+        if (options.useLocalFileSystem) {
+            loadLocalFile(url, onSuccess, onFailure);
+            return;
+        }
+
+        //See if it can be mapped to a direct OSS path
+        var ossUrl = ViewingService.getDirectOSSUrl(options, url);
+
+        if (ossUrl)
+            url = ossUrl;
+        else
+            url = ViewingService.generateUrl(viewingServiceBaseUrl, api, url);
 
         if (options.queryParams) {
             url = url + "?" + options.queryParams;
@@ -5400,9 +5518,46 @@ av.Model = Model;
 
         var request = new XMLHttpRequest();
 
+        function onError(e) {
+            onFailure(request.status, request.statusText, {url: url});
+        }
+
+        function onLoad(e) {
+            if (request.status === 200) {
+
+                if (request.response
+                    && request.response instanceof ArrayBuffer) {
+                    var rawbuf = new Uint8Array(request.response);
+                    //It's possible that if the Content-Encoding header is set,
+                    //the browser unzips the file by itself, so let's check if it did.
+                    if (rawbuf[0] == 31 && rawbuf[1] == 139) {
+                        if (!warnedGzip) {
+                            warnedGzip = true;
+                            console.warn("An LMV resource (" + url + ") was not uncompressed by the browser. This hurts performance. Check the Content-Encoding header returned by the server and check whether you're getting double-compressed streams. The warning prints only once but it's likely the problem affects multiple resources.");
+                        }
+                        try {
+                            rawbuf = new Zlib.Gunzip(rawbuf).decompress();
+                        } catch (e) {
+                            onFailure(av.ErrorCodes.BAD_DATA,
+                                      "Malformed data received when requesting file",
+                                      { "url": url, "exception": e.toString(), "stack": e.stack });
+                        }
+                    }
+
+                    onSuccess(rawbuf);
+                }
+                else {
+                    onSuccess(request.response || request.responseText);
+                }
+            }
+            else {
+                onError(e);
+            }
+        }
+
         try {
-            var asynchronous = options.hasOwnProperty('asynchronous') ? options.asynchronous : true;
-            request.open(options.noBody ? 'HEAD' : 'GET', url, asynchronous);
+            var async = options.hasOwnProperty('asynchronous') ? options.asynchronous : true;
+            request.open(options.noBody ? 'HEAD' : 'GET', url, async);
 
             if (options.hasOwnProperty('responseType')) {
                 request.responseType = options.responseType;
@@ -5415,26 +5570,50 @@ av.Model = Model;
             if (options.headers) {
                 for (var header in options.headers) {
                     request.setRequestHeader(header, options.headers[header]);
+
+                    // Disable withCredentials if header is Authorization type
+                    // NOTE: using withCredentials attaches cookie data to request
+                    if (header.toLocaleLowerCase() === "authorization") {
+                        request.withCredentials = false;
+                    }
                 }
             }
 
-            function onError(e) {
-                onFailure(request.status, request.statusText, {url: url});
-            }
-
-            function onLoad(e) {
-                if (request.status === 200) {
-                    onSuccess(request.response ? request.response : request.responseText);
-                }
-                else {
-                    onError(e);
-                }
-            }
-
-            if (asynchronous) {
+            if (async) {
                 request.onload = onLoad;
                 request.onerror = onError;
                 request.ontimeout = onError;
+
+                if (options.ondata) {
+
+                    //Set up incremental progress notification
+                    //if needed. We have to do some magic in order
+                    //to get the received data progressively.
+                    //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/Using_XMLHttpRequest
+                    request.overrideMimeType('text/plain; charset=x-user-defined');
+                    options._dlProgress = {
+                        streamOffset: 0,
+                        counter: 0
+                    };
+
+                    request.onreadystatechange = function() {
+
+                        if (request.readyState > 2) {
+
+                            var textBuffer = request.responseText;
+
+                            // No new data coming in.
+                            if (options._dlProgress.streamOffset >= textBuffer.length)
+                                return;
+
+                            var arrayBuffer = textToArrayBuffer(textBuffer, options._dlProgress.streamOffset);
+
+                            options._dlProgress.streamOffset = textBuffer.length;
+
+                            options.ondata(arrayBuffer);
+                        }
+                    };
+                }
             }
 
             request.send();
@@ -5448,8 +5627,8 @@ av.Model = Model;
                 }
             }
 
-            if (!asynchronous) {
-                onLoad(null);
+            if (!async) {
+                onLoad();
             }
         }
         catch (e) {
@@ -5458,267 +5637,94 @@ av.Model = Model;
     };
 
 
-
-})();
-
-
-
-
-
-var Xhr = (function () {
-    var Xhr = function(errorHandler, auth, viewing_url) {
-        this.xhr = new XMLHttpRequest();
-        this.errorHandler = errorHandler;
-        this.success = false;
-        this.viewing_url = viewing_url;
-        this.auth = auth;
-    };
-
-    Xhr.prototype.generateUrl = function(url, queryParams, options) {
-        var index = url.indexOf('urn:');
-        if (index === 0 && this.viewing_url) {
-            var feature = (options && options.feature) ? options.feature : null;
-            if (feature) {
-                if (feature == 'render') {
-                    // remove urn: prefix. We probably want to fix this on server side to avoid
-                    // such UGLY code on client side.
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url);
-                } else if (feature == 'bubbles') {
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url);
-                } else if (feature == 'comments') {
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/file/" + encodeURIComponent(url);
-                } else {
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url.substr(index));
-                }
-            } else {
-                url = this.viewing_url + "/items/" + encodeURIComponent(url.substr(index));
-            }
-        }
-
-        /*
-        var ossPrefix = "urn:adsk.objects:os.object:";
-        var ossIndex = url.indexOf(ossPrefix);
-        if (ossIndex !== -1) {
-            var ossPath = url.substr(ossIndex + ossPrefix.length);
-            var bucket = ossPath.substr(0, ossPath.indexOf("/"));
-            var object = ossPath.substr(ossPath.indexOf("/") + 1);
-            url = options.oss_url + "/buckets/" + bucket + "/objects/" + encodeURIComponent(object);
-        }
-        */
-
-        if (queryParams) {
-            url = url + "?" + queryParams;
-        }
-        return url;
-    };
-
-    Xhr.prototype.addHeaders = function(headers) {
-        // Add the defaults.
-        //
-        //headers["Access-Control-Allow-Credentials"] = true;
-        //headers["Access-Control-Allow-Origin"] = "*";
-
-        // Add the rest.
-        //
-        for(var header in headers) {
-            this.xhr.setRequestHeader(header, headers[header]);
-        }
-    };
-
-    // Perform a synchronous get.
-    Xhr.prototype.get = function(path, headers, responseType, loadCB, feature, queryParams, oss_url) {
-        var url = this.generateUrl(path, queryParams, {feature: feature, oss_url : oss_url});
-
-        try {
-            this.xhr.open('GET', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous post.
-    Xhr.prototype.post = function(path, headers, body, responseType, loadCB, feature) {
-        var url = this.generateUrl(path, null, {feature: feature});
-
-        if (!headers["Content-Type"])
-            headers["Content-Type"] = "application/json";
-
-        try {
-            this.xhr.open('POST', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send(body);
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200, 201);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous ranged get.
-    // rangeBegin and rangeEnd are inclusive bounds that mark the start / end of the range.
-    // Require server side support of ranged get. Caller's job to make sure this invariant holds.
-    // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
-    Xhr.prototype.getRange = function(url, headers, responseType, rangeBegin, rangeEnd, loadCB) {
-        var url = this.generateUrl(path);
-
-        headers["Range"] = "bytes=" + rangeBegin + "-" + rangeEnd;
-
-        try {
-            this.xhr.open('GET', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 206);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous head request.
-    // Return the headers of response.
-    Xhr.prototype.head = function(url) {
-        var url = this.generateUrl(path);
-
-        try {
-            this.xhr.open('GET', url, false);
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-
-            this.addHeaders([]);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200);
-
-        var responseHeaders = [];
-        responseHeaders["Accept-Ranges"] = this.xhr.getResponseHeader("Accept-Ranges");
-        responseHeaders["Content-Length"] = this.xhr.getResponseHeader("Content-Length");
-        return responseHeaders;
-    };
-
-    // Changed it to support more than one status code
-    Xhr.prototype.errorCheck = function(url, expectedStatusCode) {
-        if (this.xhr.readyState === 4 && this.xhr.status) {
-            var i;
-            for (i = 1; i < arguments.length; i++) {
-                if (this.xhr.status === arguments[i])
-                    break;
-            }
-            if (i === arguments.length && this.errorHandler) {
-                this.errorHandler.unsuccessfulResponse(url, this.xhr.status, this.xhr.statusText);
-            } else {
-                this.success = true;
-            }
-        } else {
-            this.success = true;
-        }
-    };
-
-    return Xhr;
-})();
-
-// A default Xhr error handler that will pass errors to raiseError
-var XhrErrorHandler = (function() {
-    // host will be whatever object is hosting the raiseError function,
-    // usually Viewer3DImpl from the main thread or "self" from a worker
-    var XhrErrorHandler = function(host) {
-        this.host = host;
-        this.ignoreFileNotFound = false;
-    }
-
-    // Xhr failed outright (timeout, host unreachable, etc.)
-    XhrErrorHandler.prototype.networkFailure = function(url, exc) {
-        this.host.raiseError(
-            Autodesk.Viewing.ErrorCodes.NETWORK_FAILURE,
-            "Network failure",
-            { "url": url, "exception": exc.toString(), "stack": exc.stack });
-    };
-
-    // Response to Xhr was "unsuccessful" (non-200 status code)
-    XhrErrorHandler.prototype.unsuccessfulResponse = function(url, httpStatus, httpStatusText) {
+    // Create the default failure callback.
+    //
+    ViewingService.defaultFailureCallback = function (httpStatus, httpStatusText, data) {
         if (httpStatus == 403) {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_ACCESS_DENIED,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_ACCESS_DENIED,
                 "Access denied to remote resource",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
         else if (httpStatus == 404) {
-            if (!this.ignoreFileNotFound) {
-                this.host.raiseError(
-                    Autodesk.Viewing.ErrorCodes.NETWORK_FILE_NOT_FOUND,
-                    "Remote resource not found",
-                    { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-            }
+            this.raiseError(
+                av.ErrorCodes.NETWORK_FILE_NOT_FOUND,
+                "Remote resource not found",
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
         else if (httpStatus >= 500 && httpStatus < 600) {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_SERVER_ERROR,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_SERVER_ERROR,
                 "Server error when accessing resource",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+        }
+        else if (data.exception) {
+            this.raiseError(
+                av.ErrorCodes.NETWORK_FAILURE,
+                "Network failure",
+                { "url": data.url, "exception": data.exception.toString(), "stack": data.exception.stack});
         }
         else {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_UNHANDLED_RESPONSE_CODE,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_UNHANDLED_RESPONSE_CODE,
                 "Unhandled response code from server",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
     };
 
-    return XhrErrorHandler;
+
+
+    function copyOptions(loadContext, options) {
+
+        //Those are the usual defaults when called from the LMV worker
+        if (!options.hasOwnProperty("asynchronous"))
+            options.asynchronous = true;
+        else if (!options.asynchronous)
+            console.warn("LMV: Sync XHR used. Performance warning.");
+
+        if (!options.hasOwnProperty("responseType"))
+            options.responseType = "arraybuffer";
+
+        //Add options junk we got from the main thread context
+        options.withCredentials = !!loadContext.auth;
+        options.useLocalFileSystem = loadContext.useLocalFileSystem;
+        options.headers = loadContext.headers;
+        options.queryParams = loadContext.queryParams;
+        options.oss_url = loadContext.oss_url;
+    }
+
+    //Utility function called from the web worker to set up the options for a get request,
+    //then calling ViewingService.get internally
+    ViewingService.getItemWorker = function (loadContext, url, onSuccess, onFailure, options) {
+
+        options = options || {};
+
+        copyOptions(loadContext, options);
+
+        ViewingService.get(loadContext.viewing_url, 'items', url, onSuccess, onFailure, options);
+
+    };
+
+    //Utility function called from the web worker to set up the options for a get request,
+    //then calling ViewingService.get internally
+    ViewingService.getThumbnailWorker = function (loadContext, url, onSuccess, onFailure, options) {
+
+        options = options || {};
+
+        copyOptions(loadContext, options);
+
+        var role = options.role || "rendered";
+        var sz = options.size || 400;
+        //This will override any incoming query params, but in this case they are expected to be empty
+        options.queryParams = "guid=" + encodeURIComponent(options.guid) + "&role=" + role + "&width=" + sz + "&height=" + sz;
+
+        ViewingService.get(loadContext.viewing_url, 'thumbnails', url, onSuccess, onFailure, options);
+
+    };
+
+
+    avp.ViewingService = ViewingService;
+
 })();
 ;// WebRTC adapter (adapter.js) from Google
 
@@ -6590,7 +6596,371 @@ if (typeof window !== 'undefined')
     avp.P2PClient.prototype.constructor = avp.P2PClient;
     Autodesk.Viewing.EventDispatcher.prototype.apply( avp.P2PClient.prototype );
 
-})();;
+})();;(function(){
+
+    Autodesk.Viewing.Private.LiveReviewClient = function (viewer) {
+
+        this.viewer = viewer;
+        this.messageClient = null;
+        this.presenceChannelId = null;
+        this.p2p = null;
+        this.viewtx = null;
+        this.interceptor = null;
+    };
+
+    Autodesk.Viewing.Private.LiveReviewClient.prototype.destroy = function() {
+        this.leaveLiveReviewSession();
+    };
+
+    Autodesk.Viewing.Private.LiveReviewClient.prototype.joinLiveReviewSession = function (sessionId) {
+
+        if (!this.messageClient)
+            this.messageClient = avp.MessageClient.GetInstance();
+        if (!this.presenceChannelId)
+            this.presenceChannelId = window.location.host;
+        if (!this.messageClient.isConnected()) {
+            this.messageClient.connect(sessionId);
+        }
+
+        if (!this.viewtx)
+            this.viewtx = new avp.ViewTransceiver(this.messageClient);
+        this.viewtx.channelId = sessionId;
+        this.viewtx.attach(this.viewer);
+
+        if (!this.p2p)
+            this.p2p = new avp.P2PClient(this.messageClient);
+
+        this.messageClient.join(this.viewtx.channelId);
+
+        if (!this.interceptor)
+            this.interceptor = new avp.InteractionInterceptor(this.viewtx);
+        this.viewer.toolController.registerTool(this.interceptor);
+        this.viewer.toolController.activateTool(this.interceptor.getName());
+    };
+
+    Autodesk.Viewing.Private.LiveReviewClient.prototype.leaveLiveReviewSession = function () {
+        this.p2p && this.p2p.hangup();
+        this.viewtx && this.viewtx.detach(this.viewer);
+        this.messageClient && this.messageClient.disconnect();
+        if (this.interceptor) {
+            this.viewer.toolController.deactivateTool(this.interceptor.getName());
+        }
+
+        this.p2p = null;
+        this.viewtx = null;
+        this.messageClient = null;
+        this.interceptor = null;
+    };
+
+
+
+
+    var av = Autodesk.Viewing,
+        avp = av.Private;
+
+    avp.InteractionInterceptor = function(viewtx) {
+
+        this.getNames = function() {
+            return ["intercept"];
+        };
+
+        this.getName = function() {
+            return "intercept";
+        };
+
+        this.activate = function(name) { };
+        this.deactivate = function(name) { };
+        this.update = function(timeStamp) { return false; };
+
+        this.handleSingleClick = function( event, button ) {return false;};
+        this.handleDoubleClick = function( event, button ) {return false;};
+        this.handleSingleTap = function( tap ) {return false;};
+        this.handleDoubleTap = function( tap1, tap2 ) {return false;};
+        this.handleKeyDown = function( event, keyCode ) {return false;};
+        this.handleKeyUp = function( event, keyCode ) {return false;};
+
+        this.handleWheelInput = function(delta) {
+            viewtx.takeControl();
+            return false;
+        };
+
+        this.handleButtonDown = function(event, button) {
+            viewtx.takeControl();
+            //            stderr("click");
+            return false;
+        };
+
+        this.handleButtonUp = function(event, button) {return false;};
+        this.handleMouseMove = function(event) {
+            viewtx.updatePointer(event);
+            return false;
+        };
+
+        this.handleGesture = function(event) {
+            viewtx.takeControl();
+            return false;
+        };
+
+        this.handleBlur = function(event) {return false;};
+        this.handleResize = function() {};
+    };
+
+    avp.ViewTransceiver = function(client) {
+
+        var _this = this;
+        var _viewer = this.viewer = null;
+        var _blockEvents = false;
+        var _haveControl = false;
+        var _isDisconnected = false;
+        var _lastInControl;
+        var _client = this.client = client;
+        var _ray = new THREE.Ray();
+        var _pointer = null;
+        var _pointerOn = false;
+
+        this.channelId = null;
+
+        var _viewerState;
+        var VIEWER_STATE_FILTER = {
+            seedURN: false,
+            objectSet: true,
+            viewport: false,
+            cutplanes: true,
+            renderOptions: {
+                environment: false,
+                ambientOcclusion: false,
+                toneMap: {
+                    exposure: false
+                },
+                appearance: false
+            }
+        };
+
+
+        function onViewerState(evt) {
+            _blockEvents = true;
+            var state = JSON.parse(evt.data.msg);
+            _viewerState.restoreState(state);
+            _viewer.impl.invalidate(true, false, true);
+            _blockEvents = false;
+        }
+
+        function reduceBits(v) {
+            return Math.round(v * 1000) / 1000;
+        }
+
+        function reduceBitsV(v) {
+            for (var i=0; i< v.length; i++)
+                v[i] = reduceBits(v[i]);
+        }
+
+        function onCamera(e) {
+            var v = e.data.msg;
+
+            if (v[1] === true || _isDisconnected)
+            {
+                return;
+            }
+
+            if (v[0] != _lastInControl)
+            {
+                _lastInControl = v[0];
+                e.data.lastInControl = v[0];
+                _this.dispatchEvent({type: "controlChange", channelId: _this.channelId, data: e.data });
+            }
+
+            //For now, automatically relinquish camera control if we receive a remote command to move the camera
+            _haveControl = false;
+
+            /*
+             viewer.navigation.setRequestTransitionWithUp(true, new THREE.Vector3().set(v[1+0],v[1+1],v[1+2]),
+             new THREE.Vector3().set(v[1+3],v[1+4],v[1+5]),
+             _viewer.navigation.getCamera().fov,
+             new THREE.Vector3().set(v[1+6],v[1+7],v[1+8]));
+             */
+
+            _viewer.navigation.setView(new THREE.Vector3().set(v[2+0],v[2+1],v[2+2]),
+                new THREE.Vector3().set(v[2+3],v[2+4],v[2+5]));
+            _viewer.navigation.setCameraUpVector(new THREE.Vector3().set(v[2+6],v[2+7],v[2+8]));
+        }
+
+        function sendCamera(evt) {
+            if (!_haveControl && !_isDisconnected)
+                return;
+
+            var c = evt.camera;
+            var camParams = [ c.position.x, c.position.y, c.position.z,
+                c.target.x, c.target.y, c.target.z,
+                c.up.x, c.up.y, c.up.z
+            ];
+
+            reduceBitsV(camParams);
+            camParams.unshift(_isDisconnected);
+            camParams.unshift(client.getLocalId());
+
+            _client.sendMessage("camera", camParams, _this.channelId);
+
+            if (_lastInControl != camParams[0]) {
+                _lastInControl = camParams[0];
+                _this.dispatchEvent({type: "controlChange", channelId: _this.channelId, data: { lastInControl: _lastInControl } });
+            }
+        }
+
+
+        function showPointer(show, x, y) {
+
+            if (show && !_pointer) {
+                _pointer = document.createElement("div");
+                _pointer.classList.add("collabPointer");
+            }
+
+            if (show && !_pointerOn) {
+                _viewer.container.appendChild(_pointer);
+                _pointerOn = true;
+            }
+            else if (!show && _pointerOn) {
+                _viewer.container.removeChild(_pointer);
+                _pointerOn = false;
+            }
+
+            if (show) {
+                //Note the 4px is half the width/height specified in the CSS,
+                //so that the pointer is centered.
+                _pointer.style.left = (x-6) + "px";
+                _pointer.style.top = (y-6) + "px";
+            }
+
+        }
+
+        function onPointer(e) {
+
+            if (_haveControl)
+                return; //shouldn't get here in theory, but let's check just in case
+
+            if (_isDisconnected)
+                return; //we can't show the pointer if the views don't match
+
+            var v = e.data.msg;
+            _ray.origin.set(v[1], v[2], v[3]);
+            _ray.direction.set(v[4], v[5], v[6]);
+
+            var pt = _ray.at(_viewer.getCamera().near);
+            pt.project(_viewer.getCamera());
+
+            pt = _viewer.impl.viewportToClient(pt.x, pt.y);
+
+            //console.log(pt.x + " " + pt.y);
+            showPointer(true, pt.x, pt.y);
+        }
+
+
+        function sendPointer(evt) {
+            if (!_haveControl)
+                return;
+
+            //Note canvasX/Y are set by the ToolController to clientX/Y - canvas left/top.
+            var vpVec = _viewer.impl.clientToViewport(evt.canvasX, evt.canvasY);
+            _viewer.impl.viewportToRay(vpVec, _ray);
+
+            var rayParams = [ _ray.origin.x, _ray.origin.y, _ray.origin.z,
+                _ray.direction.x, _ray.direction.y, _ray.direction.z ];
+
+            reduceBitsV(rayParams);
+            rayParams.unshift(client.getLocalId());
+
+            _client.sendMessage("pointer", rayParams, _this.channelId);
+        }
+
+
+        function sendViewerState(e) {
+            //if (!_haveControl)
+            //    return;
+            if (_blockEvents)
+                return;
+
+            var state = _viewerState.getState(VIEWER_STATE_FILTER);
+
+            // TODO: if we kill the socket.io code path, this could be optimized
+            // too by removing the JSON.stringify of the state. Pubnub automatically
+            // does JSON serialization for us, with optimizations accordingly to their manual.
+            client.sendMessage("state", JSON.stringify(state), _this.channelId);
+        }
+
+
+        this.takeControl = function() {
+            _haveControl = true;
+            showPointer(false);
+        };
+
+        this.updatePointer = function(e) {
+            sendPointer(e);
+        };
+
+        this.connectCamera = function(set) {
+            _isDisconnected = !set;
+        };
+
+        this.attach = function(viewer) {
+
+            if (_viewer)
+                this.detach();
+
+            this.viewer = _viewer = viewer;
+            _viewerState = new avp.ViewerState(_viewer);
+
+            _client.addEventListener("cameraChange", onCamera);
+            _client.addEventListener("pointerMove", onPointer);
+            _client.addEventListener("viewerState", onViewerState);
+
+
+            if (!_viewer.hasEventListener(av.CAMERA_CHANGE_EVENT, sendCamera))
+                _viewer.addEventListener(av.CAMERA_CHANGE_EVENT, sendCamera);
+
+            if (!_viewer.hasEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState)) {
+                _viewer.addEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState);
+                _viewer.addEventListener(av.ISOLATE_EVENT, sendViewerState);
+                _viewer.addEventListener(av.HIDE_EVENT, sendViewerState);
+                _viewer.addEventListener(av.SHOW_EVENT, sendViewerState);
+                _viewer.addEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
+                _viewer.addEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
+                _viewer.addEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
+            }
+        };
+
+
+        this.detach = function() {
+
+            showPointer(false);
+
+            if (_client) {
+                _client.removeEventListener("cameraChange", onCamera);
+                _client.removeEventListener("viewerState", onViewerState);
+            }
+
+            if (_viewer) {
+                _viewer.removeEventListener(av.CAMERA_CHANGE_EVENT, sendCamera);
+
+                _viewer.removeEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.ISOLATE_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.HIDE_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.SHOW_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
+                _viewer.removeEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
+
+                this.viewer = _viewer = null;
+                _viewerState = null;
+            }
+        };
+
+    };
+
+    avp.ViewTransceiver.prototype.constructor = avp.ViewTransceiver;
+    Autodesk.Viewing.EventDispatcher.prototype.apply( avp.ViewTransceiver.prototype );
+
+
+})();
+;
 (function() {
 
 "use strict";
@@ -6599,6 +6969,8 @@ var avp = Autodesk.Viewing.Private;
 
 function Logger(options) {
     this.queue = [];
+    this.adp = null;
+    this.runtimeStats = {};
     
     if (options.eventCallback) 
         this.callback = options.eventCallback;
@@ -6629,6 +7001,8 @@ function Logger(options) {
         build_type: LMV_BUILD_TYPE
     };
     this.log(startEvent);
+
+    setInterval(function() { self.reportRuntimeStats(); }, 60000);
 }
 
 Logger.prototype.setupWS = function () {
@@ -6745,7 +7119,6 @@ Logger.prototype.setupXHR = function () {
 };
 
 Logger.prototype.flush = function () {
-
     //Don't try to log more if posting logs failed already.
     if (this.retries > 2) return;
 
@@ -6791,6 +7164,8 @@ Logger.prototype.flush = function () {
 };
 
 Logger.prototype.log = function (entry, forceFlush) {
+    this.updateRuntimeStats(entry);
+
     if (avp.offline) {
         return;
     }
@@ -6817,11 +7192,103 @@ Logger.prototype.log = function (entry, forceFlush) {
         this.flush();
     }
 
+    this.logToADP(entry);
+};
+
+Logger.prototype.logToADP = function(entry) {
+    if (!this.adp) {
+        return;
+    }
+
+    // Map & log legacy events to ADP
+    // TODO: move away from the legacy naming and avoid the awkward switch below
+    var evType = '';
+    var opType = '';
+    switch (entry.category) {
+        case 'tool_changed':
+        case 'pref_changed':
+            evType = 'CLICK_OPERATION';
+            opType = entry.category + '/' + entry.name;
+            break;
+        case 'screen_mode':
+            evType = 'CLICK_OPERATION';
+            opType = 'pref_changed/' + entry.category;
+            break;
+        case 'metadata_load_stats':
+            evType = 'DOCUMENT_START';
+            opType = 'stats';
+            break;
+        case 'model_load_stats':
+            evType = 'DOCUMENT_FULL';
+            opType = 'stats';
+            break;
+        case 'error':
+            evType = 'BACKGROUND_CALL';
+            opType = 'error';
+            break;
+    }
+
+    if (evType) {
+        this.adp.trackEvent(evType, {
+            operation: {
+                id: entry.sessionId,
+                type: opType,
+                stage: '',
+                status: 'C',
+                meta: entry
+            }
+        });
+    }
+};
+
+Logger.prototype.updateRuntimeStats = function(entry) {
+    if (entry.hasOwnProperty('aggregate')) {
+        switch (entry.aggregate) {
+            case 'count':
+                if (this.runtimeStats[entry.name] > 0) {
+                    this.runtimeStats[entry.name]++;
+                } else {
+                    this.runtimeStats[entry.name] = 1;
+                }
+                this.runtimeStats._nonempty = true;
+                break;
+            case 'last':
+                this.runtimeStats[entry.name] = entry.value;
+                this.runtimeStats._nonempty = true;
+                break;
+            default:
+                stderr('unknown log aggregate type');
+        }
+    }
+};
+
+Logger.prototype.reportRuntimeStats = function(flush) {
+    if (this.runtimeStats._nonempty) {
+        delete this.runtimeStats._nonempty;
+
+        if (this.adp) {
+            this.adp.trackEvent('BACKGROUND_CALL', {
+                operation: {
+                    id: this.sessionId,
+                    type: 'stats',
+                    stage: '',
+                    status: 'C',
+                    meta: this.runtimeStats
+                }
+            });
+        }
+
+        this.runtimeStats.category = 'misc_stats';
+        this.log(this.runtimeStats, flush);
+
+        this.runtimeStats = {};
+    }
 };
 
 Autodesk.Viewing.Private.Logger = Logger;
 
-})();;/**
+})();
+;/**
  * Autocam is the container for the view cube and steering wheel classes.
  * It contains math for camera transformations and most of the functions are retrieved from SampleCAM.
  * Refer to their documentation for explanation.
@@ -6942,7 +7409,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.goToView = function( viewVector ) {
-        if( !this.navApi.getIsLocked() ) {
+        if( this.navApi.isActionEnabled('gotoview') ) {
             var destination = {
                 position: viewVector.position.clone(),
                       up: viewVector.up.clone(),
@@ -7027,7 +7494,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.goHome = function() {
-        if( !this.navApi.getIsLocked() ) {
+        if( this.navApi.isActionEnabled('gotoview') ) {
             this.navApi.setPivotSetFlag(false);
             this.goToView( this.homeVector );
         }
@@ -8729,7 +9196,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.orbit = function (currentCursor, startCursor, distance, startState){
-        if( this.navApi.getIsLocked() || this.currentlyAnimating === true )
+        if( !this.navApi.isActionEnabled('orbit') || this.currentlyAnimating === true )
             return;
 
         var mode = 'wheel';
@@ -8999,7 +9466,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.look = function( distance ){
-        if( this.navApi.getIsLocked() )
+        if( !this.navApi.isActionEnabled('walk') )
             return;
 
         var delta = convertCoordsToWindow(distance.x, distance.y);
@@ -9058,7 +9525,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.pan = function ( distance ) {
-        if( this.navApi.getIsLocked() )
+        if( !this.navApi.isActionEnabled('pan') )
             return;
 
         distance = convertCoordsToWindow(distance.x, distance.y);
@@ -9093,7 +9560,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.zoom = function(zoomDelta){
-        if( this.navApi.getIsLocked() )
+        if( !this.navApi.isActionEnabled('zoom') )
             return;
 
         //TODO: bug - when pivot is set outside the object, object zooms past the pivot point
@@ -9171,7 +9638,7 @@ var Autocam = Autocam || function(camera, navApi) {
     };
 
     this.walk = function(currentCursor, startCursor, movementX, movementY, deltaTime){
-        if( this.navApi.getIsLocked() )
+        if( !this.navApi.isActionEnabled('walk') )
             return;
 
         var worldUp = this.sceneUpDirection.clone();
@@ -10253,7 +10720,7 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
 
     /** Used to make cube visible again when using the transparency option   */
     var mouseOverCube = function() {
-        if( !cam.navApi.getIsLocked() ) {
+        if( cam.navApi.isActionEnabled('orbit') ) {
             cubeContainer.style.opacity = "1.0";
             _transparent = false;
         }
@@ -10262,13 +10729,13 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
 
     /** Used to fade in and out the cube when using the transparency option */
     var mouseMoveOverCube = function(event) {
-        if (!_transparent && !cam.viewCubeMenuOpen && !cam.navApi.getIsLocked() ) {
+        if (!_transparent && !cam.viewCubeMenuOpen && cam.navApi.isActionEnabled('orbit') ) {
             var x = Math.max(Math.abs((event.clientX - position.x) / position.w - 0.5) * 4.0 - 1.0, 0);
             var y = Math.max(Math.abs((event.clientY - position.y) / position.h - 0.5) * 4.0 - 1.0, 0);
             var d = Math.max(0, Math.min(Math.sqrt(x*x + y*y), 1.0));
             cubeContainer.style.opacity = 1.0 - d * (1.0 - self.inactiveOpacity);
         }
-        else if( !cam.navApi.getIsLocked() ) {
+        else if( cam.navApi.isActionEnabled('orbit') ) {
             cubeContainer.style.opacity = 1.0;
         }
     };
@@ -10498,7 +10965,7 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
         event.preventDefault();
         event.stopPropagation();
 
-        if( cam.navApi.getIsLocked() ) 
+        if( !cam.navApi.isActionEnabled('orbit') ) 
             return;
 
         if (cam.currentlyAnimating) { return; }
@@ -10678,7 +11145,7 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
 
                 var log = function(action) {
                     if (avp.logger) {
-                        avp.logger.log({category: 'navigation', name: action});
+                        avp.logger.log({ name: 'navigation/' + action, aggregate: 'count' });
                     }
                 };
 
@@ -11354,7 +11821,7 @@ Autocam.ViewCube = function (tagId, autocam, cubeContainer, localizeResourcePath
     };
 
     var onDocumentMouseMove = function (event) {
-        if( !cam.navApi.getIsLocked() ) 
+        if( cam.navApi.isActionEnabled('orbit') ) 
             self.processMouseMove(event);
     };
 
@@ -12505,7 +12972,7 @@ Autodesk.Viewing.ToolController = function( viewerImpl, viewerApi, autocam, util
     {
         // Don't do blur in full screen (IE issue)
         if (!(_isIE11 && inFullscreen())) {
-            document.activeElement.blur();
+            document.activeElement && document.activeElement.blur();
         }
 
         _this.__clientToCanvasCoords(event);
@@ -12898,7 +13365,7 @@ Autodesk.Viewing.ViewingUtilities = function( viewerImplIn, autocam, navapi )
      */
     this.goHome = function()
     {
-        this.viewerImpl.log({category: 'navigation', name: 'home'});
+        this.viewerImpl.log({ name: 'navigation/home', aggregate: 'count' });
         autocam.goHome();
     };
 
@@ -13082,7 +13549,7 @@ Autodesk.Viewing.ViewingUtilities = function( viewerImplIn, autocam, navapi )
      */
     this.fitToView = function(immediate)
     {
-        this.viewerImpl.log({category: 'navigation', name: 'fit'});
+        this.viewerImpl.log({ name: 'navigation/fit', aggregate: 'count' });
         var fit = navapi.fitBounds(immediate, this.viewerImpl.getFitBounds(false));
         // Show the pivot on a fit:
         this.activatePivot(true);
@@ -13927,6 +14394,10 @@ Autodesk.Viewing.OrbitDollyPanTool = function( viewerImpl, viewerApi )
 
     function freeOrbit()
     {
+        if (!_navapi.isActionEnabled('orbit')) {
+            return;
+        }
+
         _pivotToEye.subVectors(_camera.position, _camera.pivot);
         _targetToEye.subVectors(_camera.position, _camera.target);
         var targetDist = _targetToEye.length();
@@ -15693,9 +16164,7 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
 
         function setWorldUp(upvec)
         {
-            _navapi.setIsLocked(false);
             _navapi.setWorldUpVector(upvec, true);
-            _navapi.setIsLocked(true);
         }
 
         function applyRoll(angle)
@@ -15995,7 +16464,6 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
     this.deactivate = function(name)
     {
         _rollInteraction.end();
-        _navapi.setIsLocked(false);
         viewerApi.removeEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.handleCameraChange);
         this.utilities.restorePivot();
         _touchType = null;
@@ -16111,7 +16579,6 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
 
             // Rotate gesture detected:
             case "rotatestart":
-                _navapi.setIsLocked(true);
                 viewerApi.removeEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.handleCameraChange);
                 _touchType = "roll";
                 _touchAngle = THREE.Math.degToRad(event.rotation);
@@ -16127,7 +16594,6 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
                 return (_touchType === "roll");
 
             case "rotateend":
-                _navapi.setIsLocked(false);
                 viewerApi.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.handleCameraChange);
                 _touchAngle = THREE.Math.degToRad(event.rotation);
                 _touchType = null;
@@ -16171,7 +16637,6 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
         _isDragging = true;
         _touchType = null;
 
-        _navapi.setIsLocked(true);
         this.controller.setIsLocked(true);
 
         viewerApi.removeEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, self.handleCameraChange);
@@ -16187,7 +16652,6 @@ Autodesk.Viewing.WorldUpTool = function( viewerImpl, viewerApi )
         _isDragging = false;
         _needNextRefresh = true;    // To accept final motion.
 
-        _navapi.setIsLocked(false);
         this.controller.setIsLocked(false);
 
         viewerApi.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, self.handleCameraChange);
@@ -16398,11 +16862,10 @@ Autodesk.Viewing.ToolInterface = function()
 ;
 (function() {
 
-"use strict";
+'use strict';
 
-var av = Autodesk.Viewing;
-var avp = av.Private;
-
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 function Selector(viewer, model) {
 
@@ -16861,9 +17324,10 @@ avp.MultiModelSelector = MultiModelSelector;
 ;
 (function() {
 
-    "use strict";
+    'use strict';
 
-    var av = Autodesk.Viewing;
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     var VisibilityManager = function (viewerImpl, model) {
         this.viewerImpl = viewerImpl;
@@ -17201,7 +17665,7 @@ avp.MultiModelSelector = MultiModelSelector;
 
 //Those are globals -- set by the build system.
 if (!LMV_WORKER_URL)
-    var LMV_WORKER_URL = "src/workers/MainWorker.js";
+    var LMV_WORKER_URL = "src/workers/MainWorker-web.js";
 
 if (ENABLE_INLINE_WORKER == undefined)
     var ENABLE_INLINE_WORKER = false;
@@ -17283,12 +17747,19 @@ avp.initWorkerScript = function(successCB, errorCB) {
 
 // Create a web worker.
 avp.createWorker = function() {
+
+    var w;
+
     // When we are not at release mode, create web worker directly from URL.
-    if ( !ENABLE_INLINE_WORKER ) {
-        return new Worker( avp.getResourceUrl(LMV_WORKER_URL) );
+    if ( ENABLE_INLINE_WORKER ) {
+        w = new Worker(WORKER_DATA_URL);
+    } else {
+        w = new Worker( avp.getResourceUrl(LMV_WORKER_URL) );
     }
 
-    return new Worker(WORKER_DATA_URL);
+    w.doOperation = w.postMessage;
+
+    return w;
 };
     
 
@@ -17361,14 +17832,14 @@ avp.createWorkerWithIntercept = function() {
 
     "use strict";
 
+    var av = Autodesk.Viewing,
+        avp = av.Private;
+
     var WORKER_GET_PROPERTIES = "GET_PROPERTIES";
     var WORKER_SEARCH_PROPERTIES = "SEARCH_PROPERTIES";
     var WORKER_BUILD_EXTERNAL_ID_MAPPING = "BUILD_EXTERNAL_ID_MAPPING";
     var WORKER_GET_OBJECT_TREE = "GET_OBJECT_TREE";
     var WORKER_ATTRIBUTES_MAP = "ATTRIBUTES_MAP";
-
-    var av = Autodesk.Viewing;
-    var avp = av.Private;
 
     //TODO: pass in the model instead of the model.svf
     var PropDbLoader = function(sharedDbPath, model, eventTarget) {
@@ -17386,13 +17857,20 @@ avp.createWorkerWithIntercept = function() {
     };
 
     PropDbLoader.prototype.dtor = function() {
-        if (this.propWorker) {
+        if (this.propWorker && !this.sharedDbPath) {
             this.propWorker.clearAllEventListenerWithIntercept();
             this.propWorker.terminate();
             this.propWorker = null;
         }
     };
 
+
+
+    //Cache of property workers per property database path.
+    //Many bubbles (Revit, AutoCAD) share the same property database
+    //across all viewables, so we can reuse the same worker for all
+    //sheets. This is particularly important for gigantic Revit property databases.
+    var propWorkerCache = {};
 
     var PROPDB_CB_COUNTER = 1;
     var PROPDB_CALLBACKS = {};
@@ -17430,53 +17908,100 @@ avp.createWorkerWithIntercept = function() {
         return cbId;
     }
 
+    PropDbLoader.prototype.processLoadResult = function(result) {
+        var scope = this;
+
+        if (result.instanceTreeStorage) {
+
+            var nodeAccess = new avp.InstanceTreeAccess(result.instanceTreeStorage, result.rootId, result.instanceBoxes);
+
+            scope.svf.instanceTree = new avp.InstanceTree(nodeAccess, result.objectCount, result.maxTreeDepth);
+
+            scope.svf.fragToNodeDone = true;
+        }
+        else if (result.objectCount) {
+            //Case where there is no object tree, but objects
+            //do still have properties. This is the case for F2D drawings.
+            scope.svf.hasObjectProperties = result.objectCount;
+            //stderr("Object count " + ew.data.objectCount);
+        }
+
+        scope.eventTarget.fireEvent({
+            type: av.OBJECT_TREE_CREATED_EVENT,
+            svf:scope.svf,
+            model:scope.model
+        });
+
+    };
+
+    PropDbLoader.prototype.processLoadError = function(error) {
+
+        var scope = this;
+
+        scope.propertyDbError = error;
+        scope.eventTarget.fireEvent({
+            type: av.OBJECT_TREE_UNAVAILABLE_EVENT,
+            svf:scope.svf,
+            model:scope.model
+        });
+    };
 
 
     PropDbLoader.prototype.load = function() {
         var scope = this;
 
-        if (!this.propWorker) {
-            this.propWorker = avp.createWorkerWithIntercept();
-            this.propWorker.addEventListenerWithIntercept(propertyWorkerCallback);
-        }
-
         var onObjectTreeRead = function(result) {
-            //This worker will produce two results -- first
-            //it will give us back the model hierarchy tree
-            //and send us back the bounding boxes for
-            //all nodes in the tree.
-            var it = result.instanceTree;
-            var ib = result.instanceBoxes;
 
-            if (it) {
+            scope.processLoadResult(result);
 
-                scope.svf.instanceTree = new avp.InstanceTree(it, ib, result.objectCount, result.maxTreeDepth);
-
-                scope.svf.fragToNodeDone = true;
+            //If any other instance of PropDbLoader tried to load
+            //the same property database while we were also loading it,
+            //notify it with the result also.
+            var cacheable = !!scope.sharedDbPath;
+            var cached = cacheable && propWorkerCache[scope.sharedDbPath];
+            if (cached && cached.waitingLoaders) {
+                for (var i=0; i<cached.waitingLoaders.length; i++) {
+                    cached.waitingLoaders[i].processLoadResult(result);
+                }
+                cached.waitingLoaders = null;
+                cached.workerResult = result;
             }
-            else if (result.objectCount) {
-                //Case where there is no object tree, but objects
-                //do still have properties. This is the case for F2D drawings.
-                scope.svf.hasObjectProperties = result.objectCount;
-                //stderr("Object count " + ew.data.objectCount);
-            }
-
-            scope.eventTarget.fireEvent({
-                type: av.OBJECT_TREE_CREATED_EVENT,
-                svf:scope.svf,
-                model:scope.model
-            });
-
         };
 
         var onObjectTreeError = function(error) {
-            scope.propertyDbError = error;
-            scope.eventTarget.fireEvent({
-                type: av.OBJECT_TREE_UNAVAILABLE_EVENT,
-                svf:scope.svf,
-                model:scope.model
-            });
+            scope.processLoadError(error);
+
+            //If any other instance of PropDbLoader tried to load
+            //the same property database while we were also loading it,
+            //notify it with the result also.
+            var cacheable = !!scope.sharedDbPath;
+            var cached = cacheable && propWorkerCache[scope.sharedDbPath];
+            if (cached && cached.waitingLoaders) {
+                for (var i=0; i<cached.waitingLoaders.length; i++) {
+                    cached.waitingLoaders[i].processLoadError(error);
+                }
+                cached.waitingLoaders = null;
+                cached.workerError = error;
+            }
+
         };
+
+        //See if we already loaded this property database once
+        var cacheable = !!this.sharedDbPath;
+        var cached = cacheable && propWorkerCache[this.sharedDbPath];
+
+        if (cached) {
+            stderr("Using cached property worker for ", this.sharedDbPath);
+            this.propWorker = cached;
+        } else {
+
+            this.propWorker = avp.createWorkerWithIntercept();
+            this.propWorker.addEventListenerWithIntercept(propertyWorkerCallback);
+
+            if (cacheable) {
+                propWorkerCache[this.sharedDbPath] = this.propWorker;
+            }
+        }
 
         var cbId = registerWorkerCallback(onObjectTreeRead, onObjectTreeError);
 
@@ -17500,7 +18025,7 @@ avp.createWorkerWithIntercept = function() {
                      "oss_url" : OSS_URL,
                      cbId: cbId,
                      queryParams : this.domainParam };
-        this.propWorker.postMessage(xfer); // Send data to our worker.
+        this.propWorker.doOperation(xfer); // Send data to our worker.
 
     };
 
@@ -17513,7 +18038,7 @@ avp.createWorkerWithIntercept = function() {
 
             opArgs.cbId = registerWorkerCallback(success, fail);
 
-            this.propWorker.postMessage(opArgs); // Send data to our worker.
+            this.propWorker.doOperation(opArgs); // Send data to our worker.
         } else if (scope.propertyDbError) {
             if (fail)
                 fail(scope.propertyDbError);
@@ -17625,15 +18150,15 @@ avp.createWorkerWithIntercept = function() {
 
 "use strict";
 
-var NUM_WORKER_THREADS = isMobileDevice() ? 2 : 6;
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+var NUM_WORKER_THREADS = av.isMobileDevice() ? 2 : 6;
 var WORKER_LOAD_GEOMETRY = "LOAD_GEOMETRY";
 var WORKER_LOAD_SVF = "LOAD_SVF";
 var WORKER_LOAD_SVF_CONTD = "LOAD_SVF_CONTD";
 
-var av = Autodesk.Viewing,
-    avp = Autodesk.Viewing.Private;
 
-    
 /** @constructor */
 var SvfLoader = function (parent) {
     this.viewer3DImpl = parent;
@@ -17679,7 +18204,10 @@ avp.pathToURL = function(path) {
         path.indexOf("urn:") === 0) {
         return path;
     }
-    
+
+    if (typeof window === "undefined")
+        return path;
+
     var rootRelPath = window.location.pathname;
     //chop off the index.html part
     var lastSlash = rootRelPath.lastIndexOf("/");
@@ -17756,7 +18284,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
         viewing_url : VIEWING_URL,
         oss_url : OSS_URL,
         queryParams : this.domainParam,
-        bvhOptions : options.bvhOptions || {isWeakDevice : isAndroidDevice() || isIOSDevice()}
+        bvhOptions : options.bvhOptions || {isWeakDevice : av.isMobileDevice()}
     };
 
     var w = this.svfWorker = avp.createWorkerWithIntercept();
@@ -17774,7 +18302,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
             scope.interceptManifest(ew.data.manifest);
             msg.operation = WORKER_LOAD_SVF_CONTD;
             msg.manifest = ew.data.manifest;
-            w.postMessage(msg);            
+            w.doOperation(msg);
         } else if (ew.data && ew.data.svf) {
             //Decompression is done.
             var svf = scope.svf = ew.data.svf;
@@ -17849,7 +18377,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
             if (ew.data.progress == 1) {
                 if (!scope.svf.bvh) {
                     scope.svf.bvh = ew.data.bvh;
-                    scope.model.setBVH(new NodeArray(scope.svf.bvh.nodes, scope.svf.bvh.useLeanNodes), scope.svf.bvh.primitives, scope.options.bvhOptions);
+                    scope.model.setBVH(new avp.NodeArray(scope.svf.bvh.nodes, scope.svf.bvh.useLeanNodes), scope.svf.bvh.primitives, scope.options.bvhOptions);
                     scope.viewer3DImpl.invalidate(false, true);
                 }
                 scope.loading = false;
@@ -17879,7 +18407,7 @@ SvfLoader.prototype.loadSvfCB = function(path, options, onSuccess, onError) {
     
     msg.operation = WORKER_LOAD_SVF;
     msg.interceptManifest = !!this.interceptManifest;
-    w.postMessage(msg);
+    w.doOperation(msg);
 
     return true;
 };
@@ -18032,7 +18560,7 @@ SvfLoader.prototype.loadGeometryPackOnDemand = function (packId) {
                  "oss_url" : OSS_URL,
                  queryParams : this.domainParam};
 
-    w.postMessage(xfer); // Send data to our worker.
+    w.doOperation(xfer); // Send data to our worker.
 };
 
 
@@ -18161,7 +18689,7 @@ SvfLoader.prototype.loadGeometryPack = function (packId, path) {
                  "oss_url" : OSS_URL,
                  queryParams : this.domainParam};
 
-    w.postMessage(xfer); // Send data to our worker.
+    w.doOperation(xfer); // Send data to our worker.
 };
     
 
@@ -18204,7 +18732,7 @@ SvfLoader.prototype.processReceivedMesh = function(mdata) {
     }
 
     //Convert the received mesh to THREE buffer geometry
-    BufferGeometryUtils.meshToGeometry(mdata);
+    avp.BufferGeometryUtils.meshToGeometry(mdata);
 
     var numInstances = fragIndexes.length;
 
@@ -18242,7 +18770,7 @@ SvfLoader.prototype.processReceivedMesh = function(mdata) {
         if (fragments.polygonCounts)
             fragments.polygonCounts[fragId] = polyCount;
 
-        var m = this.viewer3DImpl.createThreeMesh(this.model, mdata.geometry, materialId, this.tmpMatrix);
+        var m = this.viewer3DImpl.setupMesh(this.model, mdata.geometry, materialId, this.tmpMatrix);
         rm.activateFragment(fragId, m, !!this.options.placementTransform);
     }
 
@@ -18299,7 +18827,7 @@ SvfLoader.prototype.onSvfLoadDone = function(svf) {
     //We would not load property db when we are on mobile device AND on demand loading is on (which
     //implies the model is not 'normal' in terms of its size.). This is only a temp solution that
     //allow big models loads on mobile without crash. Without property db loading selection could break.
-    var shouldLoadPropertyDb = !(this.onDemandLoading && (isAndroidDevice() || isIOSDevice()));
+    var shouldLoadPropertyDb = !(this.onDemandLoading && (avp.isMobileDevice()));
     if (shouldLoadPropertyDb) {
         this.loadPropertyDb();
     }
@@ -18363,8 +18891,8 @@ SvfLoader.prototype.makeBVH = function(svf) {
     var mats = svf.materials ? svf.materials["materials"] : null;
     if (mats)
         this.addTransparencyFlagsToMaterials(mats);
-    svf.bvh = new BVHBuilder(svf.fragments, mats);
-    svf.bvh.build(this.options.bvhOptions || {isWeakDevice : isAndroidDevice() || isIOSDevice()});
+    svf.bvh = new avp.BVHBuilder(svf.fragments, mats);
+    svf.bvh.build(this.options.bvhOptions || {isWeakDevice : av.isMobileDevice()});
     var t1 = performance.now();
     stderr("BVH build time: " + (t1 - t0));
 };
@@ -18426,12 +18954,13 @@ SvfLoader.prototype.onGeomLoadDone = function() {
 
     function sendMessage(data){
         var aMessage = {'command':'assets', data: data};
-        window.webkit.messageHandlers.callbackHandler.postMessage(aMessage);
+        if (av.isBrowser)
+            window.webkit.messageHandlers.callbackHandler.postMessage(aMessage);
     }
 
     if (avp.assets) {
         // Callback to ios.
-        if (window.webkit) {
+        if (av.isBrowser && window.webkit) {
             sendMessage(avp.assets);
             avp.assets = null;
         }
@@ -18459,15 +18988,13 @@ av.FileLoaderManager.registerFileLoader("svf", ["svf"], avp.SvfLoader);
 
 "use strict";
 
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
 var WORKER_PARSE_F2D = "PARSE_F2D";
 var WORKER_STREAM_F2D = "STREAM_F2D";
 var WORKER_PARSE_F2D_FRAME = "PARSE_F2D_FRAME";
 
-
-var av = Autodesk.Viewing,
-    avp = Autodesk.Viewing.Private;
-
-    
 /** @constructor */
 function F2DLoader(parent) {
     this.viewer3DImpl = parent;
@@ -18477,7 +19004,7 @@ function F2DLoader(parent) {
     this.logger = avp.logger;
     this.loadTime = 0;
     this.domainParam = auth ? ("domain=" + encodeURIComponent(window.location.origin)) : "";
-};
+}
 
 F2DLoader.prototype.dtor = function () {
     this.svf = null;
@@ -18563,7 +19090,7 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
                 },
                 url: svfPath
                 };
-            parsingWorker.postMessage(msg, [msg.data]);
+            parsingWorker.doOperation(msg, [msg.data]);
             streamingWorker.terminate();
 
         } else if (ew.data && ew.data.type == "F2DSTREAM") {
@@ -18590,14 +19117,15 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
             if (ew.data.progress)
                 scope.viewer3DImpl.signalProgress(100*ew.data.progress);
 
-            parsingWorker.postMessage(msg, msg.data ? [msg.data] : undefined);
+            parsingWorker.doOperation(msg, msg.data ? [msg.data] : undefined);
 
             if (ew.data.finalFrame)
                 streamingWorker.terminate();
         } else if (ew.data && ew.data.type == "F2DAssetURL") {
             avp.assets = avp.assets.concat(ew.data.urls);
-        }
-        else if (ew.data && ew.data.debug) {
+        } else if (ew.data && ew.data.assetRequest) {
+            avp.assets.push(ew.data.assetRequest);
+        } else if (ew.data && ew.data.debug) {
             stderr(ew.data.message);
         } else if (ew.data && ew.data.error) {
             scope.loading = false;
@@ -18731,7 +19259,7 @@ F2DLoader.prototype.loadFydoCB = function(path, options, onSuccess, onError) {
         oss_url : OSS_URL,
         queryParams : this.domainParam };  // For CORS caching issue.
 
-    streamingWorker.postMessage(msg);
+    streamingWorker.doOperation(msg);
 
     return true;
 };
@@ -18755,7 +19283,7 @@ F2DLoader.prototype.processReceivedMesh = function(mdata) {
         fragIndexes = [fragIndexes];
 
     //Convert the received mesh to THREE buffer geometry
-    BufferGeometryUtils.meshToGeometry(mdata);
+    avp.BufferGeometryUtils.meshToGeometry(mdata);
 
     var numInstances = fragIndexes.length;
 
@@ -18785,7 +19313,7 @@ F2DLoader.prototype.processReceivedMesh = function(mdata) {
         if (fragments.polygonCounts)
             fragments.polygonCounts[fragId] = polyCount;
 
-        var m = this.viewer3DImpl.createThreeMesh(this.model, mdata.geometry, materialId, this.tmpMatrix);
+        var m = this.viewer3DImpl.setupMesh(this.model, mdata.geometry, materialId, this.tmpMatrix);
         rm.activateFragment(fragId, m);
     }
 
@@ -18949,7 +19477,7 @@ F2DLoader.prototype.onGeomLoadDone = function() {
 
     function sendMessage(data){
         var aMessage = {'command':'assets', data: data};
-        window.webkit.messageHandlers.callbackHandler.postMessage(aMessage);
+        window.webkit.messageHandlers.callbackHandler.doOperation(aMessage);
     }
 
     if (avp.assets) {
@@ -18980,9 +19508,12 @@ av.FileLoaderManager.registerFileLoader("f2d", ["f2d"], avp.F2DLoader);
 
 })();
 ;
-(function(ns) {
+(function() {
 
 "use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 var TAU = Math.PI * 2;
 
@@ -19513,9 +20044,9 @@ var fixUglyArc = function (start, end)
     return {start: start, end: end};
 };
 
-ns.VertexBufferBuilder = VertexBufferBuilder;
+avp.VertexBufferBuilder = VertexBufferBuilder;
 
-})(Autodesk.Viewing.Private);
+})();
 ;/**
  * Created by stanevt on 5/8/2015.
  */
@@ -20651,7 +21182,14 @@ Autodesk.Viewing.Private.Intersector = (function() {
 })();
 
 }
-;
+;(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+
 /**
  * BVH definitions:
  *
@@ -20689,6 +21227,7 @@ Autodesk.Viewing.Private.Intersector = (function() {
  * @param {boolean} useLeanNode Use minimal node structure size. Currently this parameter must be set to false.
  */
 function NodeArray(initialData, useLeanNode) {
+    'use strict';
 
     if (useLeanNode) {
         this.bytes_per_node = 32;
@@ -20919,12 +21458,13 @@ function box_get_size(dst, dst_off, src, src_off) {
     }
 }
 
-function box_copy(dst, dst_off, src, src_off) {
-    for (var i=0; i<6; i++) {
-        dst[dst_off+i] = src[src_off+i];
-    }
-}
+//function box_copy(dst, dst_off, src, src_off) {
+//    for (var i=0; i<6; i++) {
+//        dst[dst_off+i] = src[src_off+i];
+//    }
+//}
 
+// unwound version of box_copy
 function box_copy_00(dst, src) {
     dst[0] = src[0];
     dst[1] = src[1];
@@ -20936,14 +21476,14 @@ function box_copy_00(dst, src) {
 
 var dbl_max = Infinity;
 
-function box_make_empty(dst, dst_off) {
-        dst[dst_off]   =  dbl_max;
-        dst[dst_off+1] =  dbl_max;
-        dst[dst_off+2] =  dbl_max;
-        dst[dst_off+3] = -dbl_max;
-        dst[dst_off+4] = -dbl_max;
-        dst[dst_off+5] = -dbl_max;
-}
+//function box_make_empty(dst, dst_off) {
+//        dst[dst_off]   =  dbl_max;
+//        dst[dst_off+1] =  dbl_max;
+//        dst[dst_off+2] =  dbl_max;
+//        dst[dst_off+3] = -dbl_max;
+//        dst[dst_off+4] = -dbl_max;
+//        dst[dst_off+5] = -dbl_max;
+//}
 
 function box_make_empty_0(dst) {
     dst[0] =  dbl_max;
@@ -21032,13 +21572,14 @@ accum_bin_info.prototype.reset = function() {
 //Scratch variables used by bvh_bin_axis
 //TODO: can be replaced by a flat ArrayBuffer
 var bins = [];
-for (var i=0; i<MAX_BINS; i++) {
+var i;
+for (i=0; i<MAX_BINS; i++) {
     bins.push(new bvh_bin());
 }
 
 //TODO: can be replaced by a flat ArrayBuffer
 var ai = [];
-for (var i=0; i<MAX_BINS-1; i++)
+for (i=0; i<MAX_BINS-1; i++)
     ai.push(new accum_bin_info());
 
 var BR = new Float32Array(6);
@@ -21104,10 +21645,11 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
     if (num_bins > end-start+1)
         num_bins = end-start+1;
 
-    for (var i=0; i<num_bins; i++)
+    var i;
+    for (i=0; i<num_bins; i++)
         bins[i].reset();
 
-    for (var i=0; i<num_bins-1; i++)
+    for (i=0; i<num_bins-1; i++)
         ai[i].reset();
 
     split_info.num_bins = num_bins;
@@ -21120,9 +21662,10 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
     box_copy_00(ai[0].CL, bins[0].box_centroid);
     ai[0].AL = box_area_0(ai[0].BL);
     ai[0].NL = bins[0].num_prims;
+    var bin;
     for (i=1; i<num_bins-1; i++)
     {
-        var bin = bins[i];
+        bin = bins[i];
         var aii = ai[i];
         box_copy_00(aii.BL, ai[i-1].BL);
         box_add_box_00(aii.BL, bin.box_bbox);
@@ -21151,7 +21694,7 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
 
     for (i=i-1; i>=1; i--)
     {
-        var bin = bins[i];
+        bin = bins[i];
         box_add_box_00(BR, bin.box_bbox);
         box_add_box_00(CR, bin.box_centroid);
         AR = box_area_0(BR);
@@ -21308,13 +21851,13 @@ function bvh_subdivide(bvh,
 
     var prim_count = end - start + 1;
 
-    var isSmall = ((prim_count <= frags_per_leaf) && (poly_count < polys_per_node))
-                  || (prim_count === 1);
+    var isSmall = ((prim_count <= frags_per_leaf) && (poly_count < polys_per_node)) ||
+                  (prim_count === 1);
 
     //Decide whether to terminate recursion
-    if (isSmall
-      || depth > MAX_DEPTH //max recusrion depth
-      || cbdiag[axis] < bvh.scene_epsilon) //node would be way too tiny for math to make sense (a point)
+    if (isSmall ||
+      depth > MAX_DEPTH || //max recusrion depth
+      cbdiag[axis] < bvh.scene_epsilon) //node would be way too tiny for math to make sense (a point)
     {
         nodes.setLeftChild(nodeidx, -1);
         nodes.setPrimStart(nodeidx, start);
@@ -21497,7 +22040,8 @@ BVHBuilder.prototype.sortPrimitives = function() {
     var primitives = this.primitives;
     var numTransparent = 0;
 
-    for (var i=0, iEnd=this.prim_count; i<iEnd; i++) {
+    var i, iEnd;
+    for (i=0, iEnd=this.prim_count; i<iEnd; i++) {
 
         //Start with trivial 1:1 order of the indices array
         primitives[i] = i;
@@ -21540,7 +22084,7 @@ BVHBuilder.prototype.sortPrimitives = function() {
             var tmpTransparent = new Int32Array(numTransparent);
             var oidx = 0, tidx = 0;
 
-            for (var i=0, iEnd = this.prim_count; i<iEnd; i++) {
+            for (i=0, iEnd = this.prim_count; i<iEnd; i++) {
                 if (prim_sizes[i] >= 0)
                     primitives[oidx++] = primitives[i];
                 else
@@ -21614,8 +22158,9 @@ BVHBuilder.prototype.build = function(options) {
     //Opaque
     BVHModule.bvh_subdivide(this, root, 0, this.first_transparent - 1, this.boxv_o, this.boxc_o, false, 0);
 
+    var a;
     while(this.recursion_stack.length) {
-        var a = this.recursion_stack.pop();
+        a = this.recursion_stack.pop();
         BVHModule.bvh_subdivide(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
     }
 
@@ -21623,10 +22168,15 @@ BVHBuilder.prototype.build = function(options) {
     BVHModule.bvh_subdivide(this, root+1, this.first_transparent, this.prim_count-1, this.boxv_t, this.boxc_t, true, 0);
 
     while(this.recursion_stack.length) {
-        var a = this.recursion_stack.pop();
+        a = this.recursion_stack.pop();
         BVHModule.bvh_subdivide(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
     }
-};;
+};
+
+avp.NodeArray = NodeArray;
+avp.BVHBuilder = BVHBuilder;
+
+})();;
 
 (function() {
 
@@ -21752,9 +22302,9 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
     while (i < this.vcount) {
         var flag = this.getVertexFlagsAt(i);
 
-        var vertexId    = (flag >>  0) & 0xff;        //  8 bit
+        //var vertexId    = (flag >>  0) & 0xff;        //  8 bit
         var geomType    = (flag >>  8) & 0xff;        //  8 bit
-        var linePattern = (flag >> 16) & 0xff;        //  8 bit
+        //var linePattern = (flag >> 16) & 0xff;        //  8 bit
         var layerId     = this.getLayerIndexAt(i);    // 16 bit
         var vpId        = this.getViewportIndexAt(i); // 16 bit
 
@@ -21779,13 +22329,17 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
 };
 
 })();
-;var OUTSIDE = 0,
-    INTERSECTS = 1,
-    CONTAINS = 2;
-
+;
 (function() {
 
 "use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+var OUTSIDE     = avp.OUTSIDE       = 0;
+var INTERSECTS  = avp.INTERSECTS    = 1;
+var CONTAINS    = avp.CONTAINS      = 2;
 
 //Encapsulates frustum-box intersection logic
     function FrustumIntersector() {
@@ -21854,14 +22408,6 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
             //p.z = ( e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z + e[ 14 ] ) * d;
         }
 
-        function clamp(value, min, max) {
-            if (value < min)
-                return min;
-            if (value > max)
-                return max;
-            return value;
-        }
-
         return function (box) {
 
             init_three();
@@ -21903,7 +22449,7 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
             if (tmpBox.max.y < -1.0)
                 tmpBox.max.y = -1.0;
 
-            return (tmpBox.max.x - tmpBox.min.x) * (tmpBox.max.y - tmpBox.min.y)
+            return (tmpBox.max.x - tmpBox.min.x) * (tmpBox.max.y - tmpBox.min.y);
         };
 
     })();
@@ -21912,24 +22458,17 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
 
         var e = this.viewProj.elements;
 
+        // Take center of box and find its distance from the eye.
+        var x = (bbox.min.x+bbox.max.x)/2.0;
+        var y = (bbox.min.y+bbox.max.y)/2.0;
+        var z = (bbox.min.z+bbox.max.z)/2.0;
 
-        var x = bbox.min.x, y = bbox.min.y, z = bbox.min.z;
+        var w = e[3] * x + e[7] * y + e[11] * z + e[15];
 
         var d = 1.0 / ( e[3] * x + e[7] * y + e[11] * z + e[15] );
 
-        var dmin = ( e[2] * x + e[6] * y + e[10] * z + e[14] ) * d;
+        return ( e[2] * x + e[6] * y + e[10] * z + e[14] ) * d;
 
-
-        x = bbox.max.x;
-        y = bbox.max.y;
-        z = bbox.max.z;
-
-        d = 1.0 / ( e[3] * x + e[7] * y + e[11] * z + e[15] );
-
-        var dmax = ( e[2] * x + e[6] * y + e[10] * z + e[14] ) * d;
-
-
-        return Math.min(dmin, dmax);
     };
 
 
@@ -21990,7 +22529,7 @@ avp.VertexBufferReader.prototype.enumGeomsForObject = function(dbId, callback)
     })();
 
 
-    Autodesk.Viewing.Private.FrustumIntersector = FrustumIntersector;
+    avp.FrustumIntersector = FrustumIntersector;
 
 })();;
 
@@ -22035,14 +22574,15 @@ var VBIntersector = (function() {
 		inverseMatrix.getInverse( mesh.matrixWorld );
 		ray.copy( raycaster.ray ).applyMatrix4( inverseMatrix );
 
-        var a, b, c;
+        var a, b, c, i, j, il;
         var precision = raycaster.precision;
+        var positions, stride, intersectionPoint, distance;
 
         if (attributes.index !== undefined) {
 
             var indices = attributes.index.array || geometry.ib;
-            var positions = geometry.vb ? geometry.vb : attributes.position.array;
-            var stride = geometry.vb ? geometry.vbstride : 3;
+            positions = geometry.vb ? geometry.vb : attributes.position.array;
+            stride = geometry.vb ? geometry.vbstride : 3;
             var offsets = geometry.offsets;
 
             if (!offsets || offsets.length === 0) {
@@ -22057,7 +22597,7 @@ var VBIntersector = (function() {
                 var count = offsets[oi].count;
                 var index = offsets[oi].index;
 
-                for (var i = start, il = start + count; i < il; i += 3) {
+                for (i = start, il = start + count; i < il; i += 3) {
 
                     a = index + indices[i];
                     b = index + indices[i + 1];
@@ -22066,8 +22606,6 @@ var VBIntersector = (function() {
                     vA.fromArray(positions, a * stride);
                     vB.fromArray(positions, b * stride);
                     vC.fromArray(positions, c * stride);
-                    
-                    var intersectionPoint;
 
                     if (side === THREE.BackSide) {
 
@@ -22083,7 +22621,7 @@ var VBIntersector = (function() {
 
                     intersectionPoint.applyMatrix4(mesh.matrixWorld);
 
-                    var distance = raycaster.ray.origin.distanceTo(intersectionPoint);
+                    distance = raycaster.ray.origin.distanceTo(intersectionPoint);
 
                     if (distance < precision || distance < raycaster.near || distance > raycaster.far) continue;
 
@@ -22104,10 +22642,10 @@ var VBIntersector = (function() {
 
         } else {
 
-            var positions = geometry.vb ? geometry.vb : attributes.position.array;
-            var stride = geometry.vb ? geometry.vbstride : 3;
+            positions = geometry.vb ? geometry.vb : attributes.position.array;
+            stride = geometry.vb ? geometry.vbstride : 3;
 
-            for (var i = 0, j = 0, il = positions.length; i < il; i += 3, j += 9) {
+            for (i = 0, j = 0, il = positions.length; i < il; i += 3, j += 9) {
 
                 a = i;
                 b = i + 1;
@@ -22119,11 +22657,11 @@ var VBIntersector = (function() {
 
                 if (material.side === THREE.BackSide) {
 
-                    var intersectionPoint = ray.intersectTriangle(vC, vB, vA, true);
+                    intersectionPoint = ray.intersectTriangle(vC, vB, vA, true);
 
                 } else {
 
-                    var intersectionPoint = ray.intersectTriangle(vA, vB, vC, material.side !== THREE.DoubleSide);
+                    intersectionPoint = ray.intersectTriangle(vA, vB, vC, material.side !== THREE.DoubleSide);
 
                 }
 
@@ -22131,7 +22669,7 @@ var VBIntersector = (function() {
 
                 intersectionPoint.applyMatrix4(mesh.matrixWorld);
 
-                var distance = raycaster.ray.origin.distanceTo(intersectionPoint);
+                distance = raycaster.ray.origin.distanceTo(intersectionPoint);
 
                 if (distance < precision || distance < raycaster.near || distance > raycaster.far) continue;
 
@@ -22173,6 +22711,8 @@ var VBIntersector = (function() {
 		var interSegment = new THREE.Vector3();
 		var interRay = new THREE.Vector3();
 		var step = mesh.mode === THREE.LineStrip ? 1 : 2;
+        var positions, stride, distance, distSq;
+        var i;
 
 		if ( geometry instanceof THREE.BufferGeometry ) {
 
@@ -22181,8 +22721,8 @@ var VBIntersector = (function() {
 			if ( attributes.index !== undefined ) {
 
 				var indices = geometry.ib ? geometry.ib : attributes.index.array;
-				var positions = geometry.vb ? geometry.vb : attributes.position.array;
- 				var stride = geometry.vb ? geometry.vbstride : 3;
+				positions = geometry.vb ? geometry.vb : attributes.position.array;
+ 				stride = geometry.vb ? geometry.vbstride : 3;
  				var offsets = geometry.offsets;
 
 				if ( !offsets || offsets.length === 0 ) {
@@ -22197,7 +22737,7 @@ var VBIntersector = (function() {
 					var count = offsets[ oi ].count;
 					var index = offsets[ oi ].index;
 
-					for ( var i = start; i < start + count - 1; i += step ) {
+					for ( i = start; i < start + count - 1; i += step ) {
 
 						var a = index + indices[ i ];
 						var b = index + indices[ i + 1 ];
@@ -22205,11 +22745,11 @@ var VBIntersector = (function() {
 						vStart.fromArray( positions, a * stride );
 						vEnd.fromArray( positions, b * stride );
 
-						var distSq = ray.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
+						distSq = ray.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
 
 						if ( distSq > precisionSq ) continue;
 
-						var distance = ray.origin.distanceTo( interRay );
+						distance = ray.origin.distanceTo( interRay );
 
 						if ( distance < raycaster.near || distance > raycaster.far ) continue;
 
@@ -22232,19 +22772,19 @@ var VBIntersector = (function() {
 
 			} else {
 
-				var positions = geometry.vb ? geometry.vb : attributes.position.array;
- 				var stride = geometry.vb ? geometry.vbstride : 3;
+				positions = geometry.vb ? geometry.vb : attributes.position.array;
+ 				stride = geometry.vb ? geometry.vbstride : 3;
 
-				for ( var i = 0; i < positions.length / stride - 1; i += step ) {
+				for ( i = 0; i < positions.length / stride - 1; i += step ) {
 
 					vStart.fromArray( positions, stride * i );
 					vEnd.fromArray( positions, stride * i + stride );
 
-					var distSq = ray.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
+					distSq = ray.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
 
 					if ( distSq > precisionSq ) continue;
 
-					var distance = ray.origin.distanceTo( interRay );
+					distance = ray.origin.distanceTo( interRay );
 
 					if ( distance < raycaster.near || distance > raycaster.far ) continue;
 
@@ -22320,11 +22860,12 @@ var VBIntersector = (function() {
 
 
 ;
-var BufferGeometryUtils = (function() {
+(function() {
 
 "use strict";
 
-    var avp = Autodesk.Viewing.Private;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 //Finds a precanned BufferAttribute corresponding to the given
 //attribute data, so that we don't have to allocate the same exact
@@ -22340,12 +22881,12 @@ var BufferGeometryUtils = (function() {
             attr = new THREE.BufferAttribute(attributeData.array, attributeData.itemSize);
         }
         else {
-            var id = attributeName + "|"
-                + attributeData.bytesPerItem + "|"
-                + attributeData.normalize + "|"
-                + attributeData.isPattern + "|"
-                + attributeData.divisor + "|"
-                + attributeData.offset;
+            var id = attributeName + "|" +
+                attributeData.bytesPerItem + "|" +
+                attributeData.normalize + "|" +
+                attributeData.isPattern + "|" +
+                attributeData.divisor + "|" +
+                attributeData.offset;
 
             attr = bufattrs[id];
             if (attr)
@@ -22400,17 +22941,31 @@ var BufferGeometryUtils = (function() {
 
     var indexAttr;
     var LmvBufferGeometry;
+    var idcounter = 1;
 
     function init_three_bufgeom() {
 
         indexAttr = new THREE.BufferAttribute(undefined, 1);
 
         LmvBufferGeometry = function () {
-            THREE.BufferGeometry.call(this);
+
+            //Avoid calling the superclass constructor for performance reasons.
+            //Skips the creation of a uuid and defining an accessor for the .id property.
+            //THREE.BufferGeometry.call(this);
 
             //Null those out since we don't need them.
             this.uuid = null;
             this.name = null;
+            this.id = idcounter++;
+
+            this.attributes = {};
+            this.attributesKeys = [];
+
+            this.drawcalls = [];
+            this.offsets = this.drawcalls; // backwards compatibility
+
+            this.boundingBox = null;
+            this.boundingSphere = null;
 
             this.numInstances = undefined;
             this.streamingDraw = false;
@@ -22513,9 +23068,8 @@ var BufferGeometryUtils = (function() {
 
 
 
-    return {
+    avp.BufferGeometryUtils =  {
         meshToGeometry: meshToGeometry
-
     };
 
 })();;
@@ -22523,8 +23077,8 @@ var BufferGeometryUtils = (function() {
 
     "use strict";
 
-    var avp = Autodesk.Viewing.Private;
-
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     /** @constructor
      * Maintains a list of buffer geometries and running totals of their memory usage, etc.
@@ -22557,12 +23111,12 @@ var BufferGeometryUtils = (function() {
             //If the model is certain to be below a certain size,
             //we will skip the heuristics that upload some meshes to
             //GPU and keep other in system mem, and just push it all to the GPU.
-            if (estimatedGPUMem <= avp.GPU_MEMORY_LIMIT
-                && numObjects < avp.GPU_OBJECT_LIMIT)
+            if (estimatedGPUMem <= avp.GPU_MEMORY_LIMIT &&
+                numObjects < avp.GPU_OBJECT_LIMIT)
                 this.svf.disableStreaming = true;
         }
 
-    };
+    }
 
     GeometryList.prototype.getGeometry = function (svfid) {
         return this.geoms[svfid];
@@ -22580,8 +23134,8 @@ var BufferGeometryUtils = (function() {
             GPU_MEMORY_HIGH *= 2; //there isn't much in terms of textures in 2d drawings, so we can afford to more room for geometry
 
 //this.disableStreaming = true;
-        if (this.disableStreaming
-            || (this.gpuMeshMemory < GPU_MEMORY_LOW && this.geoms.length < GPU_MESH_MAX)) {
+        if (this.disableStreaming ||
+            (this.gpuMeshMemory < GPU_MEMORY_LOW && this.geoms.length < GPU_MESH_MAX)) {
             //We are below the lower limits, so the mesh automatically is
             //assigned to retained mode
             geometry.streamingDraw = false;
@@ -22706,13 +23260,288 @@ var BufferGeometryUtils = (function() {
     };
 
 
-    Autodesk.Viewing.Private.GeometryList = GeometryList;
+    avp.GeometryList = GeometryList;
 
 })();
 ;
+//Implements runtime flat array storage for the node tree encoded by the property database
 (function() {
 
 "use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+	
+	//
+	// struct Node {
+	//     int dbId;
+	//	   int parentDbId;
+	//	   int firstChild; //if negative it's a fragment list
+	//     int numChildren;
+	//     int flags;	
+	// };
+	// sizeof(Node) == 20
+	var SIZEOF_NODE = 5, //integers
+		OFFSET_DBID = 0,
+		OFFSET_PARENT = 1,
+		OFFSET_FIRST_CHILD = 2,
+		OFFSET_NUM_CHILD = 3,
+		OFFSET_FLAGS = 4;
+
+	// note: objectCount and fragmentCount are not used
+	function NodeArray(objectCount, fragmentCount) {
+
+		this.nodes = [];
+		this.nextNode = 0;
+		
+		this.children = [];
+		this.nextChild = 0;
+
+		this.dbIdToIndex = {};
+
+		this.names = [];
+		this.s2i = {}; //duplicate string pool
+		this.strings = [];
+		this.nameSuffixes = []; //integers
+
+		//Occupy index zero so that we can use index 0 as undefined
+		this.getIndex(0);
+	}
+
+	NodeArray.prototype.getIndex = function(dbId) {
+
+		var index = this.dbIdToIndex[dbId];
+
+		if (index)
+			return index;
+
+		index = this.nextNode++;
+
+		//Allocate space for new node
+		this.nodes.push(dbId); //store the dbId as first integer in the Node structure
+		//Add four blank integers to be filled by setNode
+		for (var i=1; i<SIZEOF_NODE; i++)
+			this.nodes.push(0);
+
+		this.dbIdToIndex[dbId] = index;
+
+		return index;
+	};
+
+	NodeArray.prototype.setNode = function(dbId, parentDbId, name, flags, childrenIds, isLeaf) {
+
+		var index = this.getIndex(dbId);
+
+		var baseOffset = index * SIZEOF_NODE;
+
+		this.nodes[baseOffset+OFFSET_PARENT] = parentDbId;
+		this.nodes[baseOffset+OFFSET_FIRST_CHILD] = this.nextChild;
+		this.nodes[baseOffset+OFFSET_NUM_CHILD] = isLeaf ? -childrenIds.length : childrenIds.length;
+		this.nodes[baseOffset+OFFSET_FLAGS] = flags;
+
+		for (var i=0; i<childrenIds.length; i++)
+			this.children[this.nextChild++] = isLeaf ? childrenIds[i] : this.getIndex(childrenIds[i]);
+
+		if (this.nextChild > this.children.length)
+			console.error("Child index out of bounds -- should not happen");
+	
+		this.processName(index, name);
+	};
+
+	NodeArray.prototype.processName = function(index, name) {
+
+		//Attempt to decompose the name into a base string + integer,
+		//like for example "Base Wall [12345678]" or "Crank Shaft:1"
+		//We will try to reduce memory usage by storing "Base Wall" just once.
+		var base;
+		var suffix;
+
+		//Try Revit style [1234] first
+		var iStart = -1;
+		var iEnd = -1;
+
+		if (name) { //name should not be empty, but hey, it happens.
+			iEnd = name.lastIndexOf("]");
+			iStart = name.lastIndexOf("[");
+
+			//Try Inventor style :1234
+			if (iStart === -1 || iEnd === -1) {
+				iStart = name.lastIndexOf(":");
+				iEnd = name.length;
+			}		
+		}
+
+		//TODO: Any other separators? What does AutoCAD use?
+
+		if (iStart >= 0 && iEnd > iStart) {
+			base = name.slice(0, iStart+1);
+			var ssuffix = name.slice(iStart+1, iEnd);
+			suffix = parseInt(ssuffix, 10);
+			
+			//make sure we get the same thing back when
+			//converting back to string, otherwise don't 
+			//decompose it.
+			if (!suffix || suffix+"" !== ssuffix) {
+				base = name;
+				suffix = 0;
+			}
+		} else {
+			base = name;
+			suffix = 0;
+		}
+
+
+		var idx = this.s2i[base];
+		if (idx === undefined) {
+			this.strings.push(base);
+			idx = this.strings.length-1;
+			this.s2i[base] = idx;
+		}
+
+		this.names[index] = idx;
+		this.nameSuffixes[index] = suffix;
+	};
+
+
+	function arrayToBuffer(a) {
+		var b = new Int32Array(a.length);
+		b.set(a);
+		return b;
+	}
+
+    // note none of these arguments are used
+	NodeArray.prototype.flatten = function(dbId, parentDbId, name, flags, childrenIds, isLeaf) {
+		this.nodes = arrayToBuffer(this.nodes);
+		this.children = arrayToBuffer(this.children);
+		this.names = arrayToBuffer(this.names);
+		this.nameSuffixes = arrayToBuffer(this.nameSuffixes);
+		this.s2i = null; //we don't need this temporary map once we've built the strings list
+	};
+
+
+
+	function InstanceTreeAccess(nodeArray, rootId, nodeBoxes) {
+		this.nodes = nodeArray.nodes;
+		this.children = nodeArray.children;
+		this.dbIdToIndex = nodeArray.dbIdToIndex;
+		this.names = nodeArray.names;
+		this.nameSuffixes = nodeArray.nameSuffixes;
+		this.strings = nodeArray.strings;
+		this.rootId = rootId;
+		this.numNodes = this.nodes.length / SIZEOF_NODE;
+		this.visibleIds = null;
+
+
+		this.nodeBoxes = nodeBoxes || new Float32Array(6 * this.numNodes);
+	}
+
+    // note dbId is not used
+	InstanceTreeAccess.prototype.getNumNodes = function(dbId) {
+		return this.numNodes;
+	};
+
+	InstanceTreeAccess.prototype.getIndex = function(dbId) {
+		return this.dbIdToIndex[dbId];
+	};
+
+	InstanceTreeAccess.prototype.name = function(dbId) {
+		var idx = this.dbIdToIndex[dbId];
+		var base = this.strings[this.names[idx]];
+		var suffix = this.nameSuffixes[idx];
+		if (suffix) {
+			//NOTE: update this logic if more separators are supported in processName above
+			var lastChar = base.charAt(base.length-1);
+			if (lastChar === "[")
+				return base + suffix + "]";
+			else
+				return base + suffix;
+		} else {
+			return base;
+		}
+	};
+
+	InstanceTreeAccess.prototype.getParentId = function(dbId) {
+		return this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_PARENT];
+	};
+
+	InstanceTreeAccess.prototype.getNodeFlags = function(dbId) {
+		return this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_FLAGS];
+	};
+
+	InstanceTreeAccess.prototype.setNodeFlags = function(dbId, flags) {
+		this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_FLAGS] = flags;
+	};
+
+	InstanceTreeAccess.prototype.getNumChildren = function(dbId) {
+		var numChildren = this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_NUM_CHILD];
+		if (numChildren > 0)
+			return numChildren;
+		return 0;		
+	};
+
+	InstanceTreeAccess.prototype.getNumFragments = function(dbId) {
+		var numChildren = this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_NUM_CHILD];
+		if (numChildren < 0)
+			return -numChildren;
+		return 0;		
+	};
+
+	InstanceTreeAccess.prototype.getNodeBox = function(dbId, dst) {
+		var off = this.getIndex(dbId) * 6;
+		for (var i=0; i<6; i++)
+			dst[i] = this.nodeBoxes[off+i];
+	};
+
+	//Returns an array containing the dbIds of all objects
+	//that are physically represented in the scene. Not all
+	//objects in the property database occur physically in each graphics viewable.
+	InstanceTreeAccess.prototype.getVisibleIds = function() {
+		if (!this.visibleIds) {
+			this.visibleIds = Object.keys(this.dbIdToIndex).map(function(k) { return parseInt(k); });
+		}
+
+		return this.visibleIds;
+	};
+
+
+	InstanceTreeAccess.prototype.enumNodeChildren = function(dbId, callback) {
+		var idx = this.dbIdToIndex[dbId];
+		var firstChild = this.nodes[idx * SIZEOF_NODE + OFFSET_FIRST_CHILD];
+		var numChildren = this.nodes[idx * SIZEOF_NODE + OFFSET_NUM_CHILD];
+
+		if (numChildren > 0) {
+			for (var i=0; i<numChildren; i++) {
+				var childDbId = this.nodes[this.children[firstChild+i] * SIZEOF_NODE];
+				callback(childDbId, dbId, idx);
+			}
+		}
+	};
+
+	InstanceTreeAccess.prototype.enumNodeFragments = function(dbId, callback) {
+		var idx = this.dbIdToIndex[dbId];
+		var firstChild = this.nodes[idx * SIZEOF_NODE + OFFSET_FIRST_CHILD];
+		var numChildren = this.nodes[idx * SIZEOF_NODE + OFFSET_NUM_CHILD];
+
+		//If numChildren is negative, it means leaf node and children are fragments
+		if (numChildren < 0) {
+			numChildren = -numChildren;
+			for (var i=0; i<numChildren; i++) {
+				callback(this.children[firstChild+i], dbId, idx);
+			}
+		}
+	};
+
+	avp.InstanceTreeStorage = NodeArray;
+	avp.InstanceTreeAccess = InstanceTreeAccess;
+
+
+})();;
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 var NODE_TYPE_ASSEMBLY   = 0x0,    // Real world object as assembly of sub-objects
     NODE_TYPE_INSERT     = 0x1,    // Insert of multiple-instanced object
@@ -22727,8 +23556,6 @@ var NODE_TYPE_ASSEMBLY   = 0x0,    // Real world object as assembly of sub-objec
     NODE_FLAG_OFF        = 0x40000000,
     NODE_FLAG_HIDE       = 0x80000000;
 
-var av = Autodesk.Viewing;
-
 av.SelectionMode = {
 
     LEAF_OBJECT : 0,
@@ -22738,82 +23565,44 @@ av.SelectionMode = {
 };
 
 
-function InstanceTree(root, nodeBoxes, objectCount, maxDepth) {
+function InstanceTree(nodeAccess, objectCount, maxDepth) {
 
-    this.root = root;
-    this.rootId = root.dbId;
+    this.nodeAccess = nodeAccess;
     this.maxDepth = maxDepth;
-    this.boxes = nodeBoxes;
     this.objectCount = objectCount;
-    this.nodeflags = new Int32Array(objectCount + 1);
     this.numHidden = 0;
     this.numOff = 0;
-
-    this.createDbIdToNodeMapping();
 }
 
 
-InstanceTree.prototype.createDbIdToNodeMapping = function() {
-
-    if (!this.root)
-        return;
-
-    this.dbIdToNode = new Array(this.objectCount + 1);
-    var d2n = this.dbIdToNode;
-    var flags = this.nodeflags;
-
-    (function descendTree(node) {
-        if (node.dbId >= flags.length) {
-            // Accessing an out-of-bounds index of an array will still work but it shouldn't happen
-            console.warn('unexpected dbId ' + node.dbId);
-        }
-
-        d2n[node.dbId] = node;
-        
-        var children = node.children;
-        var nflags = node.flags;
-
-        if (nflags !== undefined) {
-            flags[node.dbId] = nflags;
-        } else {
-            //Assign default node flags in case they are not set explicitly.
-            var ntype = (children) ? NODE_TYPE_ASSEMBLY : NODE_TYPE_GEOMETRY;
-            node.flags = flags[node.dbId] = ntype;
-        }
-
-        if (children)
-            for (var k=0; k<children.length; k++)
-                descendTree(children[k]);
-
-    })(this.root);
-};
-
 InstanceTree.prototype.setFlagNode = function(dbId, flag, value) {
 
-    var old = this.nodeflags[dbId];
+    var old = this.nodeAccess.getNodeFlags(dbId);
 
+    // "!!" converts to bool
     if (!!(old & flag) == value)
         return false;
 
     if (value)
-        this.nodeflags[dbId] = old | flag;
+        this.nodeAccess.setNodeFlags(dbId, old | flag);
     else
-        this.nodeflags[dbId] = old & ~flag;
+        this.nodeAccess.setNodeFlags(dbId, old & ~flag);
 
     return true;
 };
 
 InstanceTree.prototype.setFlagGlobal = function(flag, value) {
-    var flags = this.nodeflags;
-    var i= 0, iEnd = flags.length;
+    var na = this.nodeAccess;
+
+    var i=0, iEnd = na.numNodes;
     if (value) {
         for (; i<iEnd; i++) {
-            flags[i] = flags[i] | flag;
+            na.setNodeFlags(i, na.getNodeFlags(i) | flag);
         }
     } else {
         var notflag = ~flag;
         for (; i<iEnd; i++) {
-            flags[i] = flags[i] & notflag;
+            na.setNodeFlags(i, na.getNodeFlags(i) & notflag);
         }
     }
 };
@@ -22833,7 +23622,7 @@ InstanceTree.prototype.setNodeOff = function(dbId, value) {
 };
 
 InstanceTree.prototype.isNodeOff = function(dbId) {
-    return !!(this.nodeflags[dbId] & NODE_FLAG_OFF);
+    return !!(this.nodeAccess.getNodeFlags(dbId) & NODE_FLAG_OFF);
 };
 
 
@@ -22853,34 +23642,37 @@ InstanceTree.prototype.setNodeHidden = function(dbId, value) {
 };
 
 InstanceTree.prototype.isNodeHidden = function(dbId) {
-    return !!(this.nodeflags[dbId] & NODE_FLAG_HIDE);
+    return !!(this.nodeAccess.getNodeFlags(dbId) & NODE_FLAG_HIDE);
 };
 
 InstanceTree.prototype.getNodeType = function(dbId) {
-    return this.nodeflags[dbId] & NODE_TYPE_BITS;
+    return this.nodeAccess.getNodeFlags(dbId) & NODE_TYPE_BITS;
 };
 
 InstanceTree.prototype.isNodeSelectable = function(dbId) {
-    return !(this.nodeflags[dbId] & NODE_FLAG_NOSELECT);
+    return !(this.nodeAccess.getNodeFlags(dbId) & NODE_FLAG_NOSELECT);
 };
 
-
 InstanceTree.prototype.getNodeParentId = function(dbId) {
-    return this.dbIdToNode[dbId].parent;
+    return this.nodeAccess.getParentId(dbId);
 };
 
 InstanceTree.prototype.getRootId = function() {
-    return this.rootId;
+    return this.nodeAccess.rootId;
 };
 
 InstanceTree.prototype.getNodeName = function(dbId) {
-    return this.dbIdToNode[dbId].name;
+    return this.nodeAccess.name(dbId);
 };
 
 InstanceTree.prototype.getChildCount = function(dbId) {
-    var node = this.dbIdToNode[dbId];
-    return (node && node.children) ? node.children.length : 0;
+    return this.nodeAccess.getNumChildren(dbId);
 };
+
+InstanceTree.prototype.getNodeBox = function(dbId, dst) {
+    this.nodeAccess.getNodeBox(dbId, dst);
+};
+
 
 
 InstanceTree.prototype.enumNodeFragments = function(node, callback, recursive) {
@@ -22889,32 +23681,19 @@ InstanceTree.prototype.enumNodeFragments = function(node, callback, recursive) {
     var dbId;
     if (typeof node == "number")
         dbId = node;
-    else
+    else if (node)
         dbId = node.dbId;
-
-
 
     var self = this;
 
     function traverse(dbId) {
-        var dbNode = self.dbIdToNode[dbId];
 
-        if (dbNode !== undefined) {
-            var ids = dbNode.fragIds;
-            if (ids !== undefined) {
-                if (!Array.isArray(ids))
-                    callback(ids); //could be just single fragment index in the node, in which case it's not an array
+        self.nodeAccess.enumNodeFragments(dbId, callback);
 
-                for (var j = 0; j < ids.length; ++j) {
-                    callback(ids[j]);
-                }
-            }
-
-            if (recursive) {
-                self.enumNodeChildren(dbId, function (child_dbId) {
-                    traverse(child_dbId);
-                });
-            }
+        if (recursive) {
+            self.enumNodeChildren(dbId, function (child_dbId) {
+                traverse(child_dbId);
+            });
         }
     }
 
@@ -22929,7 +23708,7 @@ InstanceTree.prototype.enumNodeChildren = function(node, callback, recursive) {
     var dbId;
     if (typeof node == "number")
         dbId = node;
-    else
+    else if (node)
         dbId = node.dbId;
 
     var self = this;
@@ -22940,23 +23719,13 @@ InstanceTree.prototype.enumNodeChildren = function(node, callback, recursive) {
 
     function traverse(dbId) {
 
-        var dbNode = self.dbIdToNode[dbId];
+        self.nodeAccess.enumNodeChildren(dbId, function(childId) {
+            callback(childId);
 
-        if (dbNode !== undefined) {
+            if (recursive)
+                traverse(childId);
+        });
 
-            if (!dbNode.children)
-                return;
-
-            for (var k = 0; k < dbNode.children.length; k++) {
-
-                var childId = dbNode.children[k].dbId;
-
-                callback(childId);
-
-                if (recursive)
-                    traverse(childId);
-            }
-        }
     }
 
     traverse(dbId);
@@ -22972,20 +23741,21 @@ InstanceTree.prototype.findNodeForSelection = function(dbId, selectionMode) {
         return dbId;
 
     var res = dbId;
+    var node, nt;
 
     if (selectionMode === av.SelectionMode.FIRST_OBJECT) {
         //1. Find the leaf node of the selection tree containing it and then follow the chain of parents all the way up to the root to get the complete path from root to leaf node.
         //2. Start at the root and walk down the path until the first node that is not a Model, Layer or Collection. Select it.
         var idpath = [];
 
-        var node = dbId;
+        node = dbId;
         while (node) {
             idpath.push(node);
             node = this.getNodeParentId(node);
         }
 
         for (var i=idpath.length-1; i>=0; i--) {
-            var nt = this.getNodeType(idpath[i]);
+            nt = this.getNodeType(idpath[i]);
             if ( (nt !== NODE_TYPE_MODEL) &&
                  (nt !== NODE_TYPE_LAYER) &&
                  (nt !== NODE_TYPE_COLLECTION) ) {
@@ -22998,9 +23768,9 @@ InstanceTree.prototype.findNodeForSelection = function(dbId, selectionMode) {
     else if (selectionMode === av.SelectionMode.LAST_OBJECT) {
         // Start at the leaf and walk up the path until the first node that is Composite. Select it. If there’s no Composite node in the path select the leaf.
 
-        var node = dbId;
+        node = dbId;
         while (node) {
-            var nt = this.getNodeType(node);
+            nt = this.getNodeType(node);
             if (nt === NODE_TYPE_COMPOSITE) {
                 res = node;
                 break;
@@ -23015,28 +23785,28 @@ InstanceTree.prototype.findNodeForSelection = function(dbId, selectionMode) {
 };
 
 
-Autodesk.Viewing.Private.InstanceTree = InstanceTree;
+avp.InstanceTree = InstanceTree;
 
 })();
 ;
-var //visibility/highlight bitmask flags
-    //NOTE: This is confusing and it should be fixed, but when the MESH_VISIBLE bit is off, the mesh
-    //will draw in ghosted mode. To completely skip drawing a mesh, set the HIDE flag.
-    MESH_VISIBLE = 1,
-    MESH_HIGHLIGHTED = 2,
-    MESH_HIDE = 4,
-    MESH_ISLINE = 8,
-    MESH_MOVED = 16,
-    MESH_TRAVERSED = 0x20,
-    MESH_RENDERFLAG = 0x80;
-
 
 (function() {
 
     "use strict";
 
-    var avp = Autodesk.Viewing.Private;
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
+var //visibility/highlight bitmask flags
+    //NOTE: This is confusing and it should be fixed, but when the MESH_VISIBLE bit is off, the mesh
+    //will draw in ghosted mode. To completely skip drawing a mesh, set the HIDE flag.
+    MESH_VISIBLE =      avp.MESH_VISIBLE        = 1,
+    MESH_HIGHLIGHTED =  avp.MESH_HIGHLIGHTED    = 2,
+    MESH_HIDE =         avp.MESH_HIDE           = 4,
+    MESH_ISLINE =       avp.MESH_ISLINE         = 8,
+    MESH_MOVED =        avp.MESH_MOVED          = 16,
+    MESH_TRAVERSED =    avp.MESH_TRAVERSED      = 0x20,
+    MESH_RENDERFLAG =   avp.MESH_RENDERFLAG     = 0x80;
 
     /** @constructor
      * Represents the full list of all geometry instances associated with a
@@ -23121,9 +23891,9 @@ var //visibility/highlight bitmask flags
         }
 
         return geom;
-    }
+    };
 
-    FragmentList.prototype.setMesh = function (fragId, mesh, updateFragmentData) {
+    FragmentList.prototype.setMesh = function (fragId, meshInfo, updateFragmentData) {
 
         //Remove any temporary geometry we used for the fragment
         //while it was loading
@@ -23176,22 +23946,42 @@ var //visibility/highlight bitmask flags
 
         //Remember the mesh in the frag->viz mesh array
         if (this.useThreeMesh) {
-            this.vizmeshes[fragId] = mesh;
+            var mesh = new THREE.Mesh(meshInfo.geometry, meshInfo.material);
+
+            if (meshInfo.matrix) {
+                if (mesh.matrix) {
+                    mesh.matrix.copy(meshInfo.matrix);
+                }
+                mesh.matrixWorld.copy(meshInfo.matrix);
+            }
+
+            mesh.is2d = meshInfo.is2d;
+            mesh.isLine = meshInfo.isLine;
+
+            mesh.matrixAutoUpdate = false;
+
+            //Add the mesh to the render group for this fragment
+            //Note each render group renders potentially many fragments.
+            mesh.frustumCulled = false; //we do our own culling in RenderQueue, the renderer doesn't need to
+
             mesh.fragId = fragId;
             mesh.dbId = this.fragments.fragId2dbId[fragId] | 0;
+
+            this.vizmeshes[fragId] = mesh;
+
         } else {
-            this.geomids[fragId] = mesh.geometry.svfid;
-            this.materialids[fragId] = mesh.material.id;
-            if (!this.materialmap[mesh.material.id])
-                this.materialmap[mesh.material.id] = mesh.material;
+            this.geomids[fragId] = meshInfo.geometry.svfid;
+            this.materialids[fragId] = meshInfo.material.id;
+            if (!this.materialmap[meshInfo.material.id])
+                this.materialmap[meshInfo.material.id] = meshInfo.material;
         }
 
 
-        this.vizflags[fragId] = 1 | (mesh.isLine ? MESH_ISLINE : 0); // 1 = visible, but not highlighted
+        this.vizflags[fragId] = 1 | (meshInfo.isLine ? MESH_ISLINE : 0); // 1 = visible, but not highlighted
 
         if (updateFragmentData) {
             // Update transform and bb
-            var transform = mesh.matrixWorld;
+            var transform = meshInfo.matrix;
 
             // Copy the transform to the fraglist array
             var i = fragId * 12;
@@ -23213,8 +24003,8 @@ var //visibility/highlight bitmask flags
 
             // Transform the local BB to world
             var b = new THREE.Box3();
-            if (mesh.geometry && mesh.geometry.boundingBox) {
-                b.copy(mesh.geometry.boundingBox);
+            if (meshInfo.geometry && meshInfo.geometry.boundingBox) {
+                b.copy(meshInfo.geometry.boundingBox);
             } else {
                 this.geoms.getModelBox(this.geomids[fragId], b);
             }
@@ -23241,6 +24031,7 @@ var //visibility/highlight bitmask flags
 
         var old = this.vizflags[fragId];
 
+        // "!!" casts to boolean
         if (!!(old & flag) == value)
             return false;
 
@@ -23442,13 +24233,14 @@ var //visibility/highlight bitmask flags
     FragmentList.prototype.updateAnimTransform = function (fragId, scale, rotationQ, translation) {
 
         var ax = this.animxforms;
+        var off;
 
         //Allocate animation transforms on first use.
         if (!ax) {
             var count = this.getCount();
             ax = this.animxforms = new Float32Array(10 * count); //3 scale + 4 rotation + 3 translation
             for (var i = 0; i < count; i++) {
-                var off = i * 10;
+                off = i * 10;
                 ax[off] = 1;
                 ax[off + 1] = 1;
                 ax[off + 2] = 1;
@@ -23462,7 +24254,7 @@ var //visibility/highlight bitmask flags
             }
         }
 
-        var off = fragId * 10;
+        off = fragId * 10;
         var moved = false;
 
         if (scale) {
@@ -23602,7 +24394,7 @@ var //visibility/highlight bitmask flags
             tmp.compose(pos, rot, scale);
 
             dstMtx.multiplyMatrices(tmp, dstMtx);
-        }
+        };
 
     })();
 
@@ -23656,7 +24448,7 @@ var //visibility/highlight bitmask flags
     })();
 
 
-    Autodesk.Viewing.Private.FragmentList = FragmentList;
+    avp.FragmentList = FragmentList;
 
 
 
@@ -23723,7 +24515,7 @@ var //visibility/highlight bitmask flags
     };
 
 
-    Autodesk.Viewing.Private.FragmentPointer = FragmentPointer;
+    avp.FragmentPointer = FragmentPointer;
 
 
 
@@ -23732,7 +24524,8 @@ var //visibility/highlight bitmask flags
 
 "use strict";
 
-var avp = Autodesk.Viewing.Private;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 var _tmpBox;
 
@@ -23851,9 +24644,9 @@ RenderBatch.prototype.sortByDepth = (function() {
         }
     }
     
-    function sortCB(a, b) {
-        return depths[b] - depths[a];
-    }
+    //function sortCB(a, b) {
+    //    return depths[b] - depths[a];
+    //}
 
     return function(frustumIn) {
     
@@ -23875,8 +24668,29 @@ RenderBatch.prototype.sortByDepth = (function() {
 
         this.forEachNoMesh(calDepth);
 
-        Array.prototype.sort.call(this.indicesView, sortCB);
-    
+        // Does not work, this call sorts on depths[indicesViews[i]], not depths[i],
+		// where 'i' is an index into both the depths and indicesViews lists.
+		//Array.prototype.sort.call(this.indicesView, sortCB);
+		
+		// Insertion sort appears to be about 7x or more faster
+		// for lists of 64 or less objects vs. defining a sort() function.
+		// Asking if there's a faster way. Traian mentioned quicksort > 8
+		// objects; I might give this a try.
+		var tempDepth, tempIndex;
+		for ( var j = 1; j < depths.length; j++ ) {
+			var k = j;
+			while ( k > 0 && depths[k-1] < depths[k] ) {
+				// swap
+				tempDepth = depths[k-1];
+				depths[k-1] = depths[k];
+				depths[k] = tempDepth;
+				tempIndex = this.indicesView[k-1];
+				this.indicesView[k-1] = this.indicesView[k];
+				this.indicesView[k] = tempIndex;
+				k--;
+			}
+		}
+
         //indices.set(this.indicesView, this.start);
     
     };
@@ -23915,15 +24729,16 @@ RenderBatch.prototype.forEach = function(callback, drawMode, includeEmpty) {
 
     for (var i=this.start, iEnd=this.lastItem; i<iEnd; i++) {
         var idx = indices ? indices[i] : i;
+        var m;
 
         // Only do this when page out enabled.
         if (pageOutGeometryEnabled) {
-            if ((frags.isFlagSet(idx, MESH_TRAVERSED)) && (drawMode == MESH_RENDERFLAG)) {
+            if ((frags.isFlagSet(idx, avp.MESH_TRAVERSED)) && (drawMode == avp.MESH_RENDERFLAG)) {
                 // If already trversed for rendering, ignore this fragment.
                 continue;
             }
 
-            var m = frags.getVizmesh(idx);
+            m = frags.getVizmesh(idx);
             if (!includeEmpty && (drawMode && frags.isFlagSet(idx, drawMode))) {
                 
                 if (!m.geometry) {
@@ -23932,8 +24747,8 @@ RenderBatch.prototype.forEach = function(callback, drawMode, includeEmpty) {
                 }
                 else {
                     // Set traversed flag for this fragment.
-                    if (drawMode == MESH_RENDERFLAG)
-                        frags.setFlagFragment(idx, MESH_TRAVERSED, true);
+                    if (drawMode == avp.MESH_RENDERFLAG)
+                        frags.setFlagFragment(idx, avp.MESH_TRAVERSED, true);
 
                     if (idx>avp.FRAGS_PERSISTENT_COUNT) {
                         // Only do this if using optimized memory for geometry rendering, 
@@ -23957,7 +24772,7 @@ RenderBatch.prototype.forEach = function(callback, drawMode, includeEmpty) {
             }
         }
         else {            
-            var m = frags.getVizmesh(idx);
+            m = frags.getVizmesh(idx);
         }
 
         // if drawMode is given, iterate vizflags that match
@@ -24052,7 +24867,7 @@ RenderBatch.prototype.raycast = (function() {
             if (raycaster.ray.isIntersectionBox(tmpBox)) {
                 VBIntersector.rayCast(m, raycaster, intersects);
             }
-        }, MESH_VISIBLE);
+        }, avp.MESH_VISIBLE);
     };
 })();
 
@@ -24097,20 +24912,20 @@ function evalVisbility(drawMode, vizflags, idx) {
     var vfin = vizflags[idx] & 0x7f;
     switch (drawMode) {
 
-        case RENDER_HIDDEN:
-                 v = !(vfin & MESH_VISIBLE); //visible (bit 0 on)
+        case avp.RENDER_HIDDEN:
+                 v = !(vfin & avp.MESH_VISIBLE); //visible (bit 0 on)
                  break;
-        case RENDER_HIGHLIGHTED:
-                 v = (vfin & MESH_HIGHLIGHTED); //highlighted (bit 1 on)
+        case avp.RENDER_HIGHLIGHTED:
+                 v = (vfin & avp.MESH_HIGHLIGHTED); //highlighted (bit 1 on)
                  break;
         default:
-                 v = ((vfin & (MESH_VISIBLE|MESH_HIGHLIGHTED|MESH_HIDE)) == 1); //visible but not highlighted, and not a hidden line (bit 0 on, bit 1 off, bit 2 off)
+                 v = ((vfin & (avp.MESH_VISIBLE|avp.MESH_HIGHLIGHTED|avp.MESH_HIDE)) == 1); //visible but not highlighted, and not a hidden line (bit 0 on, bit 1 off, bit 2 off)
                  break;
     }
     
     //Store evaluated visibility into bit 7 of the vizflags
     //to use for immediate rendering
-    vizflags[idx] = vfin | (v ? MESH_RENDERFLAG : 0);
+    vizflags[idx] = vfin | (v ? avp.MESH_RENDERFLAG : 0);
 
     return v;
 }
@@ -24164,7 +24979,7 @@ RenderBatch.prototype.applyVisibility = function() {
             } else {
                 stderr("Unexpected null mesh");
             }
-            vizflags[idx] = vizflags[idx] & ~MESH_RENDERFLAG;
+            vizflags[idx] = vizflags[idx] & ~avp.MESH_RENDERFLAG;
 
             // Record culled geometries for paging out.
             if (idx > avp.FRAGS_PERSISTENT_COUNT) {
@@ -24207,13 +25022,13 @@ RenderBatch.prototype.applyVisibility = function() {
 
         //Check if the entire render batch is contained inside
         //the frustum. This will save per-object checks.
-        var containment = frustum.intersectsBox((drawMode === RENDER_HIDDEN) ? this.boundingBoxHidden : this.boundingBox);
-        if (containment === OUTSIDE)
+        var containment = frustum.intersectsBox((drawMode === avp.RENDER_HIDDEN) ? this.boundingBoxHidden : this.boundingBox);
+        if (containment === avp.OUTSIDE)
             return allHidden; //nothing to draw
 
         vizflags = this.frags.vizflags;
         frags = this.frags;
-        checkCull = (containment !== CONTAINS);
+        checkCull = (containment !== avp.CONTAINS);
         
         this.forEach(applyVisCB, null, fragIdCb);
 
@@ -24243,7 +25058,7 @@ RenderBatch.prototype.applyVisibility = function() {
             } else {
                 stderr("Unexpected null mesh");
             }
-            vizflags[idx] = vizflags[idx] & ~MESH_RENDERFLAG;
+            vizflags[idx] = vizflags[idx] & ~avp.MESH_RENDERFLAG;
 
             return;
         }
@@ -24266,7 +25081,7 @@ RenderBatch.prototype.applyVisibility = function() {
         var culled = evalCulling(checkCull, frustum, frags, idx);
 
         if (culled) {
-            vizflags[idx] = vizflags[idx] & ~MESH_RENDERFLAG;
+            vizflags[idx] = vizflags[idx] & ~avp.MESH_RENDERFLAG;
             return;
         }
 
@@ -24291,13 +25106,13 @@ RenderBatch.prototype.applyVisibility = function() {
 
         //Check if the entire render batch is contained inside
         //the frustum. This will save per-object checks.
-        var containment = frustum.intersectsBox((drawMode === RENDER_HIDDEN) ? this.boundingBoxHidden : this.boundingBox);
-        if (containment === OUTSIDE)
+        var containment = frustum.intersectsBox((drawMode === avp.RENDER_HIDDEN) ? this.boundingBoxHidden : this.boundingBox);
+        if (containment === avp.OUTSIDE)
             return allHidden; //nothing to draw
 
         vizflags = this.frags.vizflags;
         frags = this.frags;
-        checkCull = (containment !== CONTAINS);
+        checkCull = (containment !== avp.CONTAINS);
 
         if (!fragIdCbIn && !frags.useThreeMesh) {
             this.forEachNoMesh(applyVisCBNoMesh, null);
@@ -24325,8 +25140,8 @@ avp.RenderBatch = RenderBatch;
 
 "use strict";
 
-var avp = Autodesk.Viewing.Private;
-
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 //TODO: better heuristic for group size might be needed
 //But it should be based on polygon count as well as
@@ -24354,7 +25169,8 @@ function ModelIteratorLinear(renderModel) {
     var _fragOrder = [ new Int32Array(fragCount) ];
 
     //Trivial initial order
-    for (var i=0; i<fragCount; i++) {
+    var i;
+    for (i=0; i<fragCount; i++) {
         _fragOrder[0][i] = i;
     }
 
@@ -24368,7 +25184,7 @@ function ModelIteratorLinear(renderModel) {
     var fragsPerScene = MAX_FRAGS_PER_GROUP;
     if (renderModel.is2d())
         fragsPerScene /= 6; //2d meshes are all fully packed, so we can't draw so many per batch.
-    if (isIOSDevice() || isAndroidDevice())
+    if (av.isMobileDevice())
         fragsPerScene /= 3; //This is tuned for ~15fps on Nexus 7.
     fragsPerScene = fragsPerScene | 0;
     var _fragsPerScene = fragsPerScene > 0 ? fragsPerScene : MAX_FRAGS_PER_GROUP;
@@ -24377,13 +25193,13 @@ function ModelIteratorLinear(renderModel) {
 
     var _geomScenes = new Array(numScenes);
 
-    for (var i=0; i<numScenes; i++) {
+    for (i=0; i<numScenes; i++) {
         //Scene for this fragment group
         var startIndex = i * _fragsPerScene;
         var scene = _geomScenes[i] = new avp.RenderBatch(_frags, _fragOrder, startIndex, _fragsPerScene);
         var lastIndex = startIndex + _fragsPerScene;
         if (lastIndex > fragCount)
-            lastIndex = fragCount
+            lastIndex = fragCount;
         scene.lastItem = lastIndex;
     }
 
@@ -24425,10 +25241,10 @@ function ModelIteratorLinear(renderModel) {
             if (!scene) {
                 _geomScenes[sceneIndex] = scene = new avp.RenderBatch(_frags, _fragOrder, sceneIndex * _fragsPerScene, _fragsPerScene);
             }
+            // did scene get set reasonably?
+            if (scene)
+                scene.onFragmentAdded(fragId);
         }
-
-        if (scene)
-            scene.onFragmentAdded(fragId);
 
     };
 
@@ -24481,11 +25297,11 @@ function ModelIteratorLinear(renderModel) {
     
     this.getGeomScenes = function() {
         return _geomScenes;
-    }
+    };
     
     this.done = function() {
         return _currentScene === _geomScenes.length;
-    }
+    };
 
 
 }
@@ -24498,7 +25314,8 @@ avp.ModelIteratorLinear = ModelIteratorLinear;
 
 "use strict";
 
-var avp = Autodesk.Viewing.Private;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 function ModelIteratorBVH() {
 
@@ -24514,7 +25331,6 @@ function ModelIteratorBVH() {
     var _tmpBox = new THREE.Box3();
     var _tmpBox2 = new THREE.Box3();
 
-    var _renderCounter = 0;
     var _frustum;
     var _done = false;
 
@@ -24550,7 +25366,7 @@ function ModelIteratorBVH() {
     
     };
     
-    
+    // note: fragId and mesh are not used in this function
     this.addFragment = function(fragId, mesh) {
     };
 
@@ -24606,9 +25422,10 @@ function ModelIteratorBVH() {
             var intersects = _frustum.intersectsBox(_tmpBox);
 
             //Node is entirely outside, go on to the next node
-            if (intersects !== OUTSIDE) {
+            if (intersects !== avp.OUTSIDE) {
                 var child = _bvhNodes.getLeftChild(nodeIdx);
                 var isInner = (child !== -1);
+                var firstIdx, secondIdx;
 
                 //Is it inner node? Add children for processing.
                 if (isInner) {
@@ -24625,8 +25442,8 @@ function ModelIteratorBVH() {
                         //compute the area for each child and insert them into
                         //the queue accordingly.
 
-                        var firstIdx = child + firstChild;
-                        var secondIdx = child + 1 - firstChild;
+                        firstIdx = child + firstChild;
+                        secondIdx = child + 1 - firstChild;
 
                         _bvhNodes.getBoxThree(firstIdx, _tmpBox);
                         _bvhNodeAreas[firstIdx] = areaFirst = _frustum.projectedArea(_tmpBox);
@@ -24652,8 +25469,8 @@ function ModelIteratorBVH() {
                         if (reverseAxis ^ depthFirst ^ transparent)
                             firstChild = 1 - firstChild;
 
-                        var firstIdx = child + firstChild;
-                        var secondIdx = child + 1 - firstChild;
+                        firstIdx = child + firstChild;
+                        secondIdx = child + 1 - firstChild;
 
                         _bvhNodeQueue[_bvhTail++] = firstIdx;
                         _bvhNodeAreas[firstIdx] = -1; //TODO: This has to be something based on camera distance
@@ -24687,9 +25504,9 @@ function ModelIteratorBVH() {
                      intersects = _frustum.intersectsBox(whichBox);
 
                      //Turn off frustum culling for the batch if it's fully contained
-                     scene.frustumCulled = (intersects !== CONTAINS);
+                     scene.frustumCulled = (intersects !== avp.CONTAINS);
 
-                     if (intersects !== OUTSIDE)
+                     if (intersects !== avp.OUTSIDE)
                      return scene;
                      */
 
@@ -24808,7 +25625,7 @@ function ModelIteratorBVH() {
     
     this.done = function() {
         return _done;
-    }
+    };
 
 }
 
@@ -24886,9 +25703,9 @@ function RenderModel(svf) {
         this.getFragmentList().dispose(glrenderer);
     };
     
-    this.activateFragment = function(fragId, mesh, overrideTransform) {
+    this.activateFragment = function(fragId, meshInfo, overrideTransform) {
 
-        _frags.setMesh(fragId, mesh, overrideTransform);
+        _frags.setMesh(fragId, meshInfo, overrideTransform);
 
         //The linear iterator can be updated to add meshes incrementally.
         //The BVH iterator is not mutable, yet.
@@ -24952,7 +25769,7 @@ function RenderModel(svf) {
             frags.culledGeom = [];
             var len = frags.vizflags.length;
             for (var i=0; i<len; ++i) {
-                frags.setFlagFragment(i, MESH_TRAVERSED, false);
+                frags.setFlagFragment(i, avp.MESH_TRAVERSED, false);
             }
             for (var p in frags.geomidsmap) {
                 if (frags.geomidsmap.hasOwnProperty(p)) {
@@ -25067,6 +25884,7 @@ function RenderModel(svf) {
             this.getVisibleBounds();
 
         var intersects = [];
+        var i;
 
         if (dbIds && dbIds.length > 0) {
 
@@ -25074,7 +25892,7 @@ function RenderModel(svf) {
             var it = this.getData().instanceTree;
             var fragIds = [];
             if (it) {
-                for (var i=0; i<dbIds.length; i++) {
+                for (i=0; i<dbIds.length; i++) {
                     it.enumNodeFragments(dbIds[i], function(fragId) {
                         fragIds.push(fragId);
                     }, true);
@@ -25091,7 +25909,7 @@ function RenderModel(svf) {
             if (fragIds.length > 2) { //2 is just an arbitrary value, assuming checking 2 fragments is still cheap than full tree traversal
                 _iterator.rayCast(raycaster, intersects, dbIds);
             } else {
-                for (var i=0; i<fragIds.length; i++) {
+                for (i=0; i<fragIds.length; i++) {
                     var mesh = _frags.getVizmesh(fragIds[i]);
                     if (!mesh)
                         continue;
@@ -25114,7 +25932,7 @@ function RenderModel(svf) {
 
         //pick the nearest object that is visible as the selected.
         var result;
-        for (var i=0; i<intersects.length; i++) {
+        for (i=0; i<intersects.length; i++) {
             var fragId = intersects[i].fragId;
 
             //skip past f2d consolidated meshes.
@@ -25162,7 +25980,7 @@ function RenderModel(svf) {
 
 
     this.setHighlighted = function(fragId, value) {
-        var changed = _frags.setFlagFragment(fragId, MESH_HIGHLIGHTED, value);
+        var changed = _frags.setFlagFragment(fragId, avp.MESH_HIGHLIGHTED, value);
 
         if (changed) {
             if (value)
@@ -25228,15 +26046,15 @@ function RenderModel(svf) {
         var num = _geoms.numGeomsInMemory;
         if (num > avp.GEOMS_COUNT_LIMIT) {
             // Over the limit, then start page out
-            var sum = 0, p = 0, i = 0, len, geomId;
+            var sum = 0, p = 0, i = 0, len, geomId, size;
             var remaining = avp.GEOMS_PAGEOUT_COUNT;
 
             // Remove untraversed geometries first.
-            var len = _frags.culledGeom.length;
+            len = _frags.culledGeom.length;
             len = len > remaining ? remaining : len;
             for (i=0; i<len; i++) {
                 geomId = _frags.culledGeom[i];
-                var size = _geoms.removeGeometry(geomId);
+                size = _geoms.removeGeometry(geomId);
                 if (size > 0) {
                     sum += size;
                     p++;
@@ -25247,12 +26065,12 @@ function RenderModel(svf) {
 
             // If not enough, continue to remove geometries that are already traversed.
             if (remaining > 0) {
-                var len = _frags.traversedGeom.length;
+                len = _frags.traversedGeom.length;
                 i = len > remaining ? len - remaining : 0;
                 // Remove all geometries that have been traversed in a reversed order.
                 for (; i<len; ++i) {
                     geomId = _frags.traversedGeom[i];
-                    var size = _geoms.removeGeometry(geomId);
+                    size = _geoms.removeGeometry(geomId);
                     if (size > 0) {
                         sum += size;
                         p++;
@@ -25268,7 +26086,7 @@ function RenderModel(svf) {
                 // Let's do it anyway.
                 len = _geoms.geoms.length;
                 for (i=0; i<len; ++i) {
-                    var size = _geoms.removeGeometry(i);
+                    size = _geoms.removeGeometry(i);
                     if (size > 0) {
                         sum += size;
                         p++;
@@ -25326,7 +26144,7 @@ function RenderModel(svf) {
                 // if still fail and traversed geometry is not empty, then will need another render.
                 // otherwise, need a hard page out no matter geometry get traversed or not.
                 _pageOutStatus = this.pageOutIfNeeded();
-                if (_pageOutStatus == avp.PAGEOUT_FAIL && _pageOutGeomCount == 0) {
+                if (_pageOutStatus == avp.PAGEOUT_FAIL && _pageOutGeomCount === 0) {
                     this.pageOutIfNeeded(true);
                 }
             }
@@ -25364,7 +26182,8 @@ avp.RenderModel = RenderModel;
 
     "use strict";
 
-    var avp = Autodesk.Viewing.Private;
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     /** @constructor
      * RenderScene
@@ -25389,7 +26208,7 @@ avp.RenderModel = RenderModel;
 
         var _raycaster = new THREE.Raycaster();
 
-        var _drawMode = RENDER_NORMAL;
+        var _drawMode = avp.RENDER_NORMAL;
         var _wasBeginFrame = false;
         var _frameStamp = 0;
         var _perf = performance;
@@ -25725,13 +26544,14 @@ avp.RenderModel = RenderModel;
 
                 //If we have a full part hierarchy we can use a
                 //better grouping strategy when exploding
-                if (svf.instanceTree && svf.instanceTree.boxes && scale !== 0) {
+                if (svf.instanceTree && svf.instanceTree.nodeAccess.nodeBoxes && scale !== 0) {
 
                     var scaledExplodeDepth = scale * (svf.instanceTree.maxDepth - 1) + 1;
                     var explodeDepth = 0 | scaledExplodeDepth;
                     var currentSegmentFraction = scaledExplodeDepth - explodeDepth;
 
-                    var nodeBoxes = svf.instanceTree.boxes;
+                    var it = svf.instanceTree;
+                    var tmpBox = new Float32Array(6);
 
                     (function explodeRec(nodeId, depth, cx, cy, cz, ox, oy, oz) {
 
@@ -25739,10 +26559,10 @@ avp.RenderModel = RenderModel;
                         if (depth == explodeDepth)
                             oscale *= currentSegmentFraction; //smooth transition of this tree depth from non-exploded to exploded state
 
-                        var box_offset = nodeId * 6;
-                        var mycx = 0.5 * (nodeBoxes[box_offset] + nodeBoxes[box_offset+3]);
-                        var mycy = 0.5 * (nodeBoxes[box_offset+1] + nodeBoxes[box_offset+4]);
-                        var mycz = 0.5 * (nodeBoxes[box_offset+2] + nodeBoxes[box_offset+5]);
+                        it.getNodeBox(nodeId, tmpBox);
+                        var mycx = 0.5 * (tmpBox[0] + tmpBox[3]);
+                        var mycy = 0.5 * (tmpBox[1] + tmpBox[4]);
+                        var mycz = 0.5 * (tmpBox[2] + tmpBox[5]);
 
                         if (depth > 0 && depth <= explodeDepth) {
                             var dx = (mycx - cx) * oscale;
@@ -25814,6 +26634,13 @@ avp.RenderModel = RenderModel;
     avp.RenderScene = RenderScene;
 
 })();;
+(function() {
+
+'use strict';
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
 function RenderContext() {
 
     var _renderer;
@@ -25895,20 +26722,22 @@ function RenderContext() {
 
     this.init = function (glrenderer, width, height) {
 
-        init_ShaderChunks(avs);
-        init_FireflyPhongShader(avs);
-        init_FireflyPrismShader(avs);
-        init_BackgroundShader(avs);
-        init_BlendShader(avs);
-        init_CelShader(avs);
-        init_CopyShader(avs);
-        init_FXAAShader(avs);
-        init_LineShader(avs);
-        init_NormalsShader(avs);
-        init_SAOBlurShader(avs);
-        init_SAOMinifyShader(avs);
-        init_SAOShader(avs);
-        init_FireflyBasicShader(avs);
+        avs.init_ShaderChunks(THREE);
+        avs.init_FireflyPhongShader(THREE);
+        avs.init_FireflyPrismShader(THREE);
+        avs.init_BackgroundShader(THREE);
+        avs.init_BlendShader(THREE);
+        avs.init_CelShader(THREE);
+        avs.init_CopyShader(THREE);
+        avs.init_FXAAShader(THREE);
+        avs.init_LineShader(THREE);
+        avs.init_NormalsShader(THREE);
+        avs.init_SAOBlurShader(THREE);
+        avs.init_SAOMinifyShader(THREE);
+        avs.init_SAOShader(THREE);
+        avs.init_FireflyBasicShader(THREE);
+
+        createRenderPasses();
 
         if (!glrenderer) {
             console.error("You need a gl context to make a renderer. Things will go downhill from here.");
@@ -25918,7 +26747,7 @@ function RenderContext() {
         //Firefox on Mac OSX reports it can do MRT, but it actually does not work in our case,
         //so we have to detect this case manually.
         _blockMRT = window.navigator.userAgent.indexOf("Firefox") != -1 && window.navigator.userAgent.indexOf("Mac OS") != -1;
-        _isWeakDevice = isAndroidDevice() || isIOSDevice();
+        _isWeakDevice = av.isMobileDevice();
 
         _settings.idbuffer = !_isWeakDevice;
 
@@ -25926,8 +26755,6 @@ function RenderContext() {
         _h = height;
 
         _renderer = glrenderer;
-
-        createRenderPasses();
 
         this.initPostPipeline(_settings.sao, _settings.antialias, false);
 
@@ -25998,6 +26825,7 @@ function RenderContext() {
         return ((ay * t + by) * t + cy) * t;
     }
 
+    // note: highResTimer is not used
     this.overlayUpdate = function(highResTimer) {
 
         if (_lastObjId === 0 || _lastObjId === -1)
@@ -26046,8 +26874,8 @@ function RenderContext() {
                 _renderer.clearTarget(_colorTarget, true, true, false); //clear color and depth buffer
             } else {
 
-                _clearPass.uniforms['uCamDir'].value = _camera.getWorldDirection();
-                _clearPass.uniforms['uCamUp'].value = _camera.up;
+                _clearPass.uniforms['uCamDir'].value = _camera.worldUpTransform ? _camera.getWorldDirection().clone().applyMatrix4(_camera.worldUpTransform) : _camera.getWorldDirection();
+                _clearPass.uniforms['uCamUp'].value = _camera.worldUpTransform ? _camera.up.clone().applyMatrix4(_camera.worldUpTransform) : _camera.up;
                 _clearPass.uniforms['uResolution'].value.set(_w, _h);
                 _clearPass.uniforms['uHalfFovTan'].value = Math.tan(THREE.Math.degToRad(_camera.fov * 0.5));
 
@@ -26141,6 +26969,7 @@ function RenderContext() {
         //MRT supported only for targets that have exactly equal number of bitplanes and bpp (ANGLE on Windows)
         //MRT not supported at all. (Not sure --> some mobile platforms?).
 
+		var oldMat;
         if (_mrtFloat32Works && _mrtRGBA8Works) {
             //You lucky dog! Fast code path for you.
 
@@ -26177,7 +27006,7 @@ function RenderContext() {
             //bind MRT with different bpp targets.
             if ((_settings.sao || _settings.toonShaded) && saoTarget) {
                 //Render the depth pass
-                var oldMat = scene.overrideMaterial;
+                oldMat = scene.overrideMaterial;
 
                 scene.overrideMaterial = _depthMaterial;
 
@@ -26205,7 +27034,7 @@ function RenderContext() {
             //shader, or at least one that support opacity and alpha map checks.
             if (_settings.idbuffer && idTarget && _idMaterial) {
 
-                var oldMat = scene.overrideMaterial;
+                oldMat = scene.overrideMaterial;
 
                 scene.overrideMaterial = _idMaterial;
 
@@ -26216,7 +27045,7 @@ function RenderContext() {
 
             if ((_settings.sao || _settings.toonShaded) && saoTarget) {
                 //Render the depth pass
-                var oldMat = scene.overrideMaterial;
+                oldMat = scene.overrideMaterial;
 
                 scene.overrideMaterial = _depthMaterial;
 
@@ -26313,6 +27142,9 @@ function RenderContext() {
     };
 
     this.presentBuffer = function (userFinalPass) {
+
+        if (!_renderer)
+            return;
 
         //See if the blend pass is trivial 1:1, in which
         //case we can just use the main color target for
@@ -26414,7 +27246,7 @@ function RenderContext() {
 
         if (_depthTarget) {
             _depthTarget.dispose();
-            _depthTarget = null
+            _depthTarget = null;
         }
 
         if (_overlayTarget) {
@@ -26457,7 +27289,7 @@ function RenderContext() {
         //Just a way to release the targets in cases when
         //we use a custom render context and don't need this one
         //temporarily
-        if (w == 0 && h == 0) {
+        if (w === 0 && h === 0) {
             this.cleanup();
             return;
         }
@@ -26549,7 +27381,7 @@ function RenderContext() {
             if (force || !_depthTarget || _depthTarget.width != sw || _depthTarget.height != sh) {
 
                 var format = THREE.FloatType;
-                if (isMobileDevice()) {
+                if (av.isMobileDevice()) {
                     format = THREE.HalfFloatType;
                 }
 
@@ -26643,7 +27475,7 @@ function RenderContext() {
     };
 
     this.hasMRT = function () {
-        return !_blockMRT && _renderer.supportsMRT();
+        return !_blockMRT && (_renderer && _renderer.supportsMRT());
     };
 
     this.applyMRTFlags = function(mat) {
@@ -26891,6 +27723,20 @@ function RenderContext() {
         return id;
     };
 
+    this.readbackTargetId = function() {
+        if (!_idTarget)
+            return null;
+
+        var readbackBuffer = new Uint8Array(4 * _idTarget.width * _idTarget.height);
+        _renderer.readRenderTargetPixels(_idTarget, 0, 0, _idTarget.width, _idTarget.height, readbackBuffer);
+
+        return {
+            buffer: readbackBuffer,
+            width: _idTarget.width,
+            height: _idTarget.height
+        };
+    };
+
     this.rolloverObjectViewport = function (vpx, vpy, dbIds) {
         var objId = dbIds ? dbIds[0] : this.idAtPixel(vpx, vpy);
         return this.rolloverObjectId(objId, dbIds);
@@ -26956,21 +27802,25 @@ function RenderContext() {
     // TODO_NOP: hack expose depthMaterial to register with matman for cutplanes
     this.getDepthMaterial = function() {
         return _depthMaterial;
-    }
-
+    };
 }
-;/**
+
+avp.RenderContext = RenderContext;
+
+})();;/**
  * NVIDIA FXAA 3.11 by TIMOTHY LOTTES
  * "PC VERSION" Quality, ported to WebGL
  * https://gist.githubusercontent.com/bkaradzic/6011431/raw/92a3737404c0e764fa554077b16e07a46442da51/Fxaa3_11.h
  */
 
-function init_FXAAShader() {
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_FXAAShader = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
-
 
 if (typeof avs.FXAAShader !== "undefined")
     return;
@@ -27060,13 +27910,17 @@ avs.FXAAShader = {
 
 };
 
-};
-function init_ShaderChunks() {
+}
+
+})();;
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_ShaderChunks = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
-
 
 avs.PackDepthShaderChunk = [
     //Packs a float in the range 0-1 to an RGBA8
@@ -27280,17 +28134,13 @@ avs.CutPlanesShaderChunk = [
     "#if NUM_CUTPLANES > 0",
         "uniform vec4 cutplanes[NUM_CUTPLANES];",
 
-        "bool checkCutPlanes(vec3 worldPosition) {",
-            "bool isCut = false;",
+        "void checkCutPlanes(vec3 worldPosition) {",
             "for (int i=0; i<NUM_CUTPLANES; i++) {",
-                "float dotPlane = dot(vec4(worldPosition, 1.0), cutplanes[i]);",
-                "isCut = isCut || (dotPlane > 0.0);",
+                // test if point is outside of cutting plane; if so, discard fragment
+                "if (dot(vec4(worldPosition, 1.0), cutplanes[i]) > 0.0) {",
+                    "discard;",
+				"}",
             "}",
-            "if (isCut) {",
-                "discard;",
-                "return true;",
-            "}",
-            "return false;",
         "}",
     "#endif",
 ].join("\n");
@@ -27426,11 +28276,16 @@ avs.FinalOutputShaderChunk = [
 
 ].join("\n");
 
-};function init_CopyShader() {
+}
+
+})();;(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_CopyShader = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
 
 if (typeof avs.CopyShader !== "undefined")
     return;
@@ -27471,12 +28326,16 @@ avs.CopyShader = {
 
 };
 
-};function init_CelShader() {
+}
+
+})();;(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_CelShader = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
-
 
 if (typeof avs.CelShader !== "undefined")
     return;
@@ -27732,13 +28591,16 @@ avs.CelShader = {
 
 };
 
-};
-function init_BlendShader() {
+}
+
+})();;(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_BlendShader = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
-
 
 if (typeof avs.BlendShader !== "undefined")
     return;
@@ -27950,14 +28812,17 @@ avs.BlendShader = {
 
 };
 
-};/**
+}
+
+})();;/**
  * @author alteredq / http://alteredqualia.com/
  * @author stanevt
  */
 
 (function() {
 
-"use strict";
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
 
 var LmvShaderPass = function ( shader, textureID ) {
 
@@ -28015,6 +28880,7 @@ var LmvShaderPass = function ( shader, textureID ) {
 
 LmvShaderPass.prototype = {
 
+    // note: delta is not used
 	render: function ( renderer, writeBuffer, readBuffer, delta ) {
 
 		if ( this.uniforms[ this.textureID ] ) {
@@ -28037,16 +28903,18 @@ LmvShaderPass.prototype = {
 
 };
 
-Autodesk.Viewing.Shaders.LmvShaderPass = LmvShaderPass;
+avs.LmvShaderPass = LmvShaderPass;
 
-})();;
-/* Scalable Ambient Obscurance implementation based on: {http://graphics.cs.williams.edu/papers/SAOHPG12/} */
-
-function init_SAOShader() {
+})();;(function() {
 
 "use strict";
 
-var avs = Autodesk.Viewing.Shaders;
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+/* Scalable Ambient Obscurance implementation based on: {http://graphics.cs.williams.edu/papers/SAOHPG12/} */
+
+avs.init_SAOShader = function(THREE) {
 
 if (typeof avs.SAOShader !== "undefined")
     return;
@@ -28466,14 +29334,19 @@ avs.SAOShader = {
 
 };
 
-};
-//Bilateral separable blur pass for SAO shader.
+}
 
-function init_SAOBlurShader() {
+})();;
+(function() {
 
 "use strict";
 
-var avs = Autodesk.Viewing.Shaders;
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+//Bilateral separable blur pass for SAO shader.
+
+avs.init_SAOBlurShader = function(THREE) {
 
 if (typeof avs.SAOBlurShader !== "undefined")
     return;
@@ -28783,12 +29656,16 @@ avs.SAOBlurShader = {
 
 };
 
-};
-function init_SAOMinifyShader() {
+}
+
+})();;(function() {
 
 "use strict";
 
-var avs = Autodesk.Viewing.Shaders;
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_SAOMinifyShader = function(THREE) {
 
 if (typeof avs.SAOMinifyFirstShader !== "undefined")
     return;
@@ -28904,10 +29781,16 @@ avs.SAOMinifyShader = {
 
 };
 
-};
-function init_FireflyPhongShader() {
+}
 
-var avs = Autodesk.Viewing.Shaders;
+})();;
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_FireflyPhongShader = function(THREE) {
+	'use strict';
 
 if (typeof avs.FireflyPhongShader !== "undefined")
     return;
@@ -29367,7 +30250,7 @@ avs.FireflyPhongShader = {
             "void main() {",
 
                 "#if NUM_CUTPLANES > 0",
-                    "if (checkCutPlanes(vWorldPosition)) return;",
+                    "checkCutPlanes(vWorldPosition);",
                 "#endif",
 
                 "gl_FragColor = vec4( vec3 ( 1.0 ), opacity );",
@@ -29778,15 +30661,24 @@ avs.FireflyPhongShader = {
 THREE.ShaderLib['firefly_phong'] = avs.FireflyPhongShader;
 
 }
-;
-function init_FireflyPrismShader() {
 
-var avs = Autodesk.Viewing.Shaders;
-var avp = Autodesk.Viewing.Private;
+
+})();;
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders,
+    avp = av.Private;
+
+avs.init_FireflyPrismShader = function(THREE) {
+	'use strict';
 
 if (typeof avs.PrismShader !== "undefined")
     return;
 
+    // This method sets up various uniforms for a given map, putting them
+    // in an array called "uniforms" which are accessed by the name, such
+    // as "uniforms[surface_albedo_map_texMatrix]".
     function GetPrismMapUniforms(mapName) {
         var mtxName = mapName + "_texMatrix";
         var mapInvt = mapName + "_invert";
@@ -29813,6 +30705,10 @@ if (typeof avs.PrismShader !== "undefined")
         return uniforms;
     }
 
+	// If any map type is defined, then do whatever "content" is;
+	// typically it's "#define USE_MAP". In other words, if any map
+	// is defined, then USE_MAP will also be defined. This constant
+	// is then checked and determines whether a UV variable is defined, etc.
     function GetPrismMapsDefinitionChunk( content ) {
         var def = ["#if defined( USE_SURFACE_ALBEDO_MAP )" +
                    " || defined( USE_SURFACE_ROUGHNESS_MAP )" +
@@ -29839,7 +30735,9 @@ if (typeof avs.PrismShader !== "undefined")
         return def;
     }
 
-    function GetPrismMapSampleChunk( mapType, variableName, isFloat, linearize) {
+    // Set up code for texture access. If USE_SURFACE_ALBEDO_MAP is defined, for example, this texture access code gets executed.
+    // If it's not defined, then a simply copy occurs, e.g. "surfaceAlbedo = surface_albedo;" from the variableName and mapType.
+    function GetPrismMapSampleChunk( mapType, variableName, isFloat, linearize ) {
         var suffix = isFloat ? "_v3" : "";
         var declare = isFloat ? "vec3 " : "";
         var average = isFloat ? variableName + " = averageOfFloat3(" + variableName + suffix + ");" : "";
@@ -29847,6 +30745,7 @@ if (typeof avs.PrismShader !== "undefined")
         var shader = [
                       "#if defined( USE_" + mapType.toUpperCase() +  "_MAP )",
                       "vec2 uv_" + mapType + "_map = (" + mapType + "_map_texMatrix * vec3(vUv, 1.0)).xy;",
+                      mapType.toUpperCase()+"_CLAMP_TEST;",
                       declare + variableName + suffix + " = texture2D(" + mapType +"_map, uv_" + mapType + "_map).xyz;",
                       colorLinearization,
                       "if(" + mapType + "_map_invert) " + variableName + suffix +" = vec3(1.0) - " + variableName + suffix + ";",
@@ -31807,7 +32706,7 @@ avs.PrismShader = {
 
             "void main() {",
             "#if NUM_CUTPLANES > 0",
-                "if (checkCutPlanes(vWorldPosition)) return;",
+                "checkCutPlanes(vWorldPosition);",
             "#endif",
                 "vec3 N = normalize(vNormal);",
             "#if defined( USE_SURFACE_NORMAL_MAP ) || defined( USE_LAYERED_NORMAL_MAP )" +
@@ -32051,6 +32950,7 @@ avs.PrismShader = {
         ].join("\n")
 
 };
+	// currently not used
     function createShaderMaterial(shader) {
         return new THREE.ShaderMaterial({
             uniforms: THREE.UniformsUtils.clone( shader.uniforms ),
@@ -32225,12 +33125,17 @@ avp.clonePrismMaterial = function (mat) {
 };
 
 }
-;
-function init_NormalsShader() {
+
+
+})();;
+(function() {
 
 "use strict";
 
-var avs = Autodesk.Viewing.Shaders;
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_NormalsShader = function(THREE) {
 
 if (typeof avs.NormalsShader !== "undefined")
     return;
@@ -32296,7 +33201,7 @@ avs.NormalsShader = {
 
             "void main() {",
                 "#if NUM_CUTPLANES > 0",
-                    "if (checkCutPlanes(vWorldPosition)) return;",
+                    "checkCutPlanes(vWorldPosition);",
                 "#endif",
 
                 "vec3 n = vNormal;",
@@ -32321,13 +33226,17 @@ avs.NormalsShader = {
 
 };
 
-};
-function init_BackgroundShader() {
+}
+
+})();;
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_BackgroundShader = function(THREE) {
 
 "use strict";
-
-var avs = Autodesk.Viewing.Shaders;
-
 
 if (typeof avs.BackgroundShader !== "undefined")
     return;
@@ -32453,12 +33362,15 @@ avs.BackgroundShader = {
 };
 
 }
-;
-function init_FireflyBasicShader(ns) {
 
-	"use strict";
+})();;(function() {
 
-	var avs = Autodesk.Viewing.Shaders;
+"use strict";
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_FireflyBasicShader = function(THREE) {
 
     //Replacement for the THREE BasicMaterial adding
     //cut plane support
@@ -32548,7 +33460,7 @@ function init_FireflyBasicShader(ns) {
 			"void main() {",
 
                 "#if NUM_CUTPLANES > 0",
-                    "if (checkCutPlanes(vWorldPosition)) return;",
+                    "checkCutPlanes(vWorldPosition);",
                 "#endif",
 
 			"	vec3 outgoingLight = vec3( 0.0 );",	// outgoing light does not have an alpha, the surface does
@@ -32579,42 +33491,22 @@ function init_FireflyBasicShader(ns) {
 
 	};
 
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-};/**
+})();;/**
  * Created by stanevt on 4/26/14.
  */
 
-function init_LineShader(ns) {
+(function() {
+
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
+
+avs.init_LineShader = function(THREE) {
 
 "use strict";
 
-var avs = Autodesk.Viewing.Shaders;
-
-if (typeof ns.LineShader !== "undefined")
+if (typeof avs.LineShader !== "undefined")
     return;
 
 var COMMON_DEFINES = [
@@ -32652,10 +33544,12 @@ var VARYINGS = [
     "varying vec4 fsMultipurpose;",
 
     "varying float fsGeomType;",
-    "varying float fsHalfWidth;"
+    "varying float fsHalfWidth;",
+
+    "varying vec2 fsVpTC;"
 ].join('\n');
 
-ns.LineShader = {
+avs.LineShader = {
 
         uniforms: {
 
@@ -32669,7 +33563,8 @@ ns.LineShader = {
             "vSelTexSize":       { type: "v2", value: new THREE.Vector2(4096, 1) },
             "displayPixelRatio": { type: "f",  value: 1.0 },
             "opacity":           { type: "f",  value: 1.0 },
-            "selectionColor":    { type: "v4", value: new THREE.Vector4(0, 0, 1, 1) }
+            "selectionColor":    { type: "v4", value: new THREE.Vector4(0, 0, 1, 1) },
+            "viewportId":        { type: "f",  value: 0.0 }  // the viewport id of the first selection in measure
 
             //This is handled as special case by the renderer, like all other camera matrices
             //since it's shared between material instances
@@ -33069,6 +33964,8 @@ Might be good to convert this to RawShader at some point.
 
                 "fsGeomType = attribs.geomType;",
 
+                "fsVpTC = attribs.vpTC;",
+
                 "fsOffsetDirection = offsetPosition - centralVertex;",
 
                 //Now apply MVP matrix
@@ -33094,6 +33991,7 @@ Might be good to convert this to RawShader at some point.
             "uniform highp float aaRange;",
             //"float aaRange = 0.5 * unitsPerPixel;",
             "uniform float opacity;",
+            "uniform float viewportId;",
 
         "#ifdef HAS_RASTER_QUADS",
             "uniform sampler2D tRaster;",
@@ -33557,7 +34455,15 @@ Might be good to convert this to RawShader at some point.
                 "gl_FragData[1] = vec4(0.0);",
             "#endif",
 
-                "gl_FragColor.a *= opacity;",
+                // Make those geometries which belong to a different viewport with the first selection transparent in 2d measure mode
+                "if (viewportId != 0.0) {",
+                    "if (abs(fsVpTC.x * 255.0 + fsVpTC.y) < 0.5 || abs(fsVpTC.x * 255.0 + fsVpTC.y - viewportId) < 0.5)",
+                        "gl_FragColor.a *= opacity;",
+                    "else",
+                        "gl_FragColor.a *= opacity * 0.1;",
+                "} else {",
+                    "gl_FragColor.a *= opacity;",
+                "}",
 
                 avs.IdOutputShaderChunk,
             "}"
@@ -33567,8 +34473,10 @@ Might be good to convert this to RawShader at some point.
 };
 
 }
-;//Based on THREE.WebGLProgram, with some defines added / removed.
+
+})();;//Based on THREE.WebGLProgram, with some defines added / removed.
 FireflyWebGLProgram = ( function () {
+    'use strict';
 
 	var programIdCount = 0;
 
@@ -33620,6 +34528,9 @@ FireflyWebGLProgram = ( function () {
 
 	};
 
+	// Add clamping and inversion code for the simple Phong material perform any operations needed.
+	// This is done here because we have access to the clamp and inversion parameters. The macro #defined
+	// by this method can then be used elsewhere without knowledge of these parameters.
 	var getMapChunk = function(name, clampS, clampT, invert, emptyChunk) {
 		var invertChunk = invert ? "1.0-" : "";
 		var readChunk = "texture2D("+name+", (UV))";
@@ -33632,6 +34543,23 @@ FireflyWebGLProgram = ( function () {
 		else if (clampT)
 			conditionChunk = "((UV).y < 0.0 || (UV).y > 1.0) ? "+emptyChunk+" : ";
 		return "#define GET_"+name.toUpperCase()+"(UV) ("+conditionChunk+invertChunk+readChunk+")";
+	};
+
+	// We test if the UVs are in the bounds when clamping; if not, discard!
+	// This is done here because we have access to the clamp parameters. The macro #defined
+	// by this method can then be used elsewhere, e.g. GetPrismMapSampleChunk, without knowledge of these parameters.
+	// Here is a typical result returned when clamping is on and "opaque_albedo" is passed in for the name:
+	// #define OPAQUE_ALBEDO_CLAMP_TEST if (uv_opaque_albedo_map.x < 0.0 || uv_opaque_albedo_map.x > 1.0 || uv_opaque_albedo_map.y < 0.0 || uv_opaque_albedo_map.y > 1.0) { discard; }
+	var getPrismMapChunk = function(name, clampS, clampT) {
+		var uv = "uv_"+name+"_map";
+		var conditionChunk = "";
+		if (clampS && clampT)
+			conditionChunk = "if ("+uv+".x < 0.0 || "+uv+".x > 1.0 || "+uv+".y < 0.0 || "+uv+".y > 1.0) { discard; }";
+		else if (clampS)
+			conditionChunk = "if ("+uv+".x < 0.0 || "+uv+".x > 1.0) { discard; }";
+		else if (clampT)
+			conditionChunk = "if ("+uv+".y < 0.0 || "+uv+".y > 1.0) { discard; }";
+		return "#define "+name.toUpperCase()+"_CLAMP_TEST "+conditionChunk;
 	};
 
 	return function ( renderer, code, material, parameters ) {
@@ -33902,7 +34830,7 @@ FireflyWebGLProgram = ( function () {
 				parameters.hatchPattern ? "#define HATCH_PATTERN" : "",
 
 				parameters.mapInvert ? "#define MAP_INVERT" : "",
-				getMapChunk("map", parameters.mapClampS, parameters.mapClampT, false, "vec4(vec3(0.0), 1.0)"),
+				getMapChunk("map", parameters.mapClampS, parameters.mapClampT),
 				getMapChunk("bumpMap", parameters.bumpMapClampS, parameters.bumpMapClampT),
 				getMapChunk("normalMap", parameters.normalMapClampS, parameters.normalMapClampT),
 				getMapChunk("specularMap", parameters.specularMapClampS, parameters.specularMapClampT),
@@ -33930,6 +34858,27 @@ FireflyWebGLProgram = ( function () {
                 	"uniform mat4 viewMatrixInverse;",
 
             	"#endif",
+				
+				// now get map chunks for PRISM material
+				// mapPrismOpaqueLuminanceModifierClampS etc. are set in FireflyWebGLRenderer.js in the parameters
+				getPrismMapChunk( "opaque_luminance_modifier", parameters.mapPrismOpaqueLuminanceModifierClampS, parameters.mapPrismOpaqueLuminanceModifierClampT ),
+				
+				getPrismMapChunk( "surface_albedo", parameters.mapPrismSurfaceAlbedoClampS, parameters.mapPrismSurfaceAlbedoClampT ),
+				getPrismMapChunk( "surface_roughness", parameters.mapPrismSurfaceRoughnessClampS, parameters.mapPrismSurfaceRoughnessClampT ),
+				getPrismMapChunk( "surface_anisotropy", parameters.mapPrismSurfaceAnisotropyClampS, parameters.mapPrismSurfaceAnisotropyClampT ),
+				getPrismMapChunk( "surface_rotation", parameters.mapPrismSurfaceRotationClampS, parameters.mapPrismSurfaceRotationClampT ),
+				getPrismMapChunk( "opaque_f0", parameters.mapPrismOpaqueF0ClampS, parameters.mapPrismOpaqueF0ClampT ),
+				getPrismMapChunk( "opaque_albedo", parameters.mapPrismOpaqueAlbedoClampS, parameters.mapPrismOpaqueAlbedoClampT ),
+				getPrismMapChunk( "metal_f0", parameters.mapPrismMetalF0ClampS, parameters.mapPrismMetalF0ClampT ),
+				getPrismMapChunk( "layered_f0", parameters.mapPrismLayeredF0ClampS, parameters.mapPrismLayeredF0ClampT ),
+				getPrismMapChunk( "layered_diffuse", parameters.mapPrismLayeredDiffuseClampS, parameters.mapPrismLayeredDiffuseClampT ),
+				getPrismMapChunk( "layered_roughness", parameters.mapPrismLayeredRoughnessClampS, parameters.mapPrismLayeredRoughnessClampT ),
+				getPrismMapChunk( "layered_anisotropy", parameters.mapPrismLayeredAnisotropyClampS, parameters.mapPrismLayeredAnisotropyClampT ),
+				getPrismMapChunk( "layered_rotation", parameters.mapPrismLayeredRotationClampS, parameters.mapPrismLayeredRotationClampT ),
+				getPrismMapChunk( "layered_bottom_f0", parameters.mapPrismLayeredBottomF0ClampS, parameters.mapPrismLayeredBottomF0ClampT ),
+				getPrismMapChunk( "layered_fraction", parameters.mapPrismLayeredFractionClampS, parameters.mapPrismLayeredFractionClampT ),
+				
+				getPrismMapChunk( "surface_cutout", parameters.mapPrismSurfaceCutoutClampS, parameters.mapPrismSurfaceCutoutClampT ),
 
 				""
 
@@ -34038,9 +34987,13 @@ FireflyWebGLProgram = ( function () {
  *
  * @author stanevt -- Modified for Autodesk LMV web viewer
  */
+/*global THREE, Autodesk, FireflyWebGLRenderer, FireflyWebGLProgram, rescueFromPolymer, isMobileDevice*/
 
-FireflyWebGLRenderer = function ( parameters ) {
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
+var FireflyWebGLRenderer = function ( parameters ) {
+	'use strict';
 	console.log( 'THREE.WebGLRenderer', THREE.REVISION );
 
 	parameters = parameters || {};
@@ -34050,7 +35003,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 	pixelRatio = window.devicePixelRatio || 1,
 
 	_precisionVertex = parameters.precision !== undefined ? parameters.precision : 'highp',
-	_precisionFragment = parameters.precision !== undefined ? parameters.precision : isMobileDevice() ? 'mediump' : 'highp',
+	_precisionFragment = parameters.precision !== undefined ? parameters.precision : av.isMobileDevice() ? 'mediump' : 'highp',
 
 	_alpha = parameters.alpha !== undefined ? parameters.alpha : false,
 	_premultipliedAlpha = parameters.premultipliedAlpha !== undefined ? parameters.premultipliedAlpha : true,
@@ -34150,12 +35103,6 @@ FireflyWebGLRenderer = function ( parameters ) {
 	_currentCamera = null,
 
 	_currentGeometryProgram = '',
-	_geometryGroupCounter = 0,
-
-    _frameCamera = null,
-    _frameFrustum = new THREE.Frustum(),
-    _frameViewProj = new THREE.Matrix4(),
-    _frameViewInvEnv = new THREE.Matrix4(),
 
 	_usedTextureUnits = 0,
 
@@ -34262,7 +35209,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 				"precision" : 1
 			};
 
-		}
+		};
 	}
 
 	var extensions = new THREE.WebGLExtensions( _gl );
@@ -34351,7 +35298,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 	var _maxCubemapSize = _gl.getParameter( _gl.MAX_CUBE_MAP_TEXTURE_SIZE );
 
 	var _supportsVertexTextures = _maxVertexTextures > 0;
-	var _supportsBoneTextures = _supportsVertexTextures && extensions.get( 'OES_texture_float' );
+	// not used, though used in three.js's version:
+	//var _supportsBoneTextures = _supportsVertexTextures && extensions.get( 'OES_texture_float' );
 
 
 	var _vertexShaderPrecisionHighpFloat = _gl.getShaderPrecisionFormat( _gl.VERTEX_SHADER, _gl.HIGH_FLOAT );
@@ -34524,15 +35472,9 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			return value;
 
-		}
+		};
 
 	} )();
-
-	this.getPrecision = function () {
-
-		return _precision;
-
-	};
 
 	this.getPixelRatio = function () {
 
@@ -34587,7 +35529,11 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	this.enableScissorTest = function ( enable ) {
 
-		enable ? _gl.enable( _gl.SCISSOR_TEST ) : _gl.disable( _gl.SCISSOR_TEST );
+		if ( enable ) {
+			_gl.enable( _gl.SCISSOR_TEST );
+		} else {
+			_gl.disable( _gl.SCISSOR_TEST );
+		}
 
 	};
 
@@ -34669,16 +35615,11 @@ FireflyWebGLRenderer = function ( parameters ) {
 	this.updateShadowMap = function ( scene, camera ) {
 
 		_currentProgram = null;
-		_oldBlending = -1;
-		_oldDepthTest = -1;
-		_oldDepthWrite = -1;
 		_currentGeometryProgram = '';
 		_currentMaterialId = -1;
 		_lightsNeedUpdate = true;
-		_oldDoubleSided = -1;
-		_oldFlipSided = -1;
 
-		initObjects( scene );
+		// there is no such method currently: initObjects( scene );
 
 		//shadowMapPlugin.update( scene, camera );
 
@@ -34696,7 +35637,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		_this.info.memory.geometries ++;
 
-	};
+	}
 
 	function createMeshBuffers ( geometryGroup ) {
 
@@ -34713,11 +35654,9 @@ FireflyWebGLRenderer = function ( parameters ) {
 		geometryGroup.__webglFaceBuffer = _gl.createBuffer();
 		geometryGroup.__webglLineBuffer = _gl.createBuffer();
 
-		var m, ml;
-
 		_this.info.memory.geometries ++;
 
-	};
+	}
 
 	// Events
 
@@ -34818,6 +35757,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 	var deallocateGeometry = function ( geometry ) {
 
 		geometry.__webglInit = undefined;
+		
+		var i, len, m, ml;
 
 		if ( geometry instanceof THREE.BufferGeometry ) {
 
@@ -34831,7 +35772,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
             //[Firefly] Delete vertex array objects.
             if (geometry.vaos) {
-                for (var i=0; i<geometry.vaos.length; i++) {
+                for (i=0; i<geometry.vaos.length; i++) {
                     _glExtensionVAO.deleteVertexArrayOES(geometry.vaos[i].vao);
                 }
             }
@@ -34856,13 +35797,13 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			if ( geometryGroupsList !== undefined ) {
 
-				for ( var i = 0,l = geometryGroupsList.length; i < l; i ++ ) {
+				for ( i = 0, len = geometryGroupsList.length; i < len; i ++ ) {
 
 					var geometryGroup = geometryGroupsList[ i ];
 
 					if ( geometryGroup.numMorphTargets !== undefined ) {
 
-						for ( var m = 0, ml = geometryGroup.numMorphTargets; m < ml; m ++ ) {
+						for ( m = 0, ml = geometryGroup.numMorphTargets; m < ml; m ++ ) {
 
 							_gl.deleteBuffer( geometryGroup.__webglMorphTargetsBuffers[ m ] );
 
@@ -34874,7 +35815,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					if ( geometryGroup.numMorphNormals !== undefined ) {
 
-						for ( var m = 0, ml = geometryGroup.numMorphNormals; m < ml; m ++ ) {
+						for ( m = 0, ml = geometryGroup.numMorphNormals; m < ml; m ++ ) {
 
 							_gl.deleteBuffer( geometryGroup.__webglMorphNormalsBuffers[ m ] );
 
@@ -35045,7 +35986,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	function initLineBuffers ( geometry, object ) {
 
@@ -35059,7 +36000,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		initCustomAttributes ( geometry, object );
 
-	};
+	}
 
 	function initMeshBuffers ( geometryGroup, object ) {
 
@@ -35127,8 +36068,6 @@ FireflyWebGLRenderer = function ( parameters ) {
 		geometryGroup.__faceArray = new UintArray( ntris * 3 );
 		geometryGroup.__lineArray = new UintArray( nlines * 2 );
 
-		var m, ml;
-
 		geometryGroup.__webglFaceCount = ntris * 3;
 		geometryGroup.__webglLineCount = nlines * 2;
 
@@ -35189,21 +36128,20 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		geometryGroup.__inittedArrays = true;
 
-	};
+	}
 
 	function getBufferMaterial( object, geometryGroup ) {
 
-		return object.material instanceof THREE.MeshFaceMaterial
-			? object.material.materials[ geometryGroup.materialIndex ]
-			: object.material;
+		return object.material instanceof THREE.MeshFaceMaterial ?
+			object.material.materials[ geometryGroup.materialIndex ] : object.material;
 
-	};
+	}
 
 	function materialNeedsSmoothNormals ( material ) {
 
 		return material && material.shading !== undefined && material.shading === THREE.SmoothShading;
 
-	};
+	}
 
 	function bufferGuessNormalType ( material ) {
 
@@ -35225,7 +36163,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	function bufferGuessVertexColorType( material ) {
 
@@ -35237,7 +36175,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return false;
 
-	};
+	}
 
 	function bufferGuessUVType( material ) {
 
@@ -35257,7 +36195,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return false;
 
-	};
+	}
 
 
 	// Buffer setting
@@ -35286,7 +36224,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		customAttributes = geometry.__webglCustomAttributesList,
 
 		i, il,
-		a, ca, cal, value,
+		ca, cal, value,
 		customAttribute;
 
 		if ( dirtyVertices ) {
@@ -35433,7 +36371,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	function setMeshBuffers( geometryGroup, object, hint, dispose, material ) {
 
@@ -35450,20 +36388,13 @@ FireflyWebGLRenderer = function ( parameters ) {
 		needsSmoothNormals = ( normalType === THREE.SmoothShading );
 
 		var f, fl, fi, face,
-		vertexNormals, faceNormal, normal,
+		vertexNormals, faceNormal,
 		vertexColors, faceColor,
 		vertexTangents,
-		uv, uv2, v1, v2, v3, v4, t1, t2, t3, t4, n1, n2, n3, n4,
-		c1, c2, c3, c4,
-		sw1, sw2, sw3, sw4,
-		si1, si2, si3, si4,
-		sa1, sa2, sa3, sa4,
-		sb1, sb2, sb3, sb4,
-		m, ml, i, il,
+		uv, uv2, v1, v2, v3, t1, t2, t3,
+		c1, c2, c3,
+		i, il,
 		vn, uvi, uv2i,
-		vk, vkl, vka,
-		nka, chf, faceVertexNormals,
-		a,
 
 		vertexIndex = 0,
 
@@ -35507,9 +36438,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		obj_faces = geometry.faces,
 
 		obj_uvs  = geometry.faceVertexUvs[ 0 ],
-		obj_uvs2 = geometry.faceVertexUvs[ 1 ],
-
-		obj_colors = geometry.colors;
+		obj_uvs2 = geometry.faceVertexUvs[ 1 ];
 
 		if ( dirtyVertices ) {
 
@@ -36071,7 +37000,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 
 	//[Firefly] This function is different from Three.js -- it adds
@@ -36087,7 +37016,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
             //Do we want just the index buffer on the GPU?
             if (!geometry.streamingIndex) {
-                var index = geometry.attributes['index'];
+                var index = geometry.attributes.index;
                 if (index) {
                     index.buffer = _gl.createBuffer();
                     _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, index.buffer );
@@ -36117,14 +37046,14 @@ FireflyWebGLRenderer = function ( parameters ) {
 		var attributes = geometry.attributes;
 		var attributesKeys = geometry.attributesKeys;
 
-		for ( var i = 0, l = attributesKeys.length; i < l; i ++ ) {
+		for ( var i = 0, len = attributesKeys.length; i < len; i ++ ) {
 
 			var attributeName = attributesKeys[ i ];
 			var attributeItem = attributes[ attributeName ];
 			var isIndex = ( attributeName === 'index' );
 
-			if ( attributeItem.array
-				&& attributeItem.buffer === undefined ) {
+			if ( attributeItem.array &&
+				attributeItem.buffer === undefined ) {
 
 				attributeItem.buffer = _gl.createBuffer();
 				attributeItem.needsUpdate = true;
@@ -36153,7 +37082,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
         }
 
-	};
+	}
 
 	// Buffer rendering
 
@@ -36204,7 +37133,7 @@ FireflyWebGLRenderer = function ( parameters ) {
         var startIndex = (geometry.offsets && geometry.offsets.length) ? geometry.offsets[0].index : 0;
 
         //Set up vertex attributes
-        for ( var i = 0, l = programAttributesKeys.length; i < l; i ++ ) {
+        for ( var i = 0, len = programAttributesKeys.length; i < len; i ++ ) {
 
 			var key = programAttributesKeys[ i ];
             var programAttribute = programAttributes[ key ];
@@ -36238,13 +37167,13 @@ FireflyWebGLRenderer = function ( parameters ) {
                             boundBuffer = geometry.vbbuffer;
                         }
 
-                        _gl.vertexAttribPointer( programAttribute, geometryAttribute.itemSize, type, geometryAttribute.normalize, stride * 4, (geometryAttribute.itemOffset + startIndex * stride) * 4 );
+                        _gl.vertexAttribPointer( programAttribute, geometryAttribute.itemSize, type, !!geometryAttribute.normalize, stride * 4, (geometryAttribute.itemOffset + startIndex * stride) * 4 );
                     }
                     else {
                         _gl.bindBuffer( _gl.ARRAY_BUFFER, geometryAttribute.buffer );
                         boundBuffer = geometryAttribute.buffer;
 
-                        _gl.vertexAttribPointer( programAttribute, geometryAttribute.itemSize, type, geometryAttribute.normalize, 0, startIndex * geometryAttribute.itemSize * itemWidth ); // 4 bytes per Float32
+                        _gl.vertexAttribPointer( programAttribute, geometryAttribute.itemSize, type, !!geometryAttribute.normalize, 0, startIndex * geometryAttribute.itemSize * itemWidth ); // 4 bytes per Float32
                     }
 
                     if (_glExtensionInstancedArrays && geometry.numInstances)
@@ -36257,8 +37186,8 @@ FireflyWebGLRenderer = function ( parameters ) {
                     //This is hopefully very rare.
                     _glExtensionVAO.bindVertexArrayOES(null);
 
-                    for (var i=0; i<geometry.vaos.length; i++)
-                        _glExtensionVAO.deleteVertexArrayOES(geometry.vaos[i].vao);
+                    for ( var j=0; j<geometry.vaos.length; j++)
+                        _glExtensionVAO.deleteVertexArrayOES(geometry.vaos[j].vao);
 
                     geometry.vaos = null; //Flag it so we don't pass through here again.
 
@@ -36285,7 +37214,7 @@ FireflyWebGLRenderer = function ( parameters ) {
                 }
             }
         } else if (vaos === null) {
-			return false
+			return false;
 		}
 
 		return setupVAO(material, program, geometry, uvChannel);
@@ -36316,16 +37245,16 @@ FireflyWebGLRenderer = function ( parameters ) {
 
         //Those two need to be unequal to begin with...
         var boundBuffer = 0;
-        var interleavedBuffer = undefined;
+        var interleavedBuffer;
         
 
         if (indices) {
             // indices (they can have a VBO even if the geometry part is streamed)
             if (!indices.buffer && geometry.streamingDraw) {
-                var buffer = _dynamicBuffers['index'];
+                var buffer = _dynamicBuffers.index;
                 if (!buffer) {
                     buffer = _gl.createBuffer();
-                    _dynamicBuffers['index'] = buffer;
+                    _dynamicBuffers.index = buffer;
                 }
 
                 //_gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, null);
@@ -36338,7 +37267,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 
         //Set attributes
-        for ( var i = 0, l = programAttributesKeys.length; i < l; i ++ ) {
+        for ( var i = 0, len = programAttributesKeys.length; i < len; i ++ ) {
 
 			var key = programAttributesKeys[ i ];
             var programAttribute = programAttributes[ key ];
@@ -36468,7 +37397,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		if ( object instanceof THREE.Mesh ) {
 
-			var index = geometryAttributes[ "index" ];
+			var index = geometryAttributes.index;
 
 			// indexed triangles
 
@@ -36535,10 +37464,10 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				if ( updateBuffers ) {
 
-                    setupVertexAttributes(material, program, geometry, startIndex);
+                    setupVertexAttributes(material, program, geometry, 0);
 				}
 
-				var position = geometry.attributes[ "position" ];
+				var position = geometry.attributes.position;
 
 				// render non-indexed triangles
                 if (geometry.numInstances)
@@ -36756,20 +37685,21 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	// Sorting
 
+	// This method is for transparency
 	function painterSortStable ( a, b ) {
 
+		// first see if there's a render order set - if so, this takes precedence
 		if ( a.object.renderOrder !== b.object.renderOrder ) {
 
 			return a.object.renderOrder - b.object.renderOrder;
 
-		} else if ( a.material.id !== b.material.id ) {
-
-			return a.material.id - b.material.id;
-
+		// If render order are the same, then use z distance.
+		// We want to render from farthest to nearest.
 		} else if ( a.z !== b.z ) {
 
 			return a.z - b.z;
 
+		// if z distances match, then use id, for a consistent result
 		} else {
 
 			return a.id - b.id;
@@ -36778,16 +37708,28 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	}
 
+	// This method is for opaque objects
 	function reversePainterSortStable ( a, b ) {
 
+		// first see if there's a render order set - if so, this takes precedence
 		if ( a.object.renderOrder !== b.object.renderOrder ) {
 
 			return a.object.renderOrder - b.object.renderOrder;
 
+		// Next, sort by material, for efficiency, to avoid state changes.
+		// (Note this is not done for transparency, as back to front order is more significant.)
+		} else if ( a.material.id !== b.material.id ) {
+
+			return a.material.id - b.material.id;
+
+		// If render order and material are the same, then use z distance.
+		// To minimize processing fragments, we render roughly from nearest to farthest.
+		// In this way, the closer objects cover pixels and so hide more distance objects.
 		} if ( a.z !== b.z ) {
 
 			return b.z - a.z;
 
+		// if z distances match, then use id, for a consistent sorted result
 		} else {
 
 			return a.id - b.id;
@@ -36796,11 +37738,13 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	}
 
+	/* currently not used
 	function numericalSort ( a, b ) {
 
 		return b[ 0 ] - a[ 0 ];
 
-	};
+	}
+	*/
 
 
 	// Rendering
@@ -36854,13 +37798,10 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			projectObject( scene, _this.sortObjects === true, scene.forceVisible === true );
 
-			if ( _this.sortObjects === true ) {
-
-				//opaqueObjects.sort( painterSortStable );
-				//transparentObjects.sort( reversePainterSortStable );
+            // note: the following flag is never set in FireflyWebGLRenderer; this may change in the future
+			if (_this.sortObjects === true) {
 				opaqueObjects.sort( reversePainterSortStable );
 				transparentObjects.sort( painterSortStable );
-
 			}
 		}
 
@@ -36894,6 +37835,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			} else {
 				renderObjectsImmediate(scene, "", camera, lights, fog, overrideMaterial);
 			}
+
 		} else {
 
 			if (!renderImmediate) {
@@ -36906,7 +37848,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				renderObjects( transparentObjects, camera, lights, fog, null );
 			} else {
-				renderObjectsImmediate(scene, "", camera, lights, fog, overrideMaterial);
+				renderObjectsImmediate(scene, "", camera, lights, fog, null);
 			}
 
 		}
@@ -36941,6 +37883,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 	function projectObject( object, sortObjects, forceVisible ) {
 
+		var i, len;
+
 		if ( !forceVisible && object.visible === false )
 			return;
 
@@ -36966,7 +37910,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				if ( webglObjects && ( object.frustumCulled === false || _frustum.intersectsObject( object ) === true ) ) {
 
-					for ( var i = 0, l = webglObjects.length; i < l; i ++ ) {
+					for ( i = 0, len = webglObjects.length; i < len; i ++ ) {
 
 						var webglObject = webglObjects[i];
 
@@ -36992,7 +37936,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		if (object.children) {
 
-			for ( var i = 0, l = object.children.length; i < l; i ++ ) {
+			for ( i = 0, len = object.children.length; i < len; i ++ ) {
 
 				projectObject( object.children[ i ], sortObjects, forceVisible );
 
@@ -37021,7 +37965,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			if ( overrideMaterial ) {
 
                 var cutplanes = webglObject.material.cutplanes ? webglObject.material.cutplanes.length : 0;
-                if (cutplanes == 0 && overrideMaterial._noCutplanesMaterial) {
+                if (cutplanes === 0 && overrideMaterial._noCutplanesMaterial) {
                     material = overrideMaterial._noCutplanesMaterial;
                 } else {
                     material = overrideMaterial;
@@ -37036,41 +37980,63 @@ FireflyWebGLRenderer = function ( parameters ) {
 				setMaterial( material );
 			}
 
-			_this.setMaterialFaces( material );
-
-			if ( buffer instanceof THREE.BufferGeometry ) {
-				_this.renderBufferDirect( camera, lights, fog, material, buffer, object );
-			} else {
-				_this.renderBuffer( camera, lights, fog, material, buffer, object );
+			// If the object is double-sided and transparent, render it in two passes:
+			// backfaces, then frontfaces. This helps avoid out-of-order sorting
+			// transparency blending artifacts (these still can occur for pixels where
+			// four or more triangles in a single mesh overlap the same pixel).
+			// Also, check that depth testing is on; if not, we're in 2D mode and draw
+			// order matters so we should not use this mode.
+			// Else render normally.
+			if ( material.transparent && (material.side === THREE.DoubleSide) && material.depthTest )
+			{
+				material.side = THREE.BackSide;
+				renderObjectsFace( material, camera, lights, fog, buffer, overrideMaterial, object );
+				material.side = THREE.FrontSide;
+				renderObjectsFace( material, camera, lights, fog, buffer, overrideMaterial, object );
+				material.side = THREE.DoubleSide;
 			}
+			else
+			{
+				renderObjectsFace( material, camera, lights, fog, buffer, overrideMaterial, object );
+			}
+		}
+	}
 
-            if (material.decals && !overrideMaterial) {
-                var decals = material.decals;
-                for (var di = 0, dlen = decals.length; di < dlen; di++) {
-                    var decal = decals[di];
-                    material = decal.material;
-				    setMaterial(material);
-			        _this.setMaterialFaces(material);
-                    if (buffer instanceof THREE.BufferGeometry) {
-                        _this.renderBufferDirect(camera, lights, fog, material, buffer, object, decal.uv);
-                    }
-                }
-            }
+	function renderObjectsFace( material, camera, lights, fog, buffer, overrideMaterial, object )
+	{
+		_this.setMaterialFaces( material );
+
+		if ( buffer instanceof THREE.BufferGeometry ) {
+			_this.renderBufferDirect( camera, lights, fog, material, buffer, object );
+		} else {
+			_this.renderBuffer( camera, lights, fog, material, buffer, object );
 		}
 
-	};
-
-
+		if (material.decals) {
+			var decals = material.decals;
+			for (var di = 0, dlen = decals.length; di < dlen; di++) {
+				var decal = decals[di];
+				material = decal.material;
+				setMaterial(material);
+				_this.setMaterialFaces(material);
+				if (buffer instanceof THREE.BufferGeometry) {
+					_this.renderBufferDirect(camera, lights, fog, material, buffer, object, decal.uv);
+				}
+			}
+		}
+	}
+	
 	var roi_materialType, roi_camera, roi_lights, roi_fog, roi_overrideMaterial;
 
 	function renderImmediateCallback(m, idx) {
+
 		if ( m.visible && !m.hide) {
 			var material;
 
 			if ( roi_overrideMaterial ) {
 
                 var cutplanes = m.material.cutplanes ? m.material.cutplanes.length : 0;
-                if (cutplanes == 0 && roi_overrideMaterial._noCutplanesMaterial) {
+                if (cutplanes === 0 && roi_overrideMaterial._noCutplanesMaterial) {
                     material = roi_overrideMaterial._noCutplanesMaterial;
                 } else {
                     material = roi_overrideMaterial;
@@ -37084,23 +38050,46 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				setMaterial(material);
 			}
-
-			_this.setMaterialFaces( material );
-			_this.renderBufferDirect( roi_camera, roi_lights, roi_fog, material, m.geometry, m );
-
-            if (material.decals && !roi_overrideMaterial) {
-                var decals = material.decals;
-                for (var di = 0, dlen = decals.length; di < dlen; di++) {
-                    var decal = decals[di];
-                    material = decal.material;
-				    setMaterial(material);
-			        _this.setMaterialFaces(material);
-			        _this.renderBufferDirect(roi_camera, roi_lights, roi_fog, material, m.geometry, m, decal.uv);
-                }
-            }
+	
+			// If the object is double-sided and transparent, render it in two passes:
+			// backfaces, then frontfaces. This helps avoid out-of-order sorting
+			// transparency blending artifacts (these still can occur for pixels where
+			// four or more triangles in a single mesh overlap the same pixel).
+			// Also, check that depth testing is on; if not, we're in 2D mode and draw
+			// order matters so we should not use this mode.
+			// Else render normally.
+			if ( material.transparent && (material.side === THREE.DoubleSide) && material.depthTest )
+			{
+				material.side = THREE.BackSide;
+				renderImmediateFace( m, material );
+				material.side = THREE.FrontSide;
+				renderImmediateFace( m, material );
+				material.side = THREE.DoubleSide;
+			}
+			else
+			{
+				renderImmediateFace( m, material );
+			}
 		}
 	}
 
+	function renderImmediateFace( m, material )
+	{
+		_this.setMaterialFaces( material );
+		_this.renderBufferDirect( roi_camera, roi_lights, roi_fog, material, m.geometry, m );
+
+		if (material.decals) {
+			var decals = material.decals;
+			for (var di = 0, dlen = decals.length; di < dlen; di++) {
+				var decal = decals[di];
+				material = decal.material;
+				setMaterial(material);
+				_this.setMaterialFaces(material);
+				_this.renderBufferDirect(roi_camera, roi_lights, roi_fog, material, m.geometry, m, decal.uv);
+			}
+		}
+	}
+		
 	function renderObjectsImmediate ( renderList, materialType, camera, lights, fog, overrideMaterial ) {
 
 		roi_materialType = materialType;
@@ -37110,7 +38099,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		// not really "forceVisible"
 		// it's really only for ground shadows, or custom modelQueue iteration passes
-		// In such case we use the MESH_VISIBLE bit instead of the actual current visibility of the mesh (which is dependent on the render pass being done)
+		// In such cases we use the MESH_VISIBLE bit instead of the actual current visibility of the mesh (which is dependent on the render pass being done)
 		renderList.forEach(renderImmediateCallback, renderList.forceVisible ? 1 : 0x80, false);
 
 	}
@@ -37158,7 +38147,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 
 
@@ -37224,7 +38213,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					var geometryGroupsList = geometryGroups[ geometry.id ];
 
-					for ( var i = 0,l = geometryGroupsList.length; i < l; i ++ ) {
+					for ( var i = 0,len = geometryGroupsList.length; i < len; i ++ ) {
 
 						addBuffer( _webglObjects, geometryGroupsList[ i ], object );
 
@@ -37398,7 +38387,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			}
 		);
 
-	};
+	}
 
 	function addBufferImmediate( objlist, object ) {
 
@@ -37412,7 +38401,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			}
 		);
 
-	};
+	}
 
 	// Objects updates
 
@@ -37483,7 +38472,6 @@ FireflyWebGLRenderer = function ( parameters ) {
 			geometry.lineDistancesNeedUpdate = false;
 
 			material.attributes && clearCustomAttributes( material );
-
 
 		}
 
@@ -37593,7 +38581,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		var maxShadows = allocateShadows( lights );
 
-		var maxBones = 0;//allocateBones( object );
+		//var maxBones = 0;//allocateBones( object );
 
 		var parameters = {
 
@@ -37652,7 +38640,7 @@ FireflyWebGLRenderer = function ( parameters ) {
             // TODO_NOP should not be per mat
 			numCutplanes: (material.cutplanes ? material.cutplanes.length : 0),
 
-			// texture flags for clamp and invert
+			// texture flags for clamp and invert for simple phong material
 			// add as wanted/necessary
 			mapInvert: material.map && material.map.invert,
 			mapClampS: material.map && material.map.clampS,
@@ -37666,6 +38654,55 @@ FireflyWebGLRenderer = function ( parameters ) {
 			alphaMapInvert: material.alphaMap && material.alphaMap.invert,
 			alphaMapClampS: material.alphaMap && material.alphaMap.clampS,
 			alphaMapClampT: material.alphaMap && material.alphaMap.clampT,
+
+			// texture flags for clamp for PRISM shader
+            mapPrismOpaqueLuminanceModifierClampS: material.textureMaps && material.textureMaps.opaque_luminance_modifier_map && !material.textureMaps.opaque_luminance_modifier_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismOpaqueLuminanceModifierClampT: material.textureMaps && material.textureMaps.opaque_luminance_modifier_map && !material.textureMaps.opaque_luminance_modifier_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismSurfaceAlbedoClampS: material.textureMaps && material.textureMaps.surface_albedo_map && !material.textureMaps.surface_albedo_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismSurfaceAlbedoClampT: material.textureMaps && material.textureMaps.surface_albedo_map && !material.textureMaps.surface_albedo_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismSurfaceRoughnessClampS: material.textureMaps && material.textureMaps.surface_roughness_map && !material.textureMaps.surface_roughness_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismSurfaceRoughnessClampT: material.textureMaps && material.textureMaps.surface_roughness_map && !material.textureMaps.surface_roughness_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismSurfaceAnisotropyClampS: material.textureMaps && material.textureMaps.surface_anisotropy_map && !material.textureMaps.surface_anisotropy_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismSurfaceAnisotropyClampT: material.textureMaps && material.textureMaps.surface_anisotropy_map && !material.textureMaps.surface_anisotropy_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismSurfaceRotationClampS: material.textureMaps && material.textureMaps.surface_rotation_map && !material.textureMaps.surface_rotation_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismSurfaceRotationClampT: material.textureMaps && material.textureMaps.surface_rotation_map && !material.textureMaps.surface_rotation_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismOpaqueF0ClampS: material.textureMaps && material.textureMaps.opaque_f0_map && !material.textureMaps.opaque_f0_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismOpaqueF0ClampT: material.textureMaps && material.textureMaps.opaque_f0_map && !material.textureMaps.opaque_f0_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismOpaqueAlbedoClampS: material.textureMaps && material.textureMaps.opaque_albedo_map && !material.textureMaps.opaque_albedo_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismOpaqueAlbedoClampT: material.textureMaps && material.textureMaps.opaque_albedo_map && !material.textureMaps.opaque_albedo_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismMetalF0ClampS: material.textureMaps && material.textureMaps.metal_f0_map && !material.textureMaps.metal_f0_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismMetalF0ClampT: material.textureMaps && material.textureMaps.metal_f0_map && !material.textureMaps.metal_f0_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredF0ClampS: material.textureMaps && material.textureMaps.layered_f0_map && !material.textureMaps.layered_f0_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredF0ClampT: material.textureMaps && material.textureMaps.layered_f0_map && !material.textureMaps.layered_f0_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredDiffuseClampS: material.textureMaps && material.textureMaps.layered_diffuse_map && !material.textureMaps.layered_diffuse_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredDiffuseClampT: material.textureMaps && material.textureMaps.layered_diffuse_map && !material.textureMaps.layered_diffuse_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredRoughnessClampS: material.textureMaps && material.textureMaps.layered_roughness_map && !material.textureMaps.layered_roughness_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredRoughnessClampT: material.textureMaps && material.textureMaps.layered_roughness_map && !material.textureMaps.layered_roughness_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredAnisotropyClampS: material.textureMaps && material.textureMaps.layered_anisotropy_map && !material.textureMaps.layered_anisotropy_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredAnisotropyClampT: material.textureMaps && material.textureMaps.layered_anisotropy_map && !material.textureMaps.layered_anisotropy_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredRotationClampS: material.textureMaps && material.textureMaps.layered_rotation_map && !material.textureMaps.layered_rotation_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredRotationClampT: material.textureMaps && material.textureMaps.layered_rotation_map && !material.textureMaps.layered_rotation_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredBottomF0ClampS: material.textureMaps && material.textureMaps.layered_bottom_f0_map && !material.textureMaps.layered_bottom_f0_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredBottomF0ClampT: material.textureMaps && material.textureMaps.layered_bottom_f0_map && !material.textureMaps.layered_bottom_f0_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismLayeredFractionClampS: material.textureMaps && material.textureMaps.layered_fraction_map && !material.textureMaps.layered_fraction_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismLayeredFractionClampT: material.textureMaps && material.textureMaps.layered_fraction_map && !material.textureMaps.layered_fraction_map.textureObj.properties.booleans.texture_VRepeat.values[0],
+
+            mapPrismSurfaceCutoutClampS: material.textureMaps && material.textureMaps.surface_cutout_map && !material.textureMaps.surface_cutout_map.textureObj.properties.booleans.texture_URepeat.values[0],
+            mapPrismSurfaceCutoutClampT: material.textureMaps && material.textureMaps.surface_cutout_map && !material.textureMaps.surface_cutout_map.textureObj.properties.booleans.texture_VRepeat.values[0],
 
 		};
 
@@ -37683,6 +38720,10 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
+		// The "defines" array is set by the MaterialConverter.js and the indices
+		// contain the various #define strings to set for the shader.
+		// Oddly, these "defines" are just raw strings put at the end of the shader,
+		// which I guess defines them? e.g. "USE_OPAQUE_ALBEDO_MAP" is simply listed.
 		for ( var d in material.defines ) {
 
 			chunks.push( d );
@@ -37690,7 +38731,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-		for ( var p in parameters ) {
+		var p, pl;
+		for ( p in parameters ) {
 
 			chunks.push( p );
 			chunks.push( parameters[ p ] );
@@ -37703,7 +38745,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		// Check if code has been already compiled
 
-		for ( var p = 0, pl = _programs.length; p < pl; p ++ ) {
+		for ( p = 0, pl = _programs.length; p < pl; p ++ ) {
 
 			var programInfo = _programs[ p ];
 
@@ -37732,7 +38774,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		material.uniformsList = [];
 
-		for ( u in material.__webglShader.uniforms ) {
+		for ( var u in material.__webglShader.uniforms ) {
 
 			var location = material.program.uniforms[ u ];
 
@@ -37998,7 +39040,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return program;
 
-	};
+	}
 
 	// Uniforms (refresh uniforms objects)
 
@@ -38098,7 +39140,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		uniforms.refractionRatio.value = material.refractionRatio;
 
-	};
+	}
 
 	function refreshUniformsLine ( uniforms, material ) {
 
@@ -38154,8 +39196,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 		if (uniforms.irradianceMap)
 			uniforms.irradianceMap.needsUpdate = boolean;
 		if (uniforms.envMapExposure)
-			uniforms.envMapExposure.needsUpdate = boolean;;
-	};
+			uniforms.envMapExposure.needsUpdate = boolean;
+	}
 
 
 	function refreshUniformsPhong ( uniforms, material ) {
@@ -38183,28 +39225,30 @@ FireflyWebGLRenderer = function ( parameters ) {
 		}
 
 		uniforms.exposureBias.value = material.exposureBias;
-	};
+	}
 
 	function refreshUniformsPrism ( uniforms, material ) {
 
 		function refreshPrismMapUniforms ( uniforms, material, mapName ) {
 			uniforms[mapName].value = material[mapName];
+			// yes, we want "!=" here, not "!==", as we test for both undefined and null
 			if (material[mapName] != null)
 			{
 				uniforms[mapName + "_texMatrix"].value = new THREE.Matrix3().copy(material[mapName].matrix);
 				uniforms[mapName + "_invert"].value = material[mapName].invert;
 			}
-		};
+		}
 
 		function refreshPrismBumpMapUniforms ( uniforms, material, mapName ) {
 			uniforms[mapName].value = material[mapName];
+			// yes, we want "!=" here, not "!==", as we test for both undefined and null
 			if (material[mapName] != null)
 			{
 				uniforms[mapName + "_texMatrix"].value = new THREE.Matrix3().copy(material[mapName].matrix);
 				uniforms[mapName + "_bumpScale"].value = new THREE.Vector2().copy(material[mapName].bumpScale);
 				uniforms[mapName + "_bumpmapType"].value = material[mapName].bumpmapType;
 			}
-		};
+		}
 
 		uniforms.exposureBias.value = material.exposureBias;
 
@@ -38344,7 +39388,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		uniforms.envExponentMin.value = material.envExponentMin;
 		uniforms.envExponentMax.value = material.envExponentMax;
 		uniforms.envExponentCount.value = material.envExponentCount;
-	};
+	}
 
 	function refreshUniformsLambert ( uniforms, material ) {
 
@@ -38357,7 +39401,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	function refreshUniformsLights ( uniforms, lights ) {
 
@@ -38381,7 +39425,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		uniforms.hemisphereLightGroundColor.value = lights.hemi.groundColors;
 		uniforms.hemisphereLightDirection.value = lights.hemi.positions;
 
-	};
+	}
 
 	// If uniforms are marked as clean, they don't need to be loaded to the GPU.
 
@@ -38407,7 +39451,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		uniforms.hemisphereLightGroundColor.needsUpdate = boolean;
 		uniforms.hemisphereLightDirection.needsUpdate = boolean;
 
-	};
+	}
 
 	function refreshUniformsShadow ( uniforms, lights ) {
 
@@ -38439,13 +39483,13 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	// Uniforms (load to GPU)
 
 	function loadUniformsMatrices ( uniforms, object, camera ) {
 
-		_objectModelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld )
+		_objectModelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
 
 		_gl.uniformMatrix4fv( uniforms.modelViewMatrix, false, _objectModelViewMatrix.elements );
 
@@ -38457,7 +39501,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	function getTextureUnit() {
 
@@ -38473,7 +39517,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return textureUnit;
 
-	};
+	}
 
 	function loadUniformsGeneric ( uniforms ) {
 
@@ -38489,6 +39533,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 			var type = uniform.type;
 			var value = uniform.value;
 			var location = uniforms[ j ][ 1 ];
+			
+			var i, il;
 
 			switch ( type ) {
 
@@ -38626,7 +39672,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = value.length; i < il; i ++ ) {
+					for ( i = 0, il = value.length; i < il; i ++ ) {
 
 						offset = i * 2;
 
@@ -38649,7 +39695,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = value.length; i < il; i ++ ) {
+					for ( i = 0, il = value.length; i < il; i ++ ) {
 
 						offset = i * 3;
 
@@ -38673,7 +39719,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = value.length; i < il; i ++ ) {
+					for ( i = 0, il = value.length; i < il; i ++ ) {
 
 						offset = i * 4;
 
@@ -38705,7 +39751,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = value.length; i < il; i ++ ) {
+					for ( i = 0, il = value.length; i < il; i ++ ) {
 
 						value[ i ].flattenToArrayOffset( uniform._array, i * 9 );
 
@@ -38732,7 +39778,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = value.length; i < il; i ++ ) {
+					for ( i = 0, il = value.length; i < il; i ++ ) {
 
 						value[ i ].flattenToArrayOffset( uniform._array, i * 16 );
 
@@ -38780,7 +39826,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					}
 
-					for ( var i = 0, il = uniform.value.length; i < il; i ++ ) {
+					for ( i = 0, il = uniform.value.length; i < il; i ++ ) {
 
 						uniform._array[ i ] = getTextureUnit();
 
@@ -38788,7 +39834,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 					_gl.uniform1iv( location, uniform._array );
 
-					for ( var i = 0, il = uniform.value.length; i < il; i ++ ) {
+					for ( i = 0, il = uniform.value.length; i < il; i ++ ) {
 
 						texture = uniform.value[ i ];
 						textureUnit = uniform._array[ i ];
@@ -38809,17 +39855,19 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 	//
 
+	/* not used
 	function setColorGamma( array, offset, color, intensitySq ) {
 
 		array[ offset ]     = color.r * color.r * intensitySq;
 		array[ offset + 1 ] = color.g * color.g * intensitySq;
 		array[ offset + 2 ] = color.b * color.b * intensitySq;
 
-	};
+	}
+	*/
 
 	function setColorLinear( array, offset, color, intensity ) {
 
@@ -38827,15 +39875,14 @@ FireflyWebGLRenderer = function ( parameters ) {
 		array[ offset + 1 ] = color.g * intensity;
 		array[ offset + 2 ] = color.b * intensity;
 
-	};
+	}
 
 	function setupLights ( lights ) {
 
-		var l, ll, light, n,
+		var l, ll, light,
 		r = 0, g = 0, b = 0,
 		color, skyColor, groundColor,
-		intensity,  intensitySq,
-		position,
+		intensity,
 		distance,
 
 		zlights = _lights,
@@ -39011,7 +40058,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		zlights.ambient[ 1 ] = g;
 		zlights.ambient[ 2 ] = b;
 
-	};
+	}
 
 	// GL state setting
 
@@ -39111,7 +40158,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		}
 
-	};
+	}
 
 
 	this.uploadTexture = function ( texture ) {
@@ -39144,6 +40191,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 		setTextureParameters( _gl.TEXTURE_2D, texture, isImagePowerOfTwo );
 
 		var mipmap, mipmaps = texture.mipmaps;
+		var i, il;
 
 		if ( texture instanceof THREE.DataTexture ) {
 
@@ -39153,7 +40201,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			if ( mipmaps.length > 0 && isImagePowerOfTwo ) {
 
-				for ( var i = 0, il = mipmaps.length; i < il; i ++ ) {
+				for ( i = 0, il = mipmaps.length; i < il; i ++ ) {
 
 					mipmap = mipmaps[ i ];
 					_gl.texImage2D( _gl.TEXTURE_2D, i, glFormat, mipmap.width, mipmap.height, 0, glFormat, glType, mipmap.data );
@@ -39170,7 +40218,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		} else if ( texture instanceof THREE.CompressedTexture ) {
 
-			for ( var i = 0, il = mipmaps.length; i < il; i ++ ) {
+			for ( i = 0, il = mipmaps.length; i < il; i ++ ) {
 
 				mipmap = mipmaps[ i ];
 
@@ -39225,7 +40273,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 			if ( mipmaps.length > 0 && isImagePowerOfTwo ) {
 
-				for ( var i = 0, il = mipmaps.length; i < il; i ++ ) {
+				for ( i = 0, il = mipmaps.length; i < il; i ++ ) {
 
 					mipmap = rescueFromPolymer(mipmaps[ i ]);
 					_gl.texImage2D( _gl.TEXTURE_2D, i, glFormat, glFormat, glType, mipmap );
@@ -39317,8 +40365,10 @@ FireflyWebGLRenderer = function ( parameters ) {
 				var isDataTexture = texture.image[ 0 ] instanceof THREE.DataTexture;
 
 				var cubeImage = [];
+				
+				var i;
 
-				for ( var i = 0; i < 6; i ++ ) {
+				for ( i = 0; i < 6; i ++ ) {
 
 					if ( _this.autoScaleCubemaps && ! isCompressed && ! isDataTexture ) {
 
@@ -39339,7 +40389,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 				setTextureParameters( _gl.TEXTURE_CUBE_MAP, texture, isImagePowerOfTwo );
 
-				for ( var i = 0; i < 6; i ++ ) {
+				for ( i = 0; i < 6; i ++ ) {
 
 					if ( ! isCompressed ) {
 
@@ -39487,7 +40537,8 @@ FireflyWebGLRenderer = function ( parameters ) {
 
         //Create backing textures for all the targets and attach them
         //to the frame buffer.
-        for (var i=0; i<renderTargets.length; i++) {
+		var i;
+        for (i=0; i<renderTargets.length; i++) {
             var rt = renderTargets[i];
 
             if (!rt.__webglTexture) {
@@ -39518,7 +40569,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
         if (_glExtensionDrawBuffers) {
         	var bufs = [_glExtensionDrawBuffers.COLOR_ATTACHMENT0_WEBGL];
-        	for (var i=1; i<renderTargets.length; i++) {
+        	for (i=1; i<renderTargets.length; i++) {
         		bufs.push(_glExtensionDrawBuffers.COLOR_ATTACHMENT0_WEBGL + i);
         	}
             _glExtensionDrawBuffers.drawBuffersWEBGL(bufs);
@@ -39674,7 +40725,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 			_gl.generateMipmap( _gl.TEXTURE_2D );
 			_gl.bindTexture( _gl.TEXTURE_2D, null );
 
-	};
+	}
 
 	// Fallback filters for non-power-of-2 textures
 
@@ -39688,7 +40739,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return _gl.LINEAR;
 
-	};
+	}
 
 	// Map three.js constants to WebGL constants
 
@@ -39777,7 +40828,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return 0;
 
-	};
+	}
 
 	// Allocations
 
@@ -39803,7 +40854,7 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return { 'directional' : dirLights, 'point' : pointLights, 'spot': spotLights, 'hemi': hemiLights };
 
-	};
+	}
 
 	function allocateShadows( lights ) {
 
@@ -39822,16 +40873,17 @@ FireflyWebGLRenderer = function ( parameters ) {
 
 		return maxShadows;
 
-	};
+	}
 
 
 };
 ;
-AutodeskNamespace('Autodesk.Viewing.Private');
-
 (function () {
 
-    var avp = Autodesk.Viewing.Private;
+    'use strict';
+
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     avp.BackgroundPresets = {
         "Fusion Grey":      [230, 230, 230, 150, 150, 150],
@@ -39909,7 +40961,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path:"SharpHighlights",
             type:"logluv",
             tonemap:1,
-			// illuminance currently is not used elsewhere in LMV, its effect is folded into E_bias.
+            // illuminance currently is not used elsewhere in LMV, its effect is folded into E_bias.
             //illuminance: 1000.0,
             E_bias:-9.0, // EV 9.526, 1000.0 lux (target)
             directLightColor: [0.5,0.5,0.5],
@@ -40270,13 +41322,16 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             pixelsBot[i*4+2] = b2;
             pixelsBot[i*4+3] = 255;
 
-            if (0 | (i / 2)) {
+            // was this, which is wild: if (0 | (i / 2)) {
+            if ( i > 1 ) {
+				// color sides 2 and 3 with the first color
                 pixelsSide[i*4] = r1;
                 pixelsSide[i*4+1] = g1;
                 pixelsSide[i*4+2] = b1;
                 pixelsSide[i*4+3] = 255;
             }
             else {
+				// color sides 0 and 1 with the second color
                 pixelsSide[i*4] = r2;
                 pixelsSide[i*4+1] = g2;
                 pixelsSide[i*4+2] = b2;
@@ -40384,16 +41439,16 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         var x = ibuf[0];
         var i=0;
 
-        if( (x & 0x7FFFFFFF) == 0 ) {  // Signed zero
+        if( (x & 0x7FFFFFFF) === 0 ) {  // Signed zero
             hp[i++] = (x >> 16);  // Return the signed zero
         } else { // Not zero
             var xs = x & 0x80000000;  // Pick off sign bit
             var xe = x & 0x7F800000;  // Pick off exponent bits
             var xm = x & 0x007FFFFF;  // Pick off mantissa bits
-            if( xe == 0 ) {  // Denormal will underflow, return a signed zero
+            if( xe === 0 ) {  // Denormal will underflow, return a signed zero
                 hp[i++] = (xs >> 16);
             } else if( xe == 0x7F800000 ) {  // Inf or NaN (all the exponent bits are set)
-                if( xm == 0 ) { // If mantissa is zero ...
+                if( xm === 0 ) { // If mantissa is zero ...
                     hp[i++] = ((xs >> 16) | 0x7C00); // Signed Inf
                 } else {
                     hp[i++] = 0xFE00; // NaN, only 1st mantissa bit set
@@ -40446,7 +41501,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             var hs = h & 0x8000;  // Pick off sign bit
             var he = h & 0x7C00;  // Pick off exponent bits
             var hm = h & 0x03FF;  // Pick off mantissa bits
-            if( he == 0 ) {  // Denormal will convert to normalized
+            if( he === 0 ) {  // Denormal will convert to normalized
                 var e = -1; // The following loop figures out how much extra to adjust the exponent
                 do {
                     e++;
@@ -40458,7 +41513,7 @@ AutodeskNamespace('Autodesk.Viewing.Private');
                 var xm = ((hm & 0x03FF)) << 13; // Mantissa
                 target = (xs | xe | xm); // Combine sign bit, exponent bits, and mantissa bits
             } else if( he == 0x7C00 ) {  // Inf or NaN (all the exponent bits are set)
-                if( hm == 0 ) { // If mantissa is zero ...
+                if( hm === 0 ) { // If mantissa is zero ...
                     target = ((hs) << 16) | (0x7F800000); // Signed Inf
                 } else {
                     target = 0xFFC00000; // NaN, only 1st mantissa bit set
@@ -40490,7 +41545,8 @@ AutodeskNamespace('Autodesk.Viewing.Private');
 
         var scale = Math.pow(2.0, exposure);
 
-        var images = Array.isArray(map.image) ? map.image : [image];
+		// if `map.image` is an array, use it as it is, otherwise create an array with single item (`map.image`) in it
+        var images = Array.isArray(map.image) ? map.image : [map.image];
 
         for (var i=0; i<images.length; i++) {
 
@@ -41052,8 +42108,10 @@ ns.CreateLinePatternTexture = CreateLinePatternTexture;
 
 
 })(Autodesk.Viewing.Private);;(function() {
+	'use strict';
 
-    var avp = Autodesk.Viewing.Private;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 // Helper functions to parse ugly Protein JSON
 function parseMaterialColor(props, name) {
@@ -41210,7 +42268,7 @@ function ConvertDistance(distance, currentUnit, newUnit) {
 }
 
 function GetBumpScale(props, type, sceneUnit) {
-    if (type == 0) {
+    if (type === 0) {
         var depth = parseMaterialScalarWithSceneUnit(props, "bumpmap_Depth", sceneUnit, 0);
 
         var scale_x = 1;
@@ -41222,8 +42280,8 @@ function GetBumpScale(props, type, sceneUnit) {
             scale_x = parseMaterialScalarWithSceneUnit(props, "texture_RealWorldScaleX", sceneUnit, 1);
             scale_y = parseMaterialScalarWithSceneUnit(props, "texture_RealWorldScaleY", sceneUnit, 1);
         }
-        scale_x = (scale_x == 0) ? 1 : 1 / scale_x;
-        scale_y = (scale_y == 0) ? 1 : 1 / scale_y;
+        scale_x = (scale_x === 0) ? 1 : 1 / scale_x;
+        scale_y = (scale_y === 0) ? 1 : 1 / scale_y;
 
         return new THREE.Vector2(scale_x * depth, scale_y * depth);
     }
@@ -41255,8 +42313,8 @@ function Get2DMapTransform(props, sceneUnit) {
         scale_x = parseMaterialScalarWithSceneUnit(props, "texture_RealWorldScaleX", sceneUnit, 1);
         scale_y = parseMaterialScalarWithSceneUnit(props, "texture_RealWorldScaleY", sceneUnit, 1);
     }
-    scale_x = (scale_x == 0) ? 1 : 1 / scale_x;
-    scale_y = (scale_y == 0) ? 1 : 1 / scale_y;
+    scale_x = (scale_x === 0) ? 1 : 1 / scale_x;
+    scale_y = (scale_y === 0) ? 1 : 1 / scale_y;
 
     // include the additional U and V scales
     var uscale = parseMaterialGeneric(props, "scalars", "texture_UScale", 1);
@@ -41350,9 +42408,9 @@ function InitPrism3DWoodTextures() {
     };
 
     var perm2D = new Array(256 * 256 * 4);
-    var A, AA, AB, B, BA, BB, index;
+    var A, AA, AB, B, BA, BB, index, x;
     for (var y = 0; y < 256; ++y)
-        for (var x = 0; x < 256; ++x) {
+        for (x = 0; x < 256; ++x) {
             A = perm(x) + y;
             AA = perm(A);
             AB = perm(A + 1);
@@ -41385,7 +42443,7 @@ function InitPrism3DWoodTextures() {
         1,1,0,    0,-1,1,    -1,1,0,    0,-1,-1
     ];
     var permGrad = new Array(1024);
-    for (var x = 0; x < 256; ++x) {
+    for (x = 0; x < 256; ++x) {
         var i = permutation[x] % 16;
         // Convert the gradient to signed-normalized int.
         permGrad[x * 4] = gradients3D[i * 3] * 127 + 128;
@@ -41429,6 +42487,7 @@ function convertMaterial(matObj, isPrism) {
     var props = innerMat["properties"];
 
     var tm = isPrism ? avp.createPrismMaterial() : new THREE.MeshPhongMaterial();
+    var map, texProps;
     tm.proteinMat = matObj;
     tm.packedNormals = true;
 
@@ -41445,6 +42504,7 @@ function convertMaterial(matObj, isPrism) {
         tm.envExponentMax = 512.0;
         tm.envExponentCount = 10.0;
 
+		// among other things, set up mapList and note what map, if any, is attached to each property such as "surface_albedo".
         tm.surface_albedo = SRGBToLinear(parseMaterialColor(props, "surface_albedo", new THREE.Color(1, 0, 0)));
         mapList.surface_albedo_map = parseMaterialGenericConnection(props, "colors", "surface_albedo", null);
 
@@ -41578,14 +42638,17 @@ function convertMaterial(matObj, isPrism) {
                 console.warn('Unknown prism type: ' + tm.prismType);
         }
 
+		// now that the mapList is set up, populate it
         tm.defines = {};
         tm.textureMaps = {};
         for (var p in mapList) {
+			// does the map exist? If not, continue on.
             if (!mapList[p])
                 continue;
 
+			// the map exists for this property, so set the various values.
             var textureObj = innerMats[mapList[p]];
-            var texProps = textureObj["properties"];
+            texProps = textureObj["properties"];
 
             var uriType = textureObj["definition"] == "BumpMap" ?
                           "bumpmap_Bitmap" :
@@ -41595,7 +42658,7 @@ function convertMaterial(matObj, isPrism) {
             if (!uri)
                 continue;
 
-            var map = {
+            map = {
                 mapName: p,
                 uri: uri,
                 textureObj: textureObj,
@@ -41603,6 +42666,8 @@ function convertMaterial(matObj, isPrism) {
             };
             tm.textureMaps[map.mapName] = map;
 
+			// This array gives the various #defines that are associated with this instance of
+			// the PRISM material.
             tm.defines["USE_" + p.toUpperCase()] = "";
         }
 
@@ -41624,10 +42689,10 @@ function convertMaterial(matObj, isPrism) {
         var e = tm.emissive = parseMaterialColor(props, "generic_emissive");
 
         //If the material is completely black, use a default material.
-        if (  d.r == 0 && d.g == 0 && d.b == 0
-            && s.r == 0 && s.g == 0 && s.b == 0
-            && a.r == 0 && a.g == 0 && a.b == 0
-            && e.r == 0 && e.g == 0 && e.b == 0)
+        if (  d.r === 0 && d.g === 0 && d.b === 0 &&
+            s.r === 0 && s.g === 0 && s.b === 0 &&
+            a.r === 0 && a.g === 0 && a.b === 0 &&
+            e.r === 0 && e.g === 0 && e.b === 0)
             d.r = d.g = d.b = 0.4;
 
         tm.shininess = parseMaterialScalar(props, "generic_glossiness", 30);
@@ -41666,10 +42731,10 @@ function convertMaterial(matObj, isPrism) {
         var textures = innerMat["textures"];
         for (var texType in textures) {
 
-            var map = {};
+            map = {};
 
             map.textureObj = innerMats[ textures[texType]["connections"][0] ];
-            var texProps = map.textureObj["properties"];
+            texProps = map.textureObj["properties"];
 
             // Grab URI
             map.uri = texProps["uris"]["unifiedbitmap_Bitmap"]["values"][0];
@@ -41681,7 +42746,7 @@ function convertMaterial(matObj, isPrism) {
             if (texType == "generic_diffuse") {
                 map.mapName = "map";
 
-                if (!tm.color || (tm.color.r == 0 && tm.color.g == 0 && tm.color.b == 0))
+                if (!tm.color || (tm.color.r === 0 && tm.color.g === 0 && tm.color.b === 0))
                     tm.color.setRGB(1, 1, 1);
             }
             else if (texType == "generic_bump") {
@@ -41728,8 +42793,13 @@ function convertPrismTexture(textureObj, texture, sceneUnit) {
 
     var texProps = textureObj["properties"];
 
-    texture.wrapS = parseMaterialGeneric(texProps, "booleans", "texture_URepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-    texture.wrapT = parseMaterialGeneric(texProps, "booleans", "texture_VRepeat", false) ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+	// Note that the format of these booleans is different for Protein than for regular materials:
+	// Prism: "texture_URepeat": { "values": [ false ] },
+	// simple texture: "texture_URepeat":    false,
+    texture.clampS = !parseMaterialGeneric(texProps, "booleans", "texture_URepeat", false);
+    texture.clampT = !parseMaterialGeneric(texProps, "booleans", "texture_VRepeat", false);
+    texture.wrapS = !texture.clampS ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    texture.wrapT = !texture.clampT ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
 
     texture.matrix = Get2DMapTransform(texProps, sceneUnit);
 
@@ -41748,9 +42818,14 @@ function convertSimpleTexture(textureObj, texture) {
 
     var texProps = textureObj["properties"];
 
+	// Note that the format of these booleans is different for Protein than for regular materials:
+	// Prism: "texture_URepeat": { "values": [ false ] },
+	// simple texture: "texture_URepeat":    false,
     texture.invert = parseMaterialBoolean(texProps, "unifiedbitmap_Invert");
     texture.clampS = !parseMaterialBoolean(texProps, "texture_URepeat", true);  // defaults to wrap
     texture.clampT = !parseMaterialBoolean(texProps, "texture_VRepeat", true);
+    texture.wrapS = !texture.clampS ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    texture.wrapT = !texture.clampT ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
 
     var uscale = parseMaterialScalar(texProps, "texture_UScale", 1);
     var vscale = parseMaterialScalar(texProps, "texture_VScale", 1);
@@ -41778,17 +42853,17 @@ function isPrismMaterial(material) {
     var innerMat = innerMats[material['userassets'][0]];
     if (innerMat) {
         var definition = innerMat['definition'];
-        return definition == 'PrismLayered'
-            || definition == 'PrismMetal'
-            || definition == 'PrismOpaque'
-            || definition == 'PrismTransparent'
-            || definition == 'PrismWood';
+        return definition == 'PrismLayered' ||
+            definition == 'PrismMetal' ||
+            definition == 'PrismOpaque' ||
+            definition == 'PrismTransparent' ||
+            definition == 'PrismWood';
     }
     return false;
 }
 
 
-Autodesk.Viewing.Private.MaterialConverter = {
+avp.MaterialConverter = {
 	convertMaterial: convertMaterial,
     convertTexture: convertTexture,
     isPrismMaterial: isPrismMaterial
@@ -41796,9 +42871,10 @@ Autodesk.Viewing.Private.MaterialConverter = {
 
 })();;
 (function() {
+	'use strict';
 
-var avp = Autodesk.Viewing.Private;
-
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 function loadTextureWithSecurity(path, mapping, callback) {
 
@@ -41825,10 +42901,9 @@ function loadTextureWithSecurity(path, mapping, callback) {
             path += "&acmsession=" + Autodesk.Viewing.ACM_SESSION_ID;
     }
 
-    /*
     // If the textures are stored on OSS, directly stream it from OSS instead of going through items API.
     var ossPrefix = "urn:adsk.objects:os.object:";
-    var decodedPath = decodeURIComponent(path)
+    var decodedPath = decodeURIComponent(path);
     var ossIndex = decodedPath.indexOf(ossPrefix);
     if (ossIndex !== -1) {
         var ossPath = decodedPath.substr(ossIndex + ossPrefix.length);
@@ -41842,14 +42917,66 @@ function loadTextureWithSecurity(path, mapping, callback) {
         }
         path = OSS_URL + "/buckets/" + bucket + "/objects/" + object;
     }
-    */
+
     if (path.slice(path.length-4).toLocaleLowerCase() === ".dds")
         return new THREE.DDSLoader().load(path, callback);
+    else if (!LMV_THIRD_PARTY_COOKIE && useCredentials)
+        return loadTextureWithToken(path, mapping, callback);
     else
         return THREE.ImageUtils.loadTexture(path, mapping, callback);
 }
 
+// For texture loading, three.js expects loadable URL for the image.
+// When we put the token in request header instead of cookie, we need AJAX the
+// texture and base64 encode it to create a data URI and feed it to three.js.
+function loadTextureWithToken(path, mapping, callback) {
 
+    var texture = new THREE.Texture( undefined, mapping );
+
+    var options = { headers : av.HTTP_REQUEST_HEADERS, withCredentials : !!auth, responseType : "arraybuffer" };
+
+    function onSuccess(data) {
+        return loadTextureBinary(data, texture, callback);
+    }
+
+    function onFailure(statusCode, statusText, data) {
+        var errorMsg = "Error: " + statusCode + " (" + statusText + ")";
+        console.log(errorMsg);
+    }
+
+    avp.ViewingService.get(VIEWING_URL, 'items', path, onSuccess, onFailure, options);
+
+    return texture;
+}
+
+function loadTextureBinary( data, texture, callback ) {
+
+    function arrayBufferToDataUri( buffer ) {
+        var binary = '';
+        var bytes = new Uint8Array( buffer );
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+            binary += String.fromCharCode( bytes[ i ] );
+        }
+
+        var uri = "data:image/jpeg;base64," + window.btoa( binary );
+        return uri;
+    }
+
+    var image = new Image();
+    texture.image = image;
+
+    image.onload = function () {
+        texture.needsUpdate = true;
+        if ( callback ) callback( texture );
+    };
+    image.onerror = function (e) {
+        console.log("Error!!!" + e);
+    };
+
+    image.src = arrayBufferToDataUri(data);
+
+}
 
 function resizeImage(img) {
 
@@ -41873,7 +43000,7 @@ function resizeImage(img) {
 
     return canvas;
 
-};
+}
 
 
 
@@ -41981,7 +43108,7 @@ function MaterialManager(viewer)
             var phongMat = avp.MaterialConverter.convertMaterial(matObj, isPrism);
 
             // TODO: do we want to check the global flag or drop that and rely on material only?
-            if (!_isIE11 && svf.doubleSided)
+            if (!av.isIE11 && svf.doubleSided)
                 phongMat.side = THREE.DoubleSide;
 
             var matName = getMaterialHash(svf, p);
@@ -42032,6 +43159,10 @@ function MaterialManager(viewer)
 
     this.loadTexture = function(material, svf) {
         if (!material.textureMaps)
+            return;
+
+        //NODE
+        if (typeof document === "undefined")
             return;
 
         // iterate and parse textures from ugly JSON
@@ -42584,6 +43715,20 @@ function MaterialManager(viewer)
 
     };
 
+    this.updateViewportId = function(vpId) {
+
+        var mats = _materials;
+        for (var p in mats) {
+            if (is2dMaterial(p)) {
+                var m = mats[p];
+                m.uniforms["viewportId"].value = vpId;
+                m.needsUpdate = true;
+            }
+        }
+
+        this.viewer.invalidate(true);
+    };
+
     this.setCubeMapFromColors = function(ctop, cbot) {
 
         var texture = avp.CreateCubeMapFromColors(ctop, cbot);
@@ -42666,6 +43811,7 @@ function MaterialManager(viewer)
 
         var self = this;
         var texLoadDone = function(map) {
+			var p,m;
             if (map)
             {
                 map.mapping = THREE.CubeReflectionMapping;
@@ -42675,8 +43821,8 @@ function MaterialManager(viewer)
                 // TODO: Turn on use of half-float textures for envmaps. Disable due to blackness on Safari.
                 avp.DecodeEnvMap(map, exposure, false /*isMobileDevice() ? false : this.viewer.glrenderer().supportsHalfFloatTextures()*/);
 
-                for (var p in _materials) {
-                    var m = _materials[p];
+                for (p in _materials) {
+                    m = _materials[p];
                     m.irradianceMap = map;
                     m.needsUpdate = true;
                 }
@@ -42687,8 +43833,8 @@ function MaterialManager(viewer)
             {
                 if (self.irradianceMap)
                 {
-                    for (var p in _materials) {
-                        var m = _materials[p];
+                    for (p in _materials) {
+                        m = _materials[p];
                         m.irradianceMap = null;
                         m.needsUpdate = true;
                     }
@@ -42955,11 +44101,12 @@ function MaterialManager(viewer)
     this.setCutPlanes = function(cutplanes) {
         // update mat shaders, if num of planes changed
         if ( _cutplanes.length !== (cutplanes ? cutplanes.length || 0 : 0) ) {
-            for (var p in _materials) {
+			var p;
+            for (p in _materials) {
                 _materials[p].needsUpdate = true;
                 if (cutplanes && cutplanes.length > 0) _materials[p].side = THREE.DoubleSide;
             }
-            for (var p in _materialsNonHDR)
+            for (p in _materialsNonHDR)
                 _materialsNonHDR[p].needsUpdate = true;
         }
 
@@ -43031,12 +44178,15 @@ Autodesk.Viewing.Private.MaterialManager = MaterialManager;
 ;/**
  * @author nopjia / http://github.com/nopjia
  */
+(function () {
 
-function init_GroundShader() {
+'use strict';
 
-"use strict";
+var av = Autodesk.Viewing,
+    avs = av.Shaders;
 
-var avs = Autodesk.Viewing.Shaders;
+
+avs.init_GroundShader = function(THREE) {
 
 if (typeof avs.GroundDepthShader !== "undefined")
     return;
@@ -43095,7 +44245,7 @@ avs.GroundDepthShader = {
 
         "void main() {",
         "#if NUM_CUTPLANES > 0",
-            "if (checkCutPlanes(vWorldPosition)) return;",
+            "checkCutPlanes(vWorldPosition);",
         "#endif",
 
         "#if defined(USE_LOGDEPTHBUF) && defined(USE_LOGDEPTHBUF_EXT)",
@@ -43313,18 +44463,12 @@ avs.GroundShadowColorShader = {
     ].join("\n")
 };
 
-}
+};
 
-
-(function() {
-
-"use strict";
-
-var avs = Autodesk.Viewing.Shaders;
 
 var GroundShadow = function(renderer, params) {
 
-    init_GroundShader();
+    avs.init_GroundShader(THREE);
 
     var _renderer = renderer;
     var _camera;
@@ -43588,6 +44732,9 @@ function init_GroundReflectionShader() {
 
 "use strict";
 
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
 var avs = Autodesk.Viewing.Shaders;
 
 
@@ -43697,7 +44844,7 @@ var GroundReflection = function(renderer, width, height, params) {
     };
 
     // PUBLIC FUNCTIONS
-
+    // note: currently scale is not used
     this.setTransform = function(center, upDir, scale) {
         _groundCenter = center;
         _groundPlane.normal = upDir;
@@ -43861,8 +45008,8 @@ var GroundReflection = function(renderer, width, height, params) {
             // same logic as RenderContext.setClearColors
             _useClearPass =
                 !colorTop.equals(colorBot) &&
-                !isAndroidDevice() &&
-                !isIOSDevice();
+                !av.isAndroidDevice() &&
+                !av.isIOSDevice();
         }
 
         if (_useClearPass) {
@@ -43932,8 +45079,7 @@ avs.GroundReflection = GroundReflection;
  */
  
 function init_GaussianShader() {
-
-"use strict";
+    'use strict';
 
 var avs = Autodesk.Viewing.Shaders;
 
@@ -44661,7 +45807,7 @@ VisibilityAnimation.prototype.update = (function() {
                     var vis = isNextKey ? nextVis : prevVis;
                     // set to opaque if vis is 1 and opa is not specified
                     if (vis === 1 && key["opa"] === undefined) {
-                        material.transparent = false;
+                        material.transparent = true;
                         material.opacity = 1;
                     }
                     this.viewer.visibilityManager.setNodeOff(this.nodeId, !vis);
@@ -45354,11 +46500,6 @@ if (ENABLE_DEBUG === undefined)
 if (ENABLE_TRACE === undefined)
     var ENABLE_TRACE = true;
 
-var RENDER_NORMAL      = 0,//=== RenderQueue.NORMAL !!!
-    RENDER_HIGHLIGHTED = 1,//=== RenderQueue.HIGHLIGHTED !!!
-    RENDER_HIDDEN      = 2,//=== RenderQueue.HIDDEN !!!
-    RENDER_FINISHED    = 3;
-
 (function() {
 
 "use strict";
@@ -45366,6 +46507,10 @@ var RENDER_NORMAL      = 0,//=== RenderQueue.NORMAL !!!
 var av = Autodesk.Viewing,
     avp = av.Private;
 
+avp.RENDER_NORMAL      = 0;//=== RenderQueue.NORMAL !!!
+avp.RENDER_HIGHLIGHTED = 1;//=== RenderQueue.HIGHLIGHTED !!!
+avp.RENDER_HIDDEN      = 2;//=== RenderQueue.HIDDEN !!!
+avp.RENDER_FINISHED    = 3;
 
 //default parameters for WebGL initialization
 av.InitParametersSetting = {
@@ -45395,7 +46540,7 @@ function Viewer3DImpl(thecanvas, theapi)
         MIN_FRAME_TIME = 1000 / 120; //We aren't hoping for 120 fps -- this is just how often tick() gets called
                                      //not counting GPU latency, etc.
 
-    var _phase = RENDER_NORMAL;
+    var _phase = avp.RENDER_NORMAL;
 
     var _currentLightPreset = -1;
     var _oldLightPreset = -1;
@@ -45432,14 +46577,20 @@ function Viewer3DImpl(thecanvas, theapi)
 
     var _modelQueue = new avp.RenderScene();
 
-    setInterval(function() {
-        if (_isLoading) {
-            return;
-        }
-        _this.log({ category: 'runtime_stats', fps: _this.fps() });
-    }, 60000);
+    if (thecanvas) {
+        setInterval(function() {
+            if (_isLoading) {
+                return;
+            }
+            _this.log({ name: 'fps', value: _this.fps(), aggregate: 'last' });
+
+        }, 30000);
+    }
 
     function createRenderer(canvas) {
+
+        if (!av.isBrowser)
+            return null;
 
         //TODO: improve the pixel scale heuristics below
         var dpr = window.devicePixelRatio;
@@ -45451,7 +46602,7 @@ function Viewer3DImpl(thecanvas, theapi)
         //    _settings.antialias = false;
 
         //Expose the pramaters to outside so that we could set these params on HTML.
-        var params = Autodesk.Viewing.InitParametersSetting;
+        var params = av.InitParametersSetting;
         params.canvas=canvas;
         params.devicePixelRatio=dpr;
         
@@ -45482,12 +46633,12 @@ function Viewer3DImpl(thecanvas, theapi)
         //some refactoring of THREE.WebGLRenderer.
         var phase = _phase;
         var wantColor = true;
-        var wantSAO = phase == RENDER_NORMAL;
-        var wantID = _renderer.settings.idbuffer && phase != RENDER_HIDDEN;
+        var wantSAO = phase == avp.RENDER_NORMAL;
+        var wantID = _renderer.settings.idbuffer && phase != avp.RENDER_HIDDEN;
 
-        if (phase == RENDER_HIDDEN)
+        if (phase == avp.RENDER_HIDDEN)
             scene.overrideMaterial = _this.fadeMaterial;
-        else if (phase == RENDER_HIGHLIGHTED)
+        else if (phase == avp.RENDER_HIGHLIGHTED)
             scene.overrideMaterial = _this.highlightMaterial;
 
         _renderer.renderScenePart(scene, wantColor, wantSAO, wantID);
@@ -45531,7 +46682,7 @@ function Viewer3DImpl(thecanvas, theapi)
             _this.invalidate(true, true, true);
             _needsResize = false;
             _this.api.fireEvent({
-                type: Autodesk.Viewing.VIEWER_RESIZE_EVENT,
+                type: av.VIEWER_RESIZE_EVENT,
                 width: _newWidth,
                 height: _newHeight
             });
@@ -45578,7 +46729,7 @@ function Viewer3DImpl(thecanvas, theapi)
             // ready to render
             if (_groundShadow.isValid()) {
                 if (!_groundShadow.rendered &&
-                    !(_groundReflection && _groundReflection.progressive)) {
+                    !_groundReflection) {
                     _groundShadow.renderShadow(_this.camera, _renderer.getColorTarget());
                     _groundShadow.rendered = true;
                 }
@@ -45606,7 +46757,7 @@ function Viewer3DImpl(thecanvas, theapi)
                     _groundShadow.postprocess();
 
                     if (!_groundShadow.rendered &&
-                        !(_groundReflection && _groundReflection.progressive)) {
+                        !_groundReflection) {
                         _groundShadow.renderShadow(_this.camera, _renderer.getColorTarget());
                         _groundShadow.rendered = true;
                     }
@@ -45658,7 +46809,11 @@ function Viewer3DImpl(thecanvas, theapi)
 
             // progressive draw into reflection
             var i = 0;
-            while (i < maxScenesPerFrame && qSceneIdx < qSceneCount) {
+			// if progressive rendering is off, or it's on and i < maxScenesPerFrame, then render
+			// the ground reflection; also check that the scene index is less than the scene count
+			// for the loop itself.
+            while ( (!_this.progressiveRender || (i < maxScenesPerFrame)) &&
+				(qSceneIdx < qSceneCount) ) {
                 var qScene = qScenes[qSceneIdx];
 
                 if (qScene) {
@@ -45688,7 +46843,7 @@ function Viewer3DImpl(thecanvas, theapi)
             if (!_groundReflection.rendered &&
                 !_groundReflection.isGroundCulled() && (
                     _groundReflection.finished ||
-                    (_groundReflection.progressive && !_modelQueue.isDone())
+                    !_modelQueue.isDone()
                 )) {
 
                 _groundReflection.postprocess(_this.camera, _materials);
@@ -45705,7 +46860,7 @@ function Viewer3DImpl(thecanvas, theapi)
                 if (_modelQueue.isDone()) {
                     // if ghosting, draw after refls are done
                     if (_this.showGhosting && !_modelQueue.areAllVisible()) {
-                        _phase = RENDER_HIDDEN;
+                        _phase = avp.RENDER_HIDDEN;
                         _modelQueue.reset(_this.camera, _phase);
                     }
                     // else, just draw result
@@ -45857,11 +47012,11 @@ function Viewer3DImpl(thecanvas, theapi)
                 if (q.hasHighlighted()) {
                     //If we have objects in the render queue that are set
                     //to draw as "highlighted", render them first
-                    _phase = RENDER_HIGHLIGHTED;
+                    _phase = avp.RENDER_HIGHLIGHTED;
                     q.reset(_this.camera, _phase, moved | _needsClear);
                 } else {
                     // If nothing is highlighted just skip the highlighted phase
-                    _phase = RENDER_NORMAL;
+                    _phase = avp.RENDER_NORMAL;
                     q.reset(_this.camera, _phase, moved | _needsClear);
                 }
             }
@@ -45882,8 +47037,8 @@ function Viewer3DImpl(thecanvas, theapi)
 
             frameRemaining = q.renderSome(renderSomeCallback, frameRemaining);
 
-            if (q.isDone() && _phase === RENDER_HIGHLIGHTED) {
-                _phase = RENDER_NORMAL;
+            if (q.isDone() && _phase === avp.RENDER_HIGHLIGHTED) {
+                _phase = avp.RENDER_NORMAL;
                 q.reset(_this.camera, _phase);
 
                 // Allow the use of the remaining frame time to draw normal objects.
@@ -45898,19 +47053,19 @@ function Viewer3DImpl(thecanvas, theapi)
             }
 
             if (q.isDone()) {
-                if (_phase === RENDER_NORMAL &&
+                if (_phase === avp.RENDER_NORMAL &&
                     !q.areAllVisible() &&
                     _this.showGhosting)
                 {
                     // delay render hidden until reflections are done
                     if (!_groundReflection || _groundReflection.finished) {
-                        _phase = RENDER_HIDDEN;
+                        _phase = avp.RENDER_HIDDEN;
                         q.reset(_this.camera, _phase);
                     }
                 }
                 else
                 {
-                    _phase = RENDER_FINISHED;
+                    _phase = avp.RENDER_FINISHED;
                     _renderer.renderScenePart(_this.sceneAfter, true, true, true);
                     _renderer.composeFinalFrame(moved && _this.skipAOWhenMoving, true);
                 }
@@ -46035,9 +47190,8 @@ function Viewer3DImpl(thecanvas, theapi)
             return;
 
         if (enable) {
-            _groundReflection = new Autodesk.Viewing.Shaders.GroundReflection(_webglrender, this.canvas.clientWidth, this.canvas.clientHeight);
+            _groundReflection = new av.Shaders.GroundReflection(_webglrender, this.canvas.clientWidth, this.canvas.clientHeight);
             _groundReflection.setClearColors(this.clearColorTop, this.clearColorBottom);
-            _groundReflection.progressive = true;
             _groundReflection.toggleEnvMapBackground(_envMapBackground);
             _groundReflection.setEnvRotation(_renderer.getEnvRotation());
             updateGroundTransform();
@@ -46148,10 +47302,42 @@ function Viewer3DImpl(thecanvas, theapi)
         //Fix near and far to fit the current view
         if (this.model) {
             var worldBox = this.getVisibleBounds(true, _overlayDirty);
+            tmpBox.copy(worldBox);
+			
+			//If reflection is on, then we need to double the worldBox size in the Y
+			//direction, the reflection direction, otherwise the reflected view can be
+			//clipped.
+			if ( _groundReflection ) {
+				// Increase bounding box to include ground reflection geometry. The idea
+				// here is to extend the bounding box in the direction of reflection, based
+				// on the "up" vector.
+				var tmpVecReflect = new THREE.Vector3;
+				tmpVecReflect.multiplyVectors( tmpBox.max, camera.worldup );
+				var tmpVecMin = new THREE.Vector3;
+				tmpVecMin.multiplyVectors( tmpBox.min, camera.worldup );
+				tmpVecReflect.sub( tmpVecMin );
+				// tmpVecReflect holds how much to increase the bounding box.
+				// Negative values means the "up" vector is upside down along that axis,
+				// so we increase the maximum bounds of the bounding box in this case.
+				if ( tmpVecReflect.x >= 0.0 ) {
+					tmpBox.min.x -= tmpVecReflect.x;
+				} else {
+					tmpBox.max.x -= tmpVecReflect.x;
+				}
+				if ( tmpVecReflect.y >= 0.0 ) {
+					tmpBox.min.y -= tmpVecReflect.y;
+				} else {
+					tmpBox.max.y -= tmpVecReflect.y;
+				}
+				if ( tmpVecReflect.z >= 0.0 ) {
+					tmpBox.min.z -= tmpVecReflect.z;
+				} else {
+					tmpBox.max.z -= tmpVecReflect.z;
+				}
+			}
 
             //Transform the world bounds to camera space
             //to estimate the near/far planes we need for this frame
-            tmpBox.copy(worldBox);
             tmpBox.applyMatrix4(tmpViewMatrix);
 
             //Expand the range by a small amount to avoid clipping when
@@ -46436,43 +47622,44 @@ function Viewer3DImpl(thecanvas, theapi)
         if (upVectorArray)
             up = new THREE.Vector3().fromArray(upVectorArray);
         else
-            up = Autodesk.Viewing.Navigation.snapToAxis(camera.up.clone());
+            up = av.Navigation.snapToAxis(camera.up.clone());
 
         camera.up = up;
 
 
         var navapi = this.api.navigation;
-
-        if (!skipTransition) {
-            this.camera.isPerspective = camera.isPerspective;
-            up = navapi.computeOrthogonalUp(camera.position, camera.target);
-            navapi.setRequestTransitionWithUp(true, camera.position, camera.target, camera.fov, up, camera.up);
-        }
-        else {
-
-            //This code path used during initial load -- it sets the view directly
-            //without doing a transition. Transitions require that the camera is set explicitly
-
-            var tc = this.camera;
-            tc.up.copy(camera.up);
-            tc.position.copy(camera.position);
-            tc.target.copy(camera.target);
-            if( camera.isPerspective ) {
-                tc.fov = camera.fov;
+        if ( navapi) {
+            if (!skipTransition) {
+                this.camera.isPerspective = camera.isPerspective;
+                up = navapi.computeOrthogonalUp(camera.position, camera.target);
+                navapi.setRequestTransitionWithUp(true, camera.position, camera.target, camera.fov, up, camera.up);
             }
             else {
-                tc.saveFov = camera.fov;    // Stash original fov
-                tc.fov = Autodesk.Viewing.UnifiedCamera.ORTHO_FOV;
+
+                //This code path used during initial load -- it sets the view directly
+                //without doing a transition. Transitions require that the camera is set explicitly
+
+                var tc = this.camera;
+                tc.up.copy(camera.up);
+                tc.position.copy(camera.position);
+                tc.target.copy(camera.target);
+                if( camera.isPerspective ) {
+                    tc.fov = camera.fov;
+                }
+                else {
+                    tc.saveFov = camera.fov;    // Stash original fov
+                    tc.fov = av.UnifiedCamera.ORTHO_FOV;
+                }
+                tc.isPerspective = camera.isPerspective;
+                tc.orthoScale = camera.orthoScale;
+                tc.dirty = true;
+
+                navapi.setWorldUpVector(tc.up);
+                navapi.setView(tc.position, tc.target);
+                navapi.setPivotPoint(tc.target);
+
+                this.syncCamera(true);
             }
-            tc.isPerspective = camera.isPerspective;
-            tc.orthoScale = camera.orthoScale;
-            tc.dirty = true;
-
-            navapi.setWorldUpVector(tc.up);
-            navapi.setView(tc.position, tc.target);
-            navapi.setPivotPoint(tc.target);
-
-            this.syncCamera(true);
         }
         _cameraUpdated = true;
     };
@@ -46600,8 +47787,10 @@ function Viewer3DImpl(thecanvas, theapi)
             }
         }
 
-        this.api.navigation.setIs2D(is2d && !isOverlay);
-        this.api.setActiveNavigationTool(); // use default nav tool
+        if (this.api.navigation) {
+            this.api.navigation.setIs2D(is2d && !isOverlay);
+            this.api.setActiveNavigationTool(); // use default nav tool
+        }
 
 
         if (!isOverlay) {
@@ -46635,11 +47824,16 @@ function Viewer3DImpl(thecanvas, theapi)
     //Creates a THREE.Mesh representation of a fragment. Currently this is only
     //used as vehicle for activating a fragment instance for rendering once its geometry is received
     //or changing the fragment data (matrix, material). So, it's mostly vestigial.
-    this.createThreeMesh = function(model, threegeom, materialId, matrix) {
+    this.setupMesh = function(model, threegeom, materialId, matrix) {
     
         var svf = model.getData();
 
-        var m;
+        var m = {
+            geometry: threegeom,
+            matrix: matrix,
+            isLine: threegeom.isLines,
+            is2d: threegeom.is2d
+        };
 
         // Check if this geometry is to be rendered with a line mesh
         if ( threegeom.isLines ) {
@@ -46660,37 +47854,20 @@ function Viewer3DImpl(thecanvas, theapi)
             _materials.addMaterialNonHDR(svf.basePath + materialId + "_line_" + material.id, material);
             
             // Use line mesh
-            m = new THREE.Mesh(threegeom, material, !svf.animations);
-            m.isLine = true;
+            m.material = material;
 
             svf.hasLines = true;
         } else {
             var material = _materials.findMaterial(svf, materialId);
 
             if (material) // Save in material so we can map back from material to SVF id.
-            {
                 material.svfMatId = materialId;
-            }
 
             _materials.applyGeometryFlagsToMaterial(material, threegeom);
 
-            m = new THREE.Mesh(threegeom, material, !svf.animations);
-            m.materialId = parseInt(materialId);
-            if (threegeom.is2d)
-                m.is2d = true;
+            m.material = material;
         }
 
-        if (matrix) {
-            if (m.matrix)
-                m.matrix.copy(matrix);
-            m.matrixWorld.copy(matrix);
-        }
-        m.matrixAutoUpdate = false;
-
-        //Add the mesh to the render group for this fragment
-        //Note each render group renders potentially many fragments.
-        m.frustumCulled = false; //we do our own culling in RenderQueue, the renderer doesn't need to
-    
         return m;
     };
 
@@ -46728,33 +47905,33 @@ function Viewer3DImpl(thecanvas, theapi)
         var that = this;
         function initAnimations() {
             if (svf.animations) {
-                that.keyFrameAnimator = new Autodesk.Viewing.Private.KeyFrameAnimator(that, svf.animations.duration);
+                that.keyFrameAnimator = new avp.KeyFrameAnimator(that, svf.animations.duration);
                 for (var a in svf.animations.animations) {
                     that.keyFrameAnimator.add(svf.animations.animations[a]);
                 }
                 that.keyFrameAnimator.goto(0);
-                that.api.fireEvent({ type: Autodesk.Viewing.ANIMATION_READY_EVENT });
+                that.api.fireEvent({ type: av.ANIMATION_READY_EVENT });
             }
-            that.api.removeEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, initAnimations);
+            that.api.removeEventListener(av.OBJECT_TREE_CREATED_EVENT, initAnimations);
         }
         // init animations after object tree created and geometry loaded
         if (model.isObjectTreeCreated()) {
             initAnimations();
         } else {
-            this.api.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, initAnimations);
+            this.api.addEventListener(av.OBJECT_TREE_CREATED_EVENT, initAnimations);
         }
 
 
         // Fire the event so we know the geometry is done loading.
         this.api.fireEvent({
-            type: Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
+            type: av.GEOMETRY_LOADED_EVENT,
             model: model
         });
     };
 
     this.signalProgress = function(percent, message)
     {
-        this.api.fireEvent({type:Autodesk.Viewing.PROGRESS_UPDATE_EVENT, percent:percent, message:message});
+        this.api.fireEvent({type:av.PROGRESS_UPDATE_EVENT, percent:percent, message:message});
     };
 
     this.resize = function(w, h) {
@@ -47193,8 +48370,8 @@ function Viewer3DImpl(thecanvas, theapi)
         //To begin with, get the SAO defaults from the shader uniforms definition
         //Note the scaling we apply to inverse scaling done by the setAOOptions API internally.
         //This is not pretty....
-        var saoRadius = Autodesk.Viewing.Shaders.SAOShader.uniforms.radius.value;
-        var saoIntensity = Autodesk.Viewing.Shaders.SAOShader.uniforms.intensity.value;
+        var saoRadius = av.Shaders.SAOShader.uniforms.radius.value;
+        var saoIntensity = av.Shaders.SAOShader.uniforms.intensity.value;
 
         //Check if the preset overrides the SAO settings
         if (preset.hasOwnProperty("saoRadius"))
@@ -47366,7 +48543,7 @@ function Viewer3DImpl(thecanvas, theapi)
     this.setCutPlanes = function(planes) {
         _materials.setCutPlanes(planes);
         this.sceneUpdated();
-        this.api.fireEvent({type:Autodesk.Viewing.CUTPLANES_CHANGE_EVENT});
+        this.api.fireEvent({type:av.CUTPLANES_CHANGE_EVENT});
     };
 
     this.fireRenderOptionChanged = function() {
@@ -47376,7 +48553,7 @@ function Viewer3DImpl(thecanvas, theapi)
         //to update the materials accordingly.
         _materials.toggleMRTSetting();
 
-        this.api.fireEvent({type:Autodesk.Viewing.RENDER_OPTION_CHANGED_EVENT});
+        this.api.fireEvent({type:av.RENDER_OPTION_CHANGED_EVENT});
     };
 
     this.viewportToRay = function(vpVec, ray) {
@@ -47546,7 +48723,8 @@ function Viewer3DImpl(thecanvas, theapi)
 
         if (_this.is2d) {
 
-            var dbId = _renderer.idAtPixel(vpVec.x, vpVec.y);
+            // Set the detection area to 5*5 pixel search rectangle
+            var dbId = _renderer.idAtPixels(vpVec.x, vpVec.y, 5);
 
             if (dbId <= 0)
                 return null;
@@ -47562,12 +48740,6 @@ function Viewer3DImpl(thecanvas, theapi)
                 fragId : _this.model.getData().fragments.dbId2fragId[dbId],
                 model: _this.model
             };
-
-            if (dbId) {
-                //stderr("dbId " + dbId);
-                //result.node = ... get the node for the dbId here
-            }
-
         }
         else {
 
@@ -47645,7 +48817,13 @@ function Viewer3DImpl(thecanvas, theapi)
 
     this.rolloverObject = function(clientX, clientY) {
 
-        this.rolloverObjectViewport(this.clientToViewport(clientX, clientY));
+        if (!this.rolloverDisabled)
+            this.rolloverObjectViewport(this.clientToViewport(clientX, clientY));
+    };
+
+    this.disableRollover = function(disable) {
+
+        this.rolloverDisabled = disable;
     };
 
     this.rolloverObjectNode = function(dbId) {
@@ -47851,11 +49029,11 @@ function Viewer3DImpl(thecanvas, theapi)
     this.canvas = thecanvas;
     
     this.loader = null;
-    
-    _webglrender = createRenderer(thecanvas);
 
-    _renderer = new RenderContext();
-    _renderer.init(_webglrender, thecanvas.clientWidth, thecanvas.clientHeight);
+    //TODO: node webgl renderer
+    _webglrender = createRenderer(thecanvas);
+    _renderer = new avp.RenderContext();
+    _renderer.init(_webglrender, thecanvas ? thecanvas.clientWidth : 0, thecanvas ? thecanvas.clientHeight : 0);
 
     _materials = new avp.MaterialManager(this);
 
@@ -47865,8 +49043,8 @@ function Viewer3DImpl(thecanvas, theapi)
     // this.camera = new THREE.PerspectiveCamera( VIEW_ANGLE, thecanvas.clientWidth/thecanvas.clientHeight, NEAR, FAR);
     // this.cameraChangedEvent = {type: Autodesk.Viewing.CAMERA_CHANGE_EVENT, camera: this.camera};
     //this.camera = new THREE.CombinedCamera( w, h, VIEW_ANGLE, NEAR, FAR, NEAR, FAR);
-    init_UnifiedCamera();
-    this.camera = new Autodesk.Viewing.UnifiedCamera(thecanvas.clientWidth, thecanvas.clientHeight);
+    avp.init_UnifiedCamera(THREE);
+    this.camera = new av.UnifiedCamera(thecanvas ? thecanvas.clientWidth : 512, thecanvas ? thecanvas.clientHeight : 512);
     this.lights = [];
 
     // this.camera = this.unicam.getOrthographicCamera();
@@ -47901,19 +49079,23 @@ function Viewer3DImpl(thecanvas, theapi)
     //Settings exposed to GUI:
     this.progressiveRender = true;
 
-    if (isAndroidDevice() || isIOSDevice()) {
+    if (av.isMobileDevice()) {
         MAX_FRAME_TIME *= 2;
         MIN_FRAME_TIME *= 2;
         TARGET_FRAME_TIME *= 2;
     }
     this.targetFrameTime = TARGET_FRAME_TIME;
 
-	this.controls = {
-		update: function(timeStamp) {},
-		handleResize: function() {},
-		recordHomeView: function() {},
-		uninitialize: function() {}
-	};
+    this.controls = {
+        update: function(timeStamp) {
+            this.camera.lookAt( this.camera.target );
+            this.camera.updateProjectionMatrix();
+            this.camera.dirty = false;
+        },
+        handleResize: function() {},
+        recordHomeView: function() {},
+        uninitialize: function() {}
+    };
 
     this.selector = new avp.MultiModelSelector(this);
 
@@ -47928,7 +49110,7 @@ function Viewer3DImpl(thecanvas, theapi)
     var cc = avp.LightPresets[avp.DefaultLightPreset].bgColorGradient;
     this.setClearColors(cc[0], cc[1], cc[2], cc[3], cc[4], cc[5]);
 
-    _groundShadow = new Autodesk.Viewing.Shaders.GroundShadow(_webglrender);
+    _groundShadow = new av.Shaders.GroundShadow(_webglrender);
     _groundShadow.enabled = true;
 
     // TODO_NOP: hack register materials for cutplanes
@@ -47944,360 +49126,79 @@ function Viewer3DImpl(thecanvas, theapi)
     // Record fragments transformation in explode mode for RaaS rendering
     //this.fragTransformConfig = [];
 
-    // Live Review stuff.
-    this.messageClient = null;
-    this.presenceChannelId = null;
-    this.p2p = null;
-    this.viewtx = null;
-    this.interceptor = null;
-
-    this.joinLiveReviewSession =  function (sessionId) {
-        (function() {
-
-            var av = Autodesk.Viewing,
-                avp = av.Private;
-
-            avp.InteractionInterceptor = function(viewtx) {
-
-                this.getNames = function() {
-                    return ["intercept"];
-                };
-
-                this.getName = function() {
-                    return "intercept";
-                };
-
-                this.activate = function(name) { };
-                this.deactivate = function(name) { };
-                this.update = function(timeStamp) { return false; };
-
-                this.handleSingleClick = function( event, button ) {return false;};
-                this.handleDoubleClick = function( event, button ) {return false;};
-                this.handleSingleTap = function( tap ) {return false;};
-                this.handleDoubleTap = function( tap1, tap2 ) {return false;};
-                this.handleKeyDown = function( event, keyCode ) {return false;};
-                this.handleKeyUp = function( event, keyCode ) {return false;};
-
-                this.handleWheelInput = function(delta) {
-                    viewtx.takeControl();
-                    return false;
-                };
-
-                this.handleButtonDown = function(event, button) {
-                    viewtx.takeControl();
-//            stderr("click");
-                    return false;
-                };
-
-                this.handleButtonUp = function(event, button) {return false;};
-                this.handleMouseMove = function(event) {
-                    viewtx.updatePointer(event);
-                    return false;
-                };
-
-                this.handleGesture = function(event) {
-                    viewtx.takeControl();
-                    return false;
-                };
-
-                this.handleBlur = function(event) {return false;};
-                this.handleResize = function() {};
-            };
-
-            avp.ViewTransceiver = function(client) {
-
-                var _this = this;
-                var _viewer = this.viewer = null;
-                var _blockEvents = false;
-                var _haveControl = false;
-                var _isDisconnected = false;
-                var _lastInControl;
-                var _client = this.client = client;
-                var _ray = new THREE.Ray();
-                var _pointer = null;
-                var _pointerOn = false;
-
-                this.channelId = null;
-
-                var _viewerState;
-                var VIEWER_STATE_FILTER = {
-                    seedURN: false,
-                    objectSet: true,
-                    viewport: false,
-                    cutplanes: true,
-                    renderOptions: {
-                        environment: false,
-                        ambientOcclusion: false,
-                        toneMap: {
-                            exposure: false
-                        },
-                        appearance: false
-                    }
-                };
-
-
-                function onViewerState(evt) {
-                    _blockEvents = true;
-                    var state = JSON.parse(evt.data.msg);
-                    _viewerState.restoreState(state);
-                    _viewer.impl.invalidate(true, false, true);
-                    _blockEvents = false;
-                }
-
-                function reduceBits(v) {
-                    return Math.round(v * 1000) / 1000;
-                }
-
-                function reduceBitsV(v) {
-                    for (var i=0; i< v.length; i++)
-                        v[i] = reduceBits(v[i]);
-                }
-
-                function onCamera(e) {
-                    var v = e.data.msg;
-
-                    if (v[1] === true || _isDisconnected)
-                    {
-                        return;
-                    }
-
-                    if (v[0] != _lastInControl)
-                    {
-                        _lastInControl = v[0];
-                        e.data.lastInControl = v[0];
-                        _this.dispatchEvent({type: "controlChange", channelId: _this.channelId, data: e.data });
-                    }
-
-                    //For now, automatically relinquish camera control if we receive a remote command to move the camera
-                    _haveControl = false;
-
-                    /*
-                     viewer.navigation.setRequestTransitionWithUp(true, new THREE.Vector3().set(v[1+0],v[1+1],v[1+2]),
-                     new THREE.Vector3().set(v[1+3],v[1+4],v[1+5]),
-                     _viewer.navigation.getCamera().fov,
-                     new THREE.Vector3().set(v[1+6],v[1+7],v[1+8]));
-                     */
-
-                    _viewer.navigation.setView(new THREE.Vector3().set(v[2+0],v[2+1],v[2+2]),
-                        new THREE.Vector3().set(v[2+3],v[2+4],v[2+5]));
-                    _viewer.navigation.setCameraUpVector(new THREE.Vector3().set(v[2+6],v[2+7],v[2+8]));
-                }
-
-                function sendCamera(evt) {
-                    if (!_haveControl && !_isDisconnected)
-                        return;
-
-                    var c = evt.camera;
-                    var camParams = [ c.position.x, c.position.y, c.position.z,
-                        c.target.x, c.target.y, c.target.z,
-                        c.up.x, c.up.y, c.up.z
-                    ];
-
-                    reduceBitsV(camParams);
-                    camParams.unshift(_isDisconnected);
-                    camParams.unshift(client.getLocalId());
-
-                    _client.sendMessage("camera", camParams, _this.channelId);
-
-                    if (_lastInControl != camParams[0]) {
-                        _lastInControl = camParams[0];
-                        _this.dispatchEvent({type: "controlChange", channelId: _this.channelId, data: { lastInControl: _lastInControl } });
-                    }
-                }
-
-
-                function showPointer(show, x, y) {
-
-                    if (show && !_pointer) {
-                        _pointer = document.createElement("div");
-                        _pointer.classList.add("collabPointer");
-                    }
-
-                    if (show && !_pointerOn) {
-                        _viewer.container.appendChild(_pointer);
-                        _pointerOn = true;
-                    }
-                    else if (!show && _pointerOn) {
-                        _viewer.container.removeChild(_pointer);
-                        _pointerOn = false;
-                    }
-
-                    if (show) {
-                        //Note the 4px is half the width/height specified in the CSS,
-                        //so that the pointer is centered.
-                        _pointer.style.left = (x-6) + "px";
-                        _pointer.style.top = (y-6) + "px";
-                    }
-
-                }
-
-                function onPointer(e) {
-
-                    if (_haveControl)
-                        return; //shouldn't get here in theory, but let's check just in case
-
-                    if (_isDisconnected)
-                        return; //we can't show the pointer if the views don't match
-
-                    var v = e.data.msg;
-                    _ray.origin.set(v[1], v[2], v[3]);
-                    _ray.direction.set(v[4], v[5], v[6]);
-
-                    var pt = _ray.at(_viewer.getCamera().near);
-                    pt.project(_viewer.getCamera());
-
-                    pt = _viewer.impl.viewportToClient(pt.x, pt.y);
-
-                    //console.log(pt.x + " " + pt.y);
-                    showPointer(true, pt.x, pt.y);
-                }
-
-
-                function sendPointer(evt) {
-                    if (!_haveControl)
-                        return;
-
-                    //Note canvasX/Y are set by the ToolController to clientX/Y - canvas left/top.
-                    var vpVec = _viewer.impl.clientToViewport(evt.canvasX, evt.canvasY);
-                    _viewer.impl.viewportToRay(vpVec, _ray);
-
-                    var rayParams = [ _ray.origin.x, _ray.origin.y, _ray.origin.z,
-                        _ray.direction.x, _ray.direction.y, _ray.direction.z ];
-
-                    reduceBitsV(rayParams);
-                    rayParams.unshift(client.getLocalId());
-
-                    _client.sendMessage("pointer", rayParams, _this.channelId);
-                }
-
-
-                function sendViewerState(e) {
-                    //if (!_haveControl)
-                    //    return;
-                    if (_blockEvents)
-                        return;
-
-                    var state = _viewerState.getState(VIEWER_STATE_FILTER);
-
-                    // TODO: if we kill the socket.io code path, this could be optimized
-                    // too by removing the JSON.stringify of the state. Pubnub automatically
-                    // does JSON serialization for us, with optimizations accordingly to their manual.
-                    client.sendMessage("state", JSON.stringify(state), _this.channelId);
-                }
-
-
-                this.takeControl = function() {
-                    _haveControl = true;
-                    showPointer(false);
-                };
-
-                this.updatePointer = function(e) {
-                    sendPointer(e);
-                };
-
-                this.connectCamera = function(set) {
-                    _isDisconnected = !set;
-                };
-
-                this.attach = function(viewer) {
-
-                    if (_viewer)
-                        this.detach();
-
-                    this.viewer = _viewer = viewer;
-                    _viewerState = new avp.ViewerState(_viewer);
-
-                    _client.addEventListener("cameraChange", onCamera);
-                    _client.addEventListener("pointerMove", onPointer);
-                    _client.addEventListener("viewerState", onViewerState);
-
-
-                    if (!_viewer.hasEventListener(av.CAMERA_CHANGE_EVENT, sendCamera))
-                        _viewer.addEventListener(av.CAMERA_CHANGE_EVENT, sendCamera);
-
-                    if (!_viewer.hasEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState)) {
-                        _viewer.addEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.ISOLATE_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.HIDE_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.SHOW_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.HIGHLIGHT_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
-                        _viewer.addEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
-                    }
-                };
-
-
-                this.detach = function() {
-
-                    if (_client) {
-                        _client.removeEventListener("cameraChange", onCamera);
-                        _client.removeEventListener("viewerState", onViewerState);
-                    }
-
-                    if (_viewer) {
-                        _viewer.removeEventListener(av.CAMERA_CHANGE_EVENT, sendCamera);
-
-                        _viewer.removeEventListener(av.SELECTION_CHANGED_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.ISOLATE_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.HIDE_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.SHOW_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.HIGHLIGHT_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
-                        _viewer.removeEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
-
-                        this.viewer = _viewer = null;
-                        _viewerState = null;
-                    }
-                };
-
-            };
-
-            avp.ViewTransceiver.prototype.constructor = avp.ViewTransceiver;
-            Autodesk.Viewing.EventDispatcher.prototype.apply( avp.ViewTransceiver.prototype );
-        })();
-
-        if (!this.messageClient)
-            this.messageClient = avp.MessageClient.GetInstance();
-        if (!this.presenceChannelId)
-            this.presenceChannelId = window.location.host;
-        if (!this.messageClient.isConnected()) {
-            this.messageClient.connect(sessionId);
-        }
-
-        if (!this.viewtx)
-            this.viewtx = new avp.ViewTransceiver(this.messageClient);
-        this.viewtx.channelId = sessionId;
-        this.viewtx.attach(global_viewer_instance);
-
-        if (!this.p2p)
-            this.p2p = new avp.P2PClient(this.messageClient);
-
-        this.messageClient.join(this.viewtx.channelId);
-
-        if (!this.interceptor)
-            this.interceptor = new avp.InteractionInterceptor(this.viewtx);
-        theapi.toolController.registerTool(this.interceptor);
-        theapi.toolController.activateTool(this.interceptor.getName());
-    };
-
-    this.leaveLiveReviewSession = function () {
-        this.p2p.hangup();
-        this.viewtx.detach(theapi);
-        this.messageClient.disconnect();
-    };
-
     this.log = function(event) {
         if (avp.logger) {
             avp.logger.log(event);
         }
     };
+
+    this.worldToClient = function(point) {
+        var p = new THREE.Vector4(point.x, point.y, point.z, 1);
+        p.applyMatrix4(this.camera.matrixWorldInverse);
+        p.applyMatrix4(this.camera.projectionMatrix);
+
+        // Don't want to mirror values with negative z (behind camera)
+        if (p.w > 0)
+        {
+            p.x /= p.w;
+            p.y /= p.w;
+            p.z /= p.w;
+        }
+
+        return this.viewportToClient(p.x, p.y);
+    };
+
+    this.clientToWorld = function(clientX, clientY, ignoreTransparent) {
+
+        var result = null;
+        var model = this.model;
+        var modelData = model.getData();
+
+        if (model.is2d()) {
+
+            var collision = this.intersectGround(clientX, clientY);
+            if (collision) {
+                collision.z = 0;
+                var bbox = modelData.bbox;
+                if (modelData.hidePaper || bbox.containsPoint(collision)) {
+                    result = {
+                        point: collision,
+                        model: model
+                    };
+                }
+            }
+        } else {
+
+            // hitTest handles multiple scenes
+            result = this.hitTest(clientX, clientY, ignoreTransparent);
+            if (result) {
+                result.point = result.intersectPoint; // API expects attribute point to have the return value too.
+            }
+        }
+
+        return result;
+    };
+
+    /**
+     *
+     * @param {THREE.Color} color
+     */
+    this.setSelectionColor = function(color) {
+        this.selectionMaterialBase.color.set(color);
+        this.selectionMaterialTop.color.set(color);
+        this.invalidate(false, false, true);
+    };
+
+    // Update the viewport Id for the first selection in 2d measure
+    this.updateViewportId = function(vpId) {
+
+        _materials.updateViewportId(vpId);
+    };
 }
 
 Viewer3DImpl.prototype.constructor = Viewer3DImpl;
 
-Autodesk.Viewing.Private.Viewer3DImpl = Viewer3DImpl;
+avp.Viewer3DImpl = Viewer3DImpl;
 
 })();
 ;/** @license Copyright (c) 2013 Autodesk Inc. */
@@ -48500,64 +49401,24 @@ Autodesk.Viewing.Private.ViewerState = function( viewer )
             return false;
         }
 
+        var isModel2d = viewer.model.is2d();
+        var isModel3d = !isModel2d;
+
         // Objectset
         if (viewer.model && Array.isArray(viewerState.objectSet) && viewerState.objectSet.length > 0) {
             var objectSet = viewerState.objectSet[0];
-            var selector = viewer.impl ? viewer.impl.selector : null;
 
-            // 3d models with a hierarchy tree
-            if (viewer.model.getRootId()) {
-                // Selection (3d)
-                var selectionIds = objectSet.id;
-                if (selectionIds && selector) {
-                    selectionIds = this.toIntArray(selectionIds);
-                    selector.setSelection(selectionIds);
-                }
-
-                // Isolation (3d)
-                var isolatedIds = objectSet.isolated || [];
-                isolatedIds = this.toIntArray(isolatedIds);
-                viewer.isolate(isolatedIds);
-
-                // Hidden nodes (only when there's no isolation) (3d)
-                if (isolatedIds.length === 0) {
-                    var hiddenIds = objectSet.hidden || null;
-                    if (hiddenIds && hiddenIds.length > 0) {
-                        hiddenIds = this.toIntArray(hiddenIds);
-                        viewer.hide(hiddenIds);
-                    }
-                }
-
-                // Explode scale (3d)
-                if ("explodeScale" in objectSet) {
-                    var explodeScale = parseFloat(objectSet.explodeScale);
-                    if(viewer.explode) {
-                        viewer.explode(explodeScale);
-                        // TODO_NOP: UI code should not be here, should be listening to event
-                        if (viewer.explodeSlider)
-                            viewer.explodeSlider.value = explodeScale;
-                    }
-                }
+            // Selection (2d and 3d)
+            var selectionIds = objectSet.id;
+            if (selectionIds) {
+                selectionIds = this.toIntArray(selectionIds);
+                viewer.select(selectionIds);
             }
-            // 2d models
-            if (viewer.model.is2d()) {
 
-                // Selection (2d)
-                var selectionIds2d = objectSet.id || [];
-                if (selectionIds2d) {
-                    // select some sheet dbIds
-                    if (selector) {
-                        var selectionNodes2d = selectionIds2d.map(function(dbId){
-                            return { dbId: dbId, fragIds: 0 };
-                        });
-                        selector.setSelection(selectionNodes2d);
-                    }
-                } else {
-                    // remove selection
-                    selector.clearSelection(true);
-                }
+            // Isolation / Hidden depends on whether it is 2d or 3d
+            if (isModel2d) {
 
-                // Isolation / Layer visibility (2d)
+                // 2d Isolation is Layer visibility
                 var visibleLayers = objectSet.isolated;
                 if (Array.isArray(visibleLayers) && visibleLayers.length > 0) {
                     // Only certain layers are visible
@@ -48566,6 +49427,28 @@ Autodesk.Viewing.Private.ViewerState = function( viewer )
                 } else {
                     // All layers are visible
                     viewer.setLayerVisible(null, true);
+                }
+            } else {
+                // 3d Isolation
+                var isolatedIds = objectSet.isolated || [];
+                isolatedIds = this.toIntArray(isolatedIds);
+                viewer.isolate(isolatedIds);
+
+                // 3d Hidden nodes (only when there's no isolation) (3d only)
+                if (isolatedIds.length === 0 ) {
+                    var hiddenIds = objectSet.hidden || null;
+                    if (hiddenIds && hiddenIds.length > 0) {
+                        hiddenIds = this.toIntArray(hiddenIds);
+                        viewer.hide(hiddenIds);
+                    }
+                }
+            }
+
+            // Explode scale (3d)
+            if ("explodeScale" in objectSet) {
+                var explodeScale = parseFloat(objectSet.explodeScale);
+                if(viewer.explode) {
+                    viewer.explode(explodeScale);
                 }
             }
         }
@@ -48636,7 +49519,7 @@ Autodesk.Viewing.Private.ViewerState = function( viewer )
 
             if ("environment" in renderOptions) {
                 var lightPresetIndex = this.getLightPresetIndex(renderOptions.environment);
-                if (lightPresetIndex !== -1) {
+                if (lightPresetIndex !== -1 && isModel3d) {
                     viewer.setLightPreset(lightPresetIndex);
                 }
             }
@@ -48663,7 +49546,7 @@ Autodesk.Viewing.Private.ViewerState = function( viewer )
                 if ("progressiveDisplay" in appearance) {
                     viewer.setProgressiveRendering(appearance.progressiveDisplay);
                 }
-                if ("ghostHidden" in appearance) {
+                if (("ghostHidden" in appearance) && isModel3d) {
                     viewer.setGhosting(appearance.ghostHidden);
                 }
                 if ("displayLines" in appearance) {
@@ -48672,11 +49555,13 @@ Autodesk.Viewing.Private.ViewerState = function( viewer )
             }
 
             // SAO and AA at the end.
-            viewer.setQualityLevel(saoEnabled, antiAliasing);
+            if (isModel3d) {
+                viewer.setQualityLevel(saoEnabled, antiAliasing);
+            }
         }
 
         // Restore cutplanes (aka: Sectioning) data only for 3d models.
-        if (Array.isArray(viewerState.cutplanes) && viewer.model && !viewer.model.is2d()) {
+        if (Array.isArray(viewerState.cutplanes) && viewer.model && isModel3d) {
             var cutplanes = [];
             for (var i=0; i<viewerState.cutplanes.length; i++) {
                 var plane = viewerState.cutplanes[i];
@@ -48997,6 +49882,20 @@ Autodesk.Viewing.Private.ViewerState.prototype.constructor = Autodesk.Viewing.Pr
 AutodeskNamespace('Autodesk.Viewing.i18n');
 
 (function() {
+
+    var debugLocString = null;
+
+    // Set a specific string that will be used for key values when translating
+    function setDebugLocString() {
+        debugLocString = 'aaaa';
+        localize();
+    }
+
+    // Nullify debugLocString and run localization
+    function clearDebugLocString() {
+        debugLocString = null;
+        localize();
+    }
 
     // add indexOf to non ECMA-262 standard compliant browsers
     if (!Array.prototype.indexOf) {
@@ -50012,6 +50911,9 @@ AutodeskNamespace('Autodesk.Viewing.i18n');
                 found = postProcessors[postProcessor](found, key, options);
             }
         }
+
+        // return localization test string, if a key is found and debugLocString is enabled
+        if (debugLocString && found !== undefined) return debugLocString;
     
         // process notFound if function exists
         var splitNotFound = notFound;
@@ -50032,7 +50934,6 @@ AutodeskNamespace('Autodesk.Viewing.i18n');
                 found = postProcessors[postProcessor](val, key, options);
             }
         }
-    
         return (found !== undefined) ? found : notFound;
     }
     
@@ -51732,6 +52633,9 @@ AutodeskNamespace('Autodesk.Viewing.i18n');
     Autodesk.Viewing.i18n.lng = lng;
     Autodesk.Viewing.i18n.addPostProcessor = addPostProcessor;
     Autodesk.Viewing.i18n.options = o;
+    Autodesk.Viewing.i18n.setDebugLocString = setDebugLocString;
+    Autodesk.Viewing.i18n.clearDebugLocString = clearDebugLocString;
+
 })();;/** @license Copyright (c) 2014 Autodesk Inc. */
 /** Version : @buildnum@ */
 
@@ -53557,8 +54461,9 @@ Autodesk.Viewing.Private.Preferences = function (viewer, prefix) {
     // http://stackoverflow.com/questions/14555347/html5-localstorage-error-with-safari-quota-exceeded-err-dom-exception-22-an
     //
     function isLocalStorageSupported() {
-        var testKey = prefix + 'test', storage = window.localStorage;
+        var testKey = prefix + 'test';
         try {
+            var storage = window.localStorage; // This may assert if browsers disallow sites from setting data.
             storage.setItem(testKey, '1');
             storage.removeItem(testKey);
             return true;
@@ -56007,7 +56912,7 @@ HudMessage.displayMessage = function(container, messageSpecs, closeCB, buttonCB,
     var text = document.createElement("div");
     text.className = "hudMessage";
     text.textContent = av.i18n.translate( message, { "defaultValue" : messageDefault } );
-    text.setAttribute( "data-i18n", message );
+    text.setAttribute( "data-i18n", messageDefault );
     hudMessage.appendChild( text );
 
     if (buttonCB) {
@@ -56057,7 +56962,8 @@ HudMessage.dismiss = function() {
 
 Autodesk.Viewing.Private.HudMessage = HudMessage;
 
-})();;
+})();
+;
 (function() {
 
 'use strict';
@@ -56955,22 +57861,35 @@ Browser.prototype.createElement = function( browserNode, container )
     var labelElem = document.createElement("label");
     labelElem.innerHTML = label;
     elemWrapper.appendChild(labelElem);
-    labelElem.onclick = function(e)
-                        {
-                            browser.myDelegate.onNodeClick(browser, browserNode, e);
-                        };
+    labelElem.onclick = function(e) {
+        browser.myDelegate.onNodeClick(browser, browserNode, e);
+    };
 
     var thumbnailUrl = browser.myDelegate.getThumbnail(browserNode);
     if (thumbnailUrl)
     {
         var thumbElem = document.createElement("img");
         thumbElem.classList.add("thumb");
-        thumbElem.src = thumbnailUrl;
+        if (av.isAuthorizationHeaderSet()) {
+            // Code path for when cookies are disabled
+            av.Document.requestThumbnailWithSecurity(thumbnailUrl, function onThumbnailSuccess(err, response){
+                if (err) {
+                    stderr("Failed to load thumbnail: " + thumbnailUrl);
+                    return;
+                }
+                thumbElem.src = window.URL.createObjectURL(response);
+                thumbElem.onload = function () {
+                    window.URL.revokeObjectURL(thumbElem.src);
+                };
+            });
+        } else {
+            // Code path for when cookies are enabled
+            thumbElem.src = thumbnailUrl;
+        }
         elemWrapper.appendChild(thumbElem);
-        thumbElem.onclick = function(e)
-                            {
-                                browser.myDelegate.onNodeClick(browser, browserNode, e);
-                            };
+        thumbElem.onclick = function(e) {
+            browser.myDelegate.onNodeClick(browser, browserNode, e);
+        };
     }
 
     if (browser.myDelegate.hasContent( browserNode )) {
@@ -57406,6 +58325,10 @@ Autodesk.Viewing.Extension = Extension;
 
 "use strict";
 
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+
 /**
  * The ExtensionManager manages a set of extensions available to the viewer.
  * Register, retrieve, and unregister your extension using the singleton theExtensionManager.
@@ -57555,9 +58478,15 @@ Autodesk.Viewing.theExtensionManager = theExtensionManager;
 Autodesk.Viewing.ExtensionMixin = ExtensionMixin;
 
 })();;
-function init_UnifiedCamera() {
+(function() {
+	'use strict';
 
-if (typeof Autodesk.Viewing.UnifiedCamera !== "undefined")
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+avp.init_UnifiedCamera = function(THREE) {
+
+if (typeof av.UnifiedCamera !== "undefined")
     return;
 
 var UnifiedCamera = function ( clientWidth, clientHeight)
@@ -57735,12 +58664,14 @@ UnifiedCamera.prototype.setLens = function ( focalLength, frameHeight )
 
 
 UnifiedCamera.prototype.getCameraChangedEvent = function() {
-    return {type: Autodesk.Viewing.CAMERA_CHANGE_EVENT, camera: this};
+    return {type: av.CAMERA_CHANGE_EVENT, camera: this};
 };
 
-Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
+av.UnifiedCamera = UnifiedCamera;
 
-};/** @license Copyright (c) 2013 Autodesk Inc. */
+}
+
+})();;/** @license Copyright (c) 2013 Autodesk Inc. */
 /** Version : @buildnum@ */
 
 (function() {
@@ -57748,7 +58679,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     "use strict";
 
     var av = Autodesk.Viewing,
-        avp = Autodesk.Viewing.Private;
+        avp = av.Private;
 
     // Event types supported by this class.
 
@@ -57772,7 +58703,6 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     av.ISOLATE_EVENT               = 'isolate';
     av.HIDE_EVENT                  = 'hide';
     av.SHOW_EVENT                  = 'show';
-    av.HIGHLIGHT_EVENT             = 'highlight';
 
     av.CAMERA_CHANGE_EVENT         = 'cameraChanged';
     av.EXPLODE_CHANGE_EVENT        = 'explodeChanged';
@@ -57805,7 +58735,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     };
 
 
-    var isMobile = isIOSDevice() || isAndroidDevice();
+    var isMobile = av.isMobileDevice();
 
     av.DefaultSettings = {
         "ambientShadows": true,
@@ -57833,7 +58763,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         "fusionOrbitConstrained": true,
         "useFirstPersonNavigation" : true, // Replaces the "Walk" tool with the "First Person" tool
         "envMapBackground" : false,
-        "renderPrism" : true
+        "renderPrism" : true,
+        "firstPersonToolPopup" : true
     };
 
 
@@ -57856,58 +58787,55 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      */
     var Viewer3D = function(container, config)
     {
-        this.clientContainer = container;
-        this.container = document.createElement("div");
-        this.container.className = "adsk-viewing-viewer";
-        this.container.style.height = "100%";
-        this.container.style.width = "100%";
-        this.container.style.overflow = "hidden";
+        if (container) {
+            this.clientContainer = container;
+            this.container = document.createElement("div");
+            this.container.className = "adsk-viewing-viewer";
+            this.container.style.height = "100%";
+            this.container.style.width = "100%";
+            this.container.style.overflow = "hidden";
 
-        this.container.classList.add( isTouchDevice() ? "touch" : "notouch");
+            this.container.classList.add( isTouchDevice() ? "touch" : "notouch");
 
-        this.clientContainer.appendChild(this.container);
+            this.clientContainer.appendChild(this.container);
 
-        this.config = config;
-
-
-        this.contextMenu = null;
-        this.contextMenuCallbacks = {};
-        this.__firefoxLMBfix = false;
-        this.started = false;
+            this.config = config;
 
 
-        // Create the canvas if it doesn't already exist
-        if ( this.container.nodeName === "CANVAS") {
-            throw 'Viewer must be initialized on a div [temporary]';
+            this.contextMenu = null;
+            this.contextMenuCallbacks = {};
+            this.__firefoxLMBfix = false;
+            this.started = false;
+
+
+            // Create the canvas if it doesn't already exist
+            if ( this.container.nodeName === "CANVAS") {
+                throw 'Viewer must be initialized on a div [temporary]';
+            }
+            else
+            {
+                this.canvasWrap = document.createElement("div");
+                this.canvasWrap.classList.add("canvas-wrap");
+
+                this.canvas = document.createElement("canvas");
+                this.canvas.tabIndex = 0;
+
+                this.canvasWrap.appendChild(this.canvas);
+                this.container.appendChild(this.canvasWrap);
+            }
+
+            this.canvas.viewer = this; //store a pointer to the viewer in the canvas
+
+            // Preferences. Prefix is a bit odd, but a legacy result after refactoring.
+            //
+            this.prefs = new avp.Preferences(this, 'Autodesk.Viewing.Private.GuiViewer3D.SavedSettings.');
+
         }
-        else
-        {
-            this.canvasWrap = document.createElement("div");
-            this.canvasWrap.classList.add("canvas-wrap");
-
-            this.canvas = document.createElement("canvas");
-            this.canvas.tabIndex = 0;
-
-            this.canvasWrap.appendChild(this.canvas);
-            this.container.appendChild(this.canvasWrap);
-        }
-
-        this.canvas.viewer = this; //store a pointer to the viewer in the canvas
 
         this.running = false;
         this._pushedTool = '';
         this._defaultNavigationTool = '';
 
-        this.stats = {
-            category: "misc_stats",
-            explode_count : 0,
-            get_props_count : 0,
-            isolate_count : 0
-        };
-
-        // Preferences. Prefix is a bit odd, but a legacy result after refactoring.
-        //
-        this.prefs = new avp.Preferences(this, 'Autodesk.Viewing.Private.GuiViewer3D.SavedSettings.');
     };
 
     Viewer3D.prototype.constructor = Viewer3D;
@@ -58133,7 +59061,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         // For Safari and WKWebView and UIWebView on ios device with retina display,
         // needs to manually rescale our canvas to get the right scaling. viewport metatag
         // alone would not work.
-        if (isIOSDevice() && window.devicePixelRatio) {
+        if (av.isIOSDevice() && window.devicePixelRatio) {
             this.canvas.width /= window.devicePixelRatio;
             this.canvas.height /= window.devicePixelRatio;
         }
@@ -58235,10 +59163,17 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             this.loadedExtensions = null;
         }
 
-        this.__logStats();
+        if (avp.logger) {
+            avp.logger.reportRuntimeStats(true);
+        }
 
         this.loader.style.display = "block";
         this.model = null;
+
+        if (this.liveReviewClient) {
+            this.liveReviewClient.destroy();
+            this.liveReviewClient = null;
+        }
 
         this.impl.unloadCurrentModel();
     };
@@ -58261,21 +59196,6 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     Viewer3D.prototype.localize = function()
     {
         av.i18n.localize();
-    };
-
-
-    Viewer3D.prototype.__logStats = function(forceFlush) {
-
-        var logger = avp.logger;
-        if (!logger)
-            return;
-
-        if (this.stats.explode_count || this.stats.get_props_count || this.stats.isolate_count) {
-            logger.log(this.stats, forceFlush);
-            this.stats.explode_count = 0;
-            this.stats.get_props_count = 0;
-            this.stats.isolate_count = 0;
-        }
     };
 
     Viewer3D.prototype.__initAutoCam = function(impl)
@@ -58358,10 +59278,10 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
 
         this.viewerState = null;
 
-        this.__logStats();
-        var logger = avp.logger;
-        if (logger)
-            logger.log({category:"viewer_destroy"}, true);
+        if (avp.logger) {
+            avp.logger.reportRuntimeStats();
+            avp.logger.log({category:"viewer_destroy"}, true);
+        }
 
 
         if( this.toolController ) {
@@ -58474,6 +59394,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         options = options || {};
 
         function registerDimensionSpecificHotkeys() {
+            if (!av.theHotkeyManager)
+                return;
+
             if (self.model.is2d()) {
                 // Remove 3D specific hotkeys
                 av.theHotkeyManager.popHotkeys("Autodesk.Orbit");
@@ -58502,7 +59425,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             self.model = model;
             self.impl.addModel(self.model);
 
-            self.loader.style.display = "None";
+            if (self.loader)
+                self.loader.style.display = "None";
 
             if (self.model.is2d())
                 self.activateLayerState("Initial");
@@ -58515,7 +59439,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         }
 
         function onError( errorCode, errorMessage, statusCode, statusText ) {
-            self.loader.style.display = "None";
+            if (self.loader)
+                self.loader.style.display = "None";
             if (onErrorCallback)
                 onErrorCallback( errorCode, errorMessage, statusCode, statusText );
         }
@@ -58841,7 +59766,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      */
     Viewer3D.prototype.getProperties = function(dbid, onSuccessCallback, onErrorCallback)
     {
-        this.stats.get_props_count++;
+        if (avp.logger) {
+            avp.logger.log({ name: 'get_props_count', aggregate: 'count' });
+        }
 
         if (this.model) {
             this.model.getProperties(dbid, onSuccessCallback, onErrorCallback);
@@ -58990,7 +59917,12 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      */
     Viewer3D.prototype.isolate = function(node)
     {
-        if( this.model && this.model.is2d() )
+        if (!this.model) {
+            // Silently abort //
+            return;
+        }
+
+        if(this.model.is2d())
         {
             console.warn("Viewer3D.isolate is not yet implemented for 2D");
             return;
@@ -58998,13 +59930,11 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
 
         var self = this;
         this.model.getObjectTree(function() {
-            self.stats.isolate_count++;
+            if (avp.logger) {
+                avp.logger.log({ name: 'isolate_count', aggregate: 'count' });
+            }
             self.impl.visibilityManager.isolate(node);
         });
-
-        var logger = avp.logger;
-        if (logger)
-            logger.log({category:"isolate"});
     };
 
 
@@ -59076,9 +60006,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
     Viewer3D.prototype.clearSelection = function()
     {
         this.impl.selector.clearSelection();
-        var logger = avp.logger;
-        if (logger)
-            logger.log({category:"clearselection"});
+        if (avp.logger) {
+            avp.logger.log({ name: 'clearselection', aggregate: 'count' });
+        }
     };
 
     /**
@@ -59156,9 +60086,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             return;
         }
 
-        var logger = avp.logger;
-        if (logger)
-            logger.log({category:"hide"});
+        if (avp.logger) {
+            avp.logger.log({ name: 'hide', aggregate: 'count' });
+        }
 
         this.impl.visibilityManager.hide(node);
     };
@@ -59203,9 +60133,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             this.setLayerVisible(null, true);
         }
 
-        var logger = avp.logger;
-        if (logger)
-            logger.log({category:"showall"});
+        if (avp.logger) {
+            avp.logger.log({ name: 'showall', aggregate: 'count' });
+        }
     };
 
 
@@ -59250,7 +60180,9 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             return;
         }
 
-        this.stats.explode_count++;
+        if (avp.logger) {
+            avp.logger.log({ name: 'explode_count', aggregate: 'count' });
+        }
 
         this.impl.explode(scale);
     };
@@ -59369,7 +60301,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         }
 
         this.prefs.set('envMapBackground', value);
-        this.impl.toggleEnvMapBackground(value)
+        this.impl.toggleEnvMapBackground(value);
     };
 
     /**
@@ -59386,7 +60318,43 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         }
 
         this.prefs.set('renderPrism', value);
-        this.impl.toggleRenderPrism(value)
+        this.impl.toggleRenderPrism(value);
+    };
+
+    /**
+     * Toggles first person tool popup.
+     *
+     * Not applicable to 2D.
+     *
+     * @param {boolean} value is indicating whether first person tool popup is showed or not
+     */
+    Viewer3D.prototype.setFirstPersonToolPopup = function(value)
+    {
+        if( this.model && this.model.is2d() )
+        {
+            console.warn("Viewer3D.setFirstPersonToolPopup is not applicable to 2D");
+            return;
+        }
+
+        this.prefs.set('firstPersonToolPopup', value);
+    };
+
+    /**
+     * Returns the state of first person tool popup
+     *
+     * Not applicable to 2D.
+     *
+     * @returns {boolean} - value is indicating whether first person tool popup is showed or not
+     */
+    Viewer3D.prototype.getFirstPersonToolPopup = function()
+    {
+        if( this.model && this.model.is2d() )
+        {
+            console.warn("Viewer3D.getFirstPersonToolPopup is not applicable to 2D");
+            return;
+        }
+
+        return this.prefs.firstPersonToolPopup;
     };
 
     /**
@@ -59420,6 +60388,60 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         this.impl.setOptimizeNavigation(value);
     };
 
+    /**
+     * Locks or unlocks navigation controls.
+     *
+     * When navigation is locked, certain operations (for example, orbit, pan, or fit-to-view)
+     * are disabled.
+     *
+     * @param {boolean} value True if the navigation should be locked.
+     *
+     * @see {@link Autodesk.Viewing.Viewer3D#setNavigationLockSettings}
+     */
+    Viewer3D.prototype.setNavigationLock = function(value)
+    {
+        if (this.navigation.getIsLocked() !== value) {
+            this.navigation.setIsLocked(value);
+            this.fireEvent({ type: av.NAVIGATION_MODE_CHANGED_EVENT, id: this.getActiveNavigationTool() });
+        }
+    };
+
+    /**
+     * Gets the current state of the navigation lock.
+     * @returns {boolean} True if the navigation controls are currently locked.
+     */
+    Viewer3D.prototype.getNavigationLock = function()
+    {
+        return this.navigation.getIsLocked();
+    };
+
+    /**
+     * Updates the configuration of the navigation lock,
+     * i.e., which actions are available when navigation is locked.
+     *
+     * The configurable actions are 'orbit', 'pan', 'zoom', 'roll', 'fov', 'walk', or 'gotoview'.
+     * By default, none of the actions are enabled when the navigation is locked.
+     *
+     * @param {object} settings Map of <action>:<boolean> pairs specifying
+     * whether the given action is *enabled* even when the navigation is locked.
+     *
+     * @see {@link Autodesk.Viewing.Viewer3D#setNavigationLock}
+     */
+    Viewer3D.prototype.setNavigationLockSettings = function(settings)
+    {
+        this.navigation.setLockSettings(settings);
+        this.fireEvent({ type: av.NAVIGATION_MODE_CHANGED_EVENT, id: this.getActiveNavigationTool() });
+    };
+
+    /**
+     * Gets the current configuration of the navigation lock.
+     *  @returns {object} Map of <action>:<boolean> pairs specifying
+     * whether the given action is *enabled* even when the navigation is locked.
+     */
+    Viewer3D.prototype.getNavigationLockSettings = function()
+    {
+        return this.navigation.getLockSettings();
+    };
 
     /**
      * Swaps the current navigation tool for the tool with the provided name.
@@ -59623,9 +60645,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         var propertyDB = model.getData().propertydb,
             propertyDBFileExists = propertyDB && propertyDB.attrs.length > 0;
 
-        var logger = avp.logger;
-        if (logger) {
-            logger.log({ category: 'navigation', name: 'fit' });
+        if (avp.logger) {
+            avp.logger.log({ name: 'fittoview', aggregate: 'count' });
         }
 
         // This doesn't guarantee that an object tree will be created but it will be pretty likely
@@ -59739,7 +60760,8 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
             'lineRendering',
             'lightPreset',
             'envMapBackground',
-            'renderPrism'
+            'renderPrism',
+            'firstPersonToolPopup'
         ]);
 
         // Apply settings
@@ -59753,6 +60775,7 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
         this.hideLines(!this.prefs.lineRendering);
         this.setEnvMapBackground(this.prefs.envMapBackground);
         this.setRenderPrism(this.prefs.renderPrism);
+        this.setFirstPersonToolPopup(this.prefs.firstPersonToolPopup);
 
         this.navigation.setUsePivotAlways(this.prefs.alwaysUsePivot);
         this.navigation.setReverseZoomDirection(this.prefs.reverseMouseZoomDir);
@@ -60379,14 +61402,23 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      * @param {string} [sessionId] - The live review session id to join.
      */
     Viewer3D.prototype.joinLiveReview = function (sessionId) {
-        this.impl.joinLiveReviewSession(sessionId);
+        if (!this.liveReviewClient) {
+            this.liveReviewClient = new avp.LiveReviewClient(this);
+        }
+
+        var liveReviewClient = this.liveReviewClient;
+        avp.loadDependency("lmv_io", "socket.io-1.3.5.js", function(){
+            liveReviewClient.joinLiveReviewSession(sessionId);
+        });
     };
 
     /**
      * Leave a live review session.
      */
     Viewer3D.prototype.leaveLiveReview = function () {
-        this.impl.leaveLiveReviewSession();
+        if (this.liveReviewClient) {
+            this.liveReviewClient.leaveLiveReviewSession();
+        }
     };
 
     /**
@@ -60421,23 +61453,10 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      * See also
      * [clientToWorld()]{@link Autodesk.Viewing.Viewer3D#clientToWorld}.
      * @param {THREE.Vector3} point Point in world space coordinates.
-     * @returns {THREE.Vector3} Point transformed and projected into client space coordinates.
+     * @returns {THREE.Vector3} Point transformed and projected into client space coordinates. Z value is 0.
      */
     Viewer3D.prototype.worldToClient = function(point) {
-
-        var p = new THREE.Vector4(point.x, point.y, point.z, 1);
-        p.applyMatrix4(this.impl.camera.matrixWorldInverse);
-        p.applyMatrix4(this.impl.camera.projectionMatrix);
-
-        // Don't want to mirror values with negative z (behind camera)
-        if (p.w > 0)
-        {
-            p.x /= p.w;
-            p.y /= p.w;
-            p.z /= p.w;
-        }
-
-        return this.impl.viewportToClient(p.x, p.y);
+        return this.impl.worldToClient(point);
     };
 
     /**
@@ -60449,54 +61468,45 @@ Autodesk.Viewing.UnifiedCamera = UnifiedCamera;
      *
      * @param {Number} clientX - X coordinate where 0 is left
      * @param {Number} clientY - Y coordinate where 0 is top
+     * @param {Boolean} [ignoreTransparent] - Ignores transparent materials
      * @returns {Object|null} contains point attribute. 3d models have additional attributes.
      */
-    Viewer3D.prototype.clientToWorld = function(clientX, clientY) {
+    Viewer3D.prototype.clientToWorld = function(clientX, clientY, ignoreTransparent) {
 
-        var result = null;
-        var model = this.model;
-        var modelData = model.getData();
+        return this.impl.clientToWorld(clientX, clientY, ignoreTransparent);
+    };
 
-        if (model.is2d()) {
-            var collision =  this.impl.intersectGround(clientX, clientY);
-            if (collision) {
-                collision.z = 0;
-                var bbox = modelData.bbox;
-                if (modelData.hidePaper || bbox.containsPoint(collision)) {
-                    result = {
-                          point: collision
-                    };
-                }
-            }
-        } else {
-            var unproject = function(clientX, clientY, z, viewer) {
-                var point = viewer.impl.clientToViewport(clientX, clientY);
-                point.z = z;
-                point.unproject(viewer.impl.camera);
-                return point;
-            };
-            var getMouseRay = function(clientX, clientY, viewer) {
-                var rayOrigin = unproject(clientX, clientY, -1, viewer);
-                var rayDirection = unproject(clientX, clientY, 1, viewer);
-                rayDirection.sub(rayOrigin);
-                rayDirection.normalize();
-                return new THREE.Ray(rayOrigin, rayDirection);
-            };
+    /**
+     * Expose if the model has topology information
+     * Only applicable to 3D
+     * @returns {boolean} value is indicating whether the model has topology information
+     */
+    Viewer3D.prototype.modelHasTopology = function() {
 
-            var ray = getMouseRay(clientX, clientY, this);
-            var raycaster = new THREE.Raycaster();
-            raycaster.set(ray.origin, ray.direction);
-            var renderQueue = this.impl.modelQueue();
-            result = renderQueue.rayIntersect(ray.origin, ray.direction);
+        if (this.model && this.model.getData().topology) {
+            return true;
         }
 
-        return result;
+        return false;
+    };
+
+    /**
+     * Changes color of the selection overlay.
+     * @example
+     *      viewer.setSelectionColor(new THREE.Color(0xFF0000)); // red color
+     *
+     * @param {THREE.Color} color
+     */
+    Viewer3D.prototype.setSelectionColor = function(color) {
+        this.impl.setSelectionColor(color);
     };
 
 Autodesk.Viewing.Viewer3D = Viewer3D;
 
 })();
 ;
+var av = Autodesk.Viewing;
+
 /**
  * Error code constants
  *
@@ -60505,7 +61515,7 @@ Autodesk.Viewing.Viewer3D = Viewer3D;
  * @enum {number}
  * @readonly
  */
-Autodesk.Viewing.ErrorCodes = {
+av.ErrorCodes = {
     /** An unknown failure has occurred. */
     UNKNOWN_FAILURE: 1,
 
@@ -60547,14 +61557,32 @@ Autodesk.Viewing.ErrorCodes = {
 "use strict";
 
 var av = Autodesk.Viewing;
+var avp = Autodesk.Viewing.Private;
 
 av.HTTP_REQUEST_HEADERS = {};
 av.ACM_SESSION_ID = undefined;
 
+av.isAuthorizationHeaderSet = function() {
+    for (var key in av.HTTP_REQUEST_HEADERS) {
+        if (key === 'Authorization') {
+            return true;
+        }
+    }
+    return false;
+};
+
+function cloneRequestHeaders(headers) {
+    var clone = {};
+    for (var key in headers) {
+        if (headers.hasOwnProperty(key))
+            clone[key] = headers[key]; // Assignment should be fine since they are supposed to be strings.
+    }
+    return clone;
+}
 
 function getACMSessionID(acmHeaders, token, onErrorCallback, onLoadFn) {
     // The value of this can be anything. Required for some arcane reasons.
-    acmHeaders["application"] = "autodesk";
+    acmHeaders.application = "autodesk";
 
     var xhr = new XMLHttpRequest();
     xhr.open("POST", ACM_SESSION_URL, true);
@@ -60573,7 +61601,7 @@ function getACMSessionID(acmHeaders, token, onErrorCallback, onLoadFn) {
 
     // "application" header is only required for OSS end point, and should not be passed
     // with normal requests because this header is not in allowed header sets of APIGEE.
-    delete acmHeaders["application"];
+    delete acmHeaders.application;
 }
 
 function extractACMHeaderPairs(input) {
@@ -60583,7 +61611,7 @@ function extractACMHeaderPairs(input) {
         ret[key] = input[key];
     }
     return ret;
-};
+}
 
 function extractOAuth2AccessToken(input) {
     for (var key in input) {
@@ -60591,7 +61619,7 @@ function extractOAuth2AccessToken(input) {
             return input[key];
     }
     return null;
-};
+}
 
 
 /**
@@ -60639,10 +61667,11 @@ var Document = function( dataJSON, path )
         }
 
         var childCount = item.children ? item.children.length : 0;
+		var i;
 
         if (item.type === "geometry" && childCount) {
             var viewCount = 0;
-            for (var i = 0; i < childCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 var child = item.children[i];
                 if (child && child.type === "view") {
                     self.myViewGeometry[child.guid] = item;
@@ -60663,7 +61692,7 @@ var Document = function( dataJSON, path )
                 self.myPropertyDb = item.urn.substr(0, item.urn.lastIndexOf("/")+1);
 
         } else if (0 < childCount) {
-            for (var i = 0; i < childCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 annotateViews(item.children[i]);
             }
         }
@@ -60790,10 +61819,37 @@ Document.load = function( documentId, onSuccessCallback, onErrorCallback, access
 
     }
 
-    function load() {
+    // Metering API requirement. See LMV-936
+    // Applies only when fetching a 'bubble' document
+    // Similar to doLoad() but it doesn't have to succeed.
+    function notifyMeteringApi() {
 
         var documentPath = getDocumentPath(documentId);
-        var options = {headers : av.HTTP_REQUEST_HEADERS, withCredentials:!!auth };
+        var options = {
+            noBody: true, // Avoid downloading the whole bubble again
+            headers : cloneRequestHeaders(av.HTTP_REQUEST_HEADERS),
+            withCredentials:!!auth
+        };
+        var meteringHeader = {
+            header: 'x-ads-ds-client',
+            value: 'web_viewer'
+        };
+        options.headers[ meteringHeader.header ] = meteringHeader.value;
+
+        var onFailure = function() {
+            stderr('Failed to submit metering request: ' + meteringHeader.header);
+        };
+        var onSuccess = function() {
+            stderr('Successfully submitted metering request: ' + meteringHeader.header);
+        };
+
+        av.Private.ViewingService.get(VIEWING_URL, 'bubbles', documentPath, onSuccess, onFailure, options);
+    }
+
+    function doLoad() {
+
+        var documentPath = getDocumentPath(documentId);
+        var messages;
 
         function onSuccess(data) {
             var regex = /<[^>]*script/;
@@ -60805,19 +61861,21 @@ Document.load = function( documentId, onSuccessCallback, onErrorCallback, access
 
             var items = typeof(data) === 'string' ? JSON.parse(data) : data;
             var document = new Document(items, documentPath);
+            var viewableCount = getViewableCount(document);
 
             // Check if there are any viewables.
-            if (getViewableCount(document) > 0) {
-                var messages  = getGlobalMessages( document.getRootItem() );
+            if (viewableCount > 0) {
+                messages = getGlobalMessages( document.getRootItem() );
                 if (onSuccessCallback) {
                     onSuccessCallback(document, messages);
                 }
+                // notifyMeteringApi(); // Fire-and-forget
             }
             else {
                 // If there are no viewables, report an error.
                 //
                 if (onErrorCallback) {
-                    var messages  = getGlobalMessages( document.getRootItem() );
+                    messages = getGlobalMessages( document.getRootItem() );
                     var errorCode =  av.ErrorCodes.BAD_DATA_NO_VIEWABLE_CONTENT;
                     var errorMsg  = "No viewable content";
                     onErrorCallback(errorCode, errorMsg, messages);
@@ -60826,35 +61884,66 @@ Document.load = function( documentId, onSuccessCallback, onErrorCallback, access
         }
 
         function onFailure(statusCode, statusText, data) {
-            var messages  = getGlobalMessages( data );
-            if (onErrorCallback) {
-                var errorMsg = "Error: " + statusCode + " (" + statusText + ")";
-                var errorCode = av.Private.ErrorHandler.getErrorCode(statusCode);
-                onErrorCallback(errorCode, errorMsg, statusCode, statusText, messages);
+
+            // If unauthorized and the first call for loading, will suppose third-party
+            // cookies are disabled, and load again with token in request header.
+            if (statusCode === 401 && LMV_THIRD_PARTY_COOKIE === undefined) {
+                LMV_THIRD_PARTY_COOKIE = false;
+                avp.refreshRequestHeader(avp.token.accessToken);
+                doLoad();
+            }
+            else {
+                var messages = getGlobalMessages(data);
+                if (onErrorCallback) {
+                    var errorMsg = "Error: " + statusCode + " (" + statusText + ")";
+                    var errorCode = av.Private.ErrorHandler.getErrorCode(statusCode);
+                    onErrorCallback(errorCode, errorMsg, statusCode, statusText, messages);
+                }
             }
         }
 
-        try {
+        var options = { headers : cloneRequestHeaders(av.HTTP_REQUEST_HEADERS),
+                        withCredentials:!!auth
+        };
 
-            av.Private.ViewingService.get(VIEWING_URL, 'bubbles', documentPath, onSuccess, onFailure, options);
-
-        } catch (e) {
-            if (onErrorCallback) {
-                var errorMsg = "An exception occurred while loading the document";
-                var errorCode = av.ErrorCodes.UNKNOWN_FAILURE;
-                onErrorCallback(errorCode, errorMsg, null);
-            }
-        }
-    };
+        av.Private.ViewingService.get(VIEWING_URL, 'bubbles', documentPath, onSuccess, onFailure, options);
+    }
 
     if (accessControlProperties) {
         var acmHeaders = extractACMHeaderPairs(accessControlProperties);
         var oauth2Token = extractOAuth2AccessToken(accessControlProperties);
         av.HTTP_REQUEST_HEADERS = acmHeaders;
-        getACMSessionID(acmHeaders, oauth2Token, onErrorCallback, load);
+        getACMSessionID(acmHeaders, oauth2Token, onErrorCallback, function onACMSessionIdGet(){
+            doLoad();
+        });
     } else {
-        load();
+        doLoad();
     }
+};
+
+/**
+ * This function is only used when Authorization is through Bearer token; aka when cookies are disabled.
+ *
+ * @param {string} thumbnailUrl - See Document.prototype.getThumbnailPath
+ * @param {Function} onComplete - Node style callback function callback (err, response)
+ */
+Document.requestThumbnailWithSecurity = function(thumbnailUrl, onComplete) {
+
+    var onSuccess = function(response){
+        onComplete(null, response);
+    };
+    var onFailure = function(){
+        onComplete('error', null);
+    };
+
+    var options = {
+        withCredentials: false,
+        responseType: 'blob',
+        headers: av.HTTP_REQUEST_HEADERS,
+        skipAssetCallback: true
+    };
+
+    av.Private.ViewingService.get(VIEWING_URL, 'thumbnails', thumbnailUrl, onSuccess, onFailure, options);
 };
 
 /**
@@ -60926,7 +62015,7 @@ Document.prototype.getViewablePath = function(item)
             }, false);
 
             // old file does not have f2d yet - so load tile viewer
-            if (items.length == 0) {
+            if (items.length === 0) {
                 items = Document.getSubItemsWithProperties(item, {
                     'role': 'tileRoot'
                 }, true);
@@ -61129,11 +62218,12 @@ av.Document = Document;
 ;/** @license Copyright (c) 2013 Autodesk Inc. */
 /** Version : @buildnum@ */
 
-/**
- * This is the Tessera navigation API for design content.
- * @ignore
- */
-AutodeskNamespace('Autodesk.Viewing');
+(function() {
+
+	'use strict';
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 /**
  * This is the core interface to camera controls and navigation. The active navigation object can normally be obtained from the "navigation" property of the Viewer3D instance. Client implementations should not normally instantiate this class directly.
@@ -61141,7 +62231,7 @@ AutodeskNamespace('Autodesk.Viewing');
  *  @param {THREE.Camera} camera - The main camera object used to render the scene.
  *  @constructor
  */
-Autodesk.Viewing.Navigation = function(camera)
+function Navigation(camera)
 {
     var kMinFOV  = 6.88; // 200 mm
     var kMaxFOV  = 100;  // 10 mm
@@ -61156,6 +62246,17 @@ Autodesk.Viewing.Navigation = function(camera)
         useLeftHandedInput: false,
         usePivotAlways: false,
         lockNavigation: false
+    };
+
+    // which actions are allowed when navigation is locked
+    this.__lockSettings = {
+        orbit: false,
+        pan: false,
+        zoom: false,
+        roll: false,
+        fov: false,
+        gotoview: false,
+        walk: false
     };
 
     this.__pivotIsSetFlag = false;
@@ -61255,7 +62356,7 @@ Autodesk.Viewing.Navigation = function(camera)
      */
     this.setView = function( position, target )
     {
-        if( _camera && position && target && !this.__options.lockNavigation )
+        if( _camera && position && target )
         {
             _camera.position.copy(position);
             _camera.target.copy(target);
@@ -61268,7 +62369,7 @@ Autodesk.Viewing.Navigation = function(camera)
      */
     this.orientCameraUp = function()
     {
-        if( _camera && !this.__options.lockNavigation )
+        if( _camera && this.isActionEnabled('roll') )
         {
             _camera.up.copy(this.getAlignedUpVector()); // New up aligned with world up
             _camera.dirty = true;
@@ -61289,7 +62390,7 @@ Autodesk.Viewing.Navigation = function(camera)
      */
     this.setPivotPoint = function( pivot )
     {
-        if( _camera && pivot && !this.__options.lockNavigation )
+        if( _camera && pivot )
         {
             _camera.pivot.copy(pivot);
             _camera.dirty = true;
@@ -61310,7 +62411,7 @@ Autodesk.Viewing.Navigation = function(camera)
      */
     this.setPosition = function( pos )
     {
-        if( _camera && pos && !this.__options.lockNavigation )
+        if( _camera && pos )
         {
             _camera.position.copy(pos);
             _camera.dirty = true;
@@ -61323,7 +62424,7 @@ Autodesk.Viewing.Navigation = function(camera)
      */
     this.setTarget = function(target)
     {
-        if( _camera && target && !this.__options.lockNavigation )
+        if( _camera && target )
         {
             _camera.target.copy(target);
             _camera.dirty = true;
@@ -61393,7 +62494,7 @@ Autodesk.Viewing.Navigation = function(camera)
         if( fov < kMinFOV ) fov = kMinFOV;
         else if( fov > kMaxFOV ) fov = kMaxFOV;
 
-        if( _camera && !this.__options.lockNavigation )
+        if( _camera && this.isActionEnabled('fov') )
         {
             if( Math.abs(_camera.fov - fov)  <= kEpsilon )
                 return;
@@ -61498,7 +62599,7 @@ Autodesk.Viewing.Navigation = function(camera)
         var oldcoi = this.getTarget();
         var pos    = this.getPosition();
 
-        if( this.__options.lockNavigation || !bounds || bounds.empty() )
+        if( !this.isActionEnabled('gotoview') || !bounds || bounds.empty() )
             return {position: pos, target: oldcoi};
 
         var fov = this.getVerticalFov();
@@ -61538,25 +62639,25 @@ Autodesk.Viewing.Navigation = function(camera)
     this.setCamera(camera);
 };
 
-Autodesk.Viewing.Navigation.prototype.constructor = Autodesk.Viewing.Navigation;
+Navigation.prototype.constructor = Navigation;
 
 
-Autodesk.Viewing.Navigation.prototype.setIs2D = function( state )
+Navigation.prototype.setIs2D = function( state )
 {
     this.__is2D = !!state;
 };
 
-Autodesk.Viewing.Navigation.prototype.getIs2D = function()
+Navigation.prototype.getIs2D = function()
 {
     return this.__is2D;
 };
 
-Autodesk.Viewing.Navigation.prototype.setIsTouchDevice = function( state )
+Navigation.prototype.setIsTouchDevice = function( state )
 {
     this.__isTouchDevice = !!state;
 };
 
-Autodesk.Viewing.Navigation.prototype.getIsTouchDevice = function()
+Navigation.prototype.getIsTouchDevice = function()
 {
     return this.__isTouchDevice;
 };
@@ -61569,13 +62670,13 @@ Autodesk.Viewing.Navigation.prototype.getIsTouchDevice = function()
  *  @param {THREE.Vector3} from - the world space position of the object being rotated
  *  @param {THREE.Vector3} up - the direction to align the objects Y axis with
  */
-Autodesk.Viewing.Navigation.prototype.orient = function()
+Navigation.prototype.orient = function()
 {
     var m1;
     var x;
     var y;
     var z;
-    
+
     function init_three() {
         if (m1)
             return;
@@ -61589,7 +62690,7 @@ Autodesk.Viewing.Navigation.prototype.orient = function()
     return function ( object, target, from, up )
     {
         init_three();
-    
+
         var te = m1.elements;
 
         z.subVectors( from, target ).normalize();
@@ -61622,7 +62723,7 @@ Autodesk.Viewing.Navigation.prototype.orient = function()
  *  @param {number} fov - vertical field of view in degrees
  *  @returns {number} focal length in millimeters
  */
-Autodesk.Viewing.Navigation.prototype.fov2fl = function ( fov )
+Navigation.prototype.fov2fl = function ( fov )
 {
     // Note: the size of the 35mm camera back is 36x24mm.  Since we are setting and
     // getting the vertical FOV, we need to use the vertical measurement of 24mm, or
@@ -61642,7 +62743,7 @@ Autodesk.Viewing.Navigation.prototype.fov2fl = function ( fov )
  *  @param {number} fl - focal length in millimeters
  *  @returns {number} vertical field of view in degrees
  */
-Autodesk.Viewing.Navigation.prototype.fl2fov = function ( fl )
+Navigation.prototype.fl2fov = function ( fl )
 {
     // Note: the size of the 35mm camera back is 36x24mm.  Since we are setting and
     // getting the vertical FOV, we need to use the vertical measurement of 24mm, or
@@ -61663,9 +62764,9 @@ Autodesk.Viewing.Navigation.prototype.fl2fov = function ( fl )
  *  @method
  *  @param {THREE.Vector3} up - the new up direction vector
  */
-Autodesk.Viewing.Navigation.prototype.setCameraUpVector = function(up)
+Navigation.prototype.setCameraUpVector = function(up)
 {
-    if( !this.__options.lockNavigation )
+    if( this.isActionEnabled('roll') )
     {
         var camera = this.getCamera();
         camera.up.copy(up);
@@ -61678,7 +62779,7 @@ Autodesk.Viewing.Navigation.prototype.setCameraUpVector = function(up)
  *  @method
  *  @returns {THREE.Vector3} the current camera up direction (normalized)
  */
-Autodesk.Viewing.Navigation.prototype.getCameraUpVector = function()
+Navigation.prototype.getCameraUpVector = function()
 {
     var right = this.getCameraRightVector(false);
     var eye   = this.getEyeVector();
@@ -61690,7 +62791,7 @@ Autodesk.Viewing.Navigation.prototype.getCameraUpVector = function()
  *  @method
  *  @returns {THREE.Vector3} the current camera up direction (normalized)
  */
-Autodesk.Viewing.Navigation.prototype.getAlignedUpVector = function()
+Navigation.prototype.getAlignedUpVector = function()
 {
     var right = this.getCameraRightVector(true);
     var eye   = this.getEyeVector();
@@ -61703,7 +62804,7 @@ Autodesk.Viewing.Navigation.prototype.getAlignedUpVector = function()
  *  @param {boolean} worldAligned - if true get the right vector aligned with the world up, otherwise use the current camera's up direction.
  *  @returns {THREE.Vector3} the current camera right direction, orthogonal to view and up (normalized)
  */
-Autodesk.Viewing.Navigation.prototype.getCameraRightVector = function(worldAligned)
+Navigation.prototype.getCameraRightVector = function(worldAligned)
 {
     var right = new THREE.Vector3();
     var up  = worldAligned ? this.getWorldUpVector() : this.getCamera().up;
@@ -61728,9 +62829,9 @@ Autodesk.Viewing.Navigation.prototype.getCameraRightVector = function(worldAlign
  *  @param {THREE.Vector3} up - the new world up direction
  *  @param {boolean} reorient - if true, make sure the camera up is oriented towards the world up direction.
  */
-Autodesk.Viewing.Navigation.prototype.setWorldUpVector = function(up, reorient)
+Navigation.prototype.setWorldUpVector = function(up, reorient)
 {
-    if( !this.__options.lockNavigation )
+    if( this.isActionEnabled('roll') )
     {
         this.__setUp(up);
 
@@ -61743,7 +62844,7 @@ Autodesk.Viewing.Navigation.prototype.setWorldUpVector = function(up, reorient)
  * Get the current world up direction.
  *  @returns {THREE.Vector3} the current world up direction (normalized)
  */
-Autodesk.Viewing.Navigation.prototype.getWorldUpVector = function()
+Navigation.prototype.getWorldUpVector = function()
 {
     return this.__getUp().clone();
 };
@@ -61753,7 +62854,7 @@ Autodesk.Viewing.Navigation.prototype.getWorldUpVector = function()
  *  @method
  *  @returns {THREE.Vector3} the computed world right direction
  */
-Autodesk.Viewing.Navigation.prototype.getWorldRightVector = function()
+Navigation.prototype.getWorldRightVector = function()
 {
     var right = new THREE.Vector3();
     right.copy(this.__getUp());
@@ -61779,7 +62880,7 @@ Autodesk.Viewing.Navigation.prototype.getWorldRightVector = function()
 /**
  *  @returns {number} the current camera vertical field of view in degrees
  */
-Autodesk.Viewing.Navigation.prototype.getVerticalFov = function()
+Navigation.prototype.getVerticalFov = function()
 {
     return this.getCamera().fov;
 };
@@ -61787,7 +62888,7 @@ Autodesk.Viewing.Navigation.prototype.getVerticalFov = function()
 /**
  *  @returns {number} the current camera horizontal field of view in degrees
  */
-Autodesk.Viewing.Navigation.prototype.getHorizontalFov = function()
+Navigation.prototype.getHorizontalFov = function()
 {
     var viewport = this.getScreenViewport();
     return this.getCamera().fov * (viewport.width / viewport.height);
@@ -61796,7 +62897,7 @@ Autodesk.Viewing.Navigation.prototype.getHorizontalFov = function()
 /**
  *  @returns {number} the current camera focal length based on a 35mm camera lens model
  */
-Autodesk.Viewing.Navigation.prototype.getFocalLength = function()
+Navigation.prototype.getFocalLength = function()
 {
     return this.fov2fl(this.getVerticalFov());
 };
@@ -61808,7 +62909,7 @@ Autodesk.Viewing.Navigation.prototype.getFocalLength = function()
  *                                    of the view at the pivot point unchanged (if it is set and visible) or the world
  *                                    space area of view at the camera look at point unchanged.
  */
-Autodesk.Viewing.Navigation.prototype.setFocalLength = function(millimeters, adjustPosition)
+Navigation.prototype.setFocalLength = function(millimeters, adjustPosition)
 {
     this.setVerticalFov(this.fl2fov(millimeters), adjustPosition);
 };
@@ -61817,7 +62918,7 @@ Autodesk.Viewing.Navigation.prototype.setFocalLength = function(millimeters, adj
  * Set or unset a view navigation option to reverse the default direction for camera dolly (zoom) operations.
  *  @param {boolean} state - value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.setReverseZoomDirection = function( state )
+Navigation.prototype.setReverseZoomDirection = function( state )
 {
     this.__options.reverseDolly = !!state;
 };
@@ -61829,7 +62930,7 @@ Autodesk.Viewing.Navigation.prototype.setReverseZoomDirection = function( state 
  *
  *  @param {boolean} state - value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.setReverseHorizontalLookDirection = function( state )
+Navigation.prototype.setReverseHorizontalLookDirection = function( state )
 {
     if( this.getIs2D() )
     {
@@ -61847,7 +62948,7 @@ Autodesk.Viewing.Navigation.prototype.setReverseHorizontalLookDirection = functi
  *
  *  @param {boolean} state - value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.setReverseVerticalLookDirection = function( state )
+Navigation.prototype.setReverseVerticalLookDirection = function( state )
 {
     if( this.getIs2D() )
     {
@@ -61862,7 +62963,7 @@ Autodesk.Viewing.Navigation.prototype.setReverseVerticalLookDirection = function
  * Get the state of the view navigation option which requests the reversal of the default direction for camera dolly (zoom) operations.
  *  @returns {boolean} - value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.getReverseZoomDirection = function()
+Navigation.prototype.getReverseZoomDirection = function()
 {
     return this.__options.reverseDolly;
 };
@@ -61874,7 +62975,7 @@ Autodesk.Viewing.Navigation.prototype.getReverseZoomDirection = function()
  *
  *  @returns {boolean} value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.getReverseHorizontalLookDirection = function()
+Navigation.prototype.getReverseHorizontalLookDirection = function()
 {
     if( this.getIs2D() )
     {
@@ -61892,7 +62993,7 @@ Autodesk.Viewing.Navigation.prototype.getReverseHorizontalLookDirection = functi
  *
  *  @returns {boolean} value of the option, true for reverse, false for default
  */
-Autodesk.Viewing.Navigation.prototype.getReverseVerticalLookDirection = function()
+Navigation.prototype.getReverseVerticalLookDirection = function()
 {
     if( this.getIs2D() )
     {
@@ -61907,7 +63008,7 @@ Autodesk.Viewing.Navigation.prototype.getReverseVerticalLookDirection = function
  * Set or unset a view navigation option to request the default direction for camera dolly (zoom) operations to be towards the camera pivot point. If unset the default direction would normally be towards the cursor position.
  *  @param {boolean} state - value of the option, true for towards the pivot, false for default
  */
-Autodesk.Viewing.Navigation.prototype.setZoomTowardsPivot = function( state )
+Navigation.prototype.setZoomTowardsPivot = function( state )
 {
     this.__options.dollyToPivot = !!state;
 };
@@ -61916,7 +63017,7 @@ Autodesk.Viewing.Navigation.prototype.setZoomTowardsPivot = function( state )
  * Get the state of the view navigation option that requests the default direction for camera dolly (zoom) operations to be towards the camera pivot point.
  *  @returns {boolean} - value of the option, true for towards the pivot, false for default
  */
-Autodesk.Viewing.Navigation.prototype.getZoomTowardsPivot = function()
+Navigation.prototype.getZoomTowardsPivot = function()
 {
     return this.__options.dollyToPivot;
 };
@@ -61928,7 +63029,7 @@ Autodesk.Viewing.Navigation.prototype.getZoomTowardsPivot = function()
  *
  *  @param {boolean} state - value of the option, true to allow orbiting past the poles.
  */
-Autodesk.Viewing.Navigation.prototype.setOrbitPastWorldPoles = function( state )
+Navigation.prototype.setOrbitPastWorldPoles = function( state )
 {
     if( this.getIs2D() )
     {
@@ -61946,7 +63047,7 @@ Autodesk.Viewing.Navigation.prototype.setOrbitPastWorldPoles = function( state )
  *
  *  @returns {boolean} - value of the option, true if orbiting past the poles is allowed.
  */
-Autodesk.Viewing.Navigation.prototype.getOrbitPastWorldPoles = function()
+Navigation.prototype.getOrbitPastWorldPoles = function()
 {
     if( this.getIs2D() )
     {
@@ -61961,7 +63062,7 @@ Autodesk.Viewing.Navigation.prototype.getOrbitPastWorldPoles = function()
  * Set or unset a view navigation option which requests that orbit controls always orbit around the currently set pivot point.
  *  @param {boolean} state - value of the option, true to request use of the pivot point. When false some controls may pivot around the center of the view. (Currently applies only to the view-cube orbit controls.)
  */
-Autodesk.Viewing.Navigation.prototype.setUsePivotAlways = function( state )
+Navigation.prototype.setUsePivotAlways = function( state )
 {
     this.__options.usePivotAlways = !!state;
 };
@@ -61970,7 +63071,7 @@ Autodesk.Viewing.Navigation.prototype.setUsePivotAlways = function( state )
  * Get the state of the view navigation option that requests full use of the pivot point.
  *  @returns {boolean} - value of the option, if the pivot should be used as the orbit origin.
  */
-Autodesk.Viewing.Navigation.prototype.getUsePivotAlways = function()
+Navigation.prototype.getUsePivotAlways = function()
 {
     return this.__options.usePivotAlways;
 };
@@ -61979,7 +63080,7 @@ Autodesk.Viewing.Navigation.prototype.getUsePivotAlways = function()
  * Set or unset a view navigation option which requests that mouse buttons be reversed from their default assignment. i.e. Left mouse operation becomes right mouse and vice versa.
  *  @param {boolean} state - value of the option, true to request reversal of mouse button assignments.
  */
-Autodesk.Viewing.Navigation.prototype.setUseLeftHandedInput = function( state )
+Navigation.prototype.setUseLeftHandedInput = function( state )
 {
     this.__options.useLeftHandedInput = !!state;
 };
@@ -61988,44 +63089,84 @@ Autodesk.Viewing.Navigation.prototype.setUseLeftHandedInput = function( state )
  * Get the state of the view navigation option that requests mouse button reversal.
  *  @returns {boolean} - value of the option, true if reversal is requested.
  */
-Autodesk.Viewing.Navigation.prototype.getUseLeftHandedInput = function()
+Navigation.prototype.getUseLeftHandedInput = function()
 {
     return this.__options.useLeftHandedInput;
 };
 
 /**
  * Lock or unlock view modification operations.
+ * For a more granular control of locked operations, see {@link setLockSettings}.
  *  @param {boolean} state - when true changes to the current camera parameters are not allowed.
  */
-Autodesk.Viewing.Navigation.prototype.setIsLocked = function( state )
+Navigation.prototype.setIsLocked = function( state )
 {
     this.__options.lockNavigation = !!state;
 };
 
 /**
  * Get the state of the current view modification lock.
+ * For a more granular control of locked operations, see {@link setLockSettings}.
  *  @returns {boolean} - true if view modifications are not currently allowed.
  */
-Autodesk.Viewing.Navigation.prototype.getIsLocked = function()
+Navigation.prototype.getIsLocked = function()
 {
     return this.__options.lockNavigation;
+};
+
+/**
+ * Set the availability of specific camera actions when navigation is locked using {@link setIsLocked}.
+ *  @param {object} settings Map of <action>:<bool> pairs specifying whether the given camera
+ *  action is *enabled* even when the navigation is locked.
+ *  The configurable actions are 'orbit', 'pan', 'zoom', 'roll', 'fov', or 'gotoview'.
+ *  By default, none of the camera actions are available when the navigation is locked.
+ */
+Navigation.prototype.setLockSettings = function(settings)
+{
+    for (var action in this.__lockSettings) {
+        if (settings.hasOwnProperty(action)) {
+            this.__lockSettings[action] = settings[action];
+        }
+    }
+};
+
+/**
+ * Get the availability of specific camera actions when navigation is locked using {@link setIsLocked}.
+ *  @returns {object} Map of <action>:<bool> pairs specifying whether the given camera
+ *  action is *enabled* even when the navigation is locked.
+ */
+Navigation.prototype.getLockSettings = function()
+{
+    var settings = {};
+    for (var action in this.__lockSettings) {
+        settings[action] = this.__lockSettings[action];
+    }
+    return settings;
+};
+
+/**
+ * Check the availability of a camera action.
+ *  @param {string} action Camera action.
+ *  @returns {boolean} True if the camera action is currently enabled.
+ */
+Navigation.prototype.isActionEnabled = function(action) {
+    return !this.__options.lockNavigation || this.__lockSettings[action] === true;
 };
 
 /**
  * Set or unset a view navigation option which indicates that the pivot camera parameter is set and can be used for orbit and zoom controls.
  *  @param {boolean} state - value of the option. When not set orbit and zoom operations should occur at the look at position in the center of the current view.
  */
-Autodesk.Viewing.Navigation.prototype.setPivotSetFlag = function( state )
+Navigation.prototype.setPivotSetFlag = function( state )
 {
-    if( !this.__options.lockNavigation )
-        this.__pivotIsSetFlag = !!state;
+    this.__pivotIsSetFlag = !!state;
 };
 
 /**
  * Get the state of the view navigation option that indicates the pivot is set.
  *  @returns {boolean} - value of the option, true if pivot may be used.
  */
-Autodesk.Viewing.Navigation.prototype.getPivotSetFlag = function()
+Navigation.prototype.getPivotSetFlag = function()
 {
     return this.__pivotIsSetFlag;
 };
@@ -62034,9 +63175,9 @@ Autodesk.Viewing.Navigation.prototype.getPivotSetFlag = function()
  * Issue a request to change the current cameras view position to fit the active model data into the current view frustum.
  *  @param {boolean} state - value of the requst. Set to true in order to request the change of view.
  */
-Autodesk.Viewing.Navigation.prototype.setRequestFitToView = function( state )
+Navigation.prototype.setRequestFitToView = function( state )
 {
-    if( !this.__options.lockNavigation )
+    if( this.isActionEnabled('gotoview') )
         this.__fitToViewRequested = !!state;
 };
 
@@ -62044,7 +63185,7 @@ Autodesk.Viewing.Navigation.prototype.setRequestFitToView = function( state )
  * Get the state of the view navigation option requesting a camera repositioning to fit the active model data. Value will be false if a request has not been made or if having been made has been received and acted upon.
  *  @returns {boolean} - current state of the request.
  */
-Autodesk.Viewing.Navigation.prototype.getRequestFitToView = function()
+Navigation.prototype.getRequestFitToView = function()
 {
     return this.__fitToViewRequested;
 };
@@ -62053,9 +63194,9 @@ Autodesk.Viewing.Navigation.prototype.getRequestFitToView = function()
  * Issue a request to change the current cameras view to the current "home" view. The home view includes position, view direction, world up direction and field of view.
  *  @param {boolean} state - value of the requst. Set to true in order to request the change of view.
  */
-Autodesk.Viewing.Navigation.prototype.setRequestHomeView = function( state )
+Navigation.prototype.setRequestHomeView = function( state )
 {
-    if( !this.__options.lockNavigation )
+    if( this.isActionEnabled('gotoview') )
         this.__homeViewRequested = !!state;
 };
 
@@ -62063,7 +63204,7 @@ Autodesk.Viewing.Navigation.prototype.setRequestHomeView = function( state )
  * Get the state of the view navigation option requesting a camera change to the current "home" view. Value will be false if a request has not been made or if having been made has been received and acted upon.
  *  @returns {boolean} - current state of the request.
  */
-Autodesk.Viewing.Navigation.prototype.getRequestHomeView = function()
+Navigation.prototype.getRequestHomeView = function()
 {
     return this.__homeViewRequested;
 };
@@ -62076,7 +63217,7 @@ Autodesk.Viewing.Navigation.prototype.getRequestHomeView = function()
  *  @param {number} fov - vertical field of view in degrees
  *  @param {boolean} reorient - set to true to recalculate up vector
  */
-Autodesk.Viewing.Navigation.prototype.setRequestTransition = function( state, pos, coi, fov, reorient )
+Navigation.prototype.setRequestTransition = function( state, pos, coi, fov, reorient )
 {
     if( state )
     {
@@ -62102,7 +63243,7 @@ Autodesk.Viewing.Navigation.prototype.setRequestTransition = function( state, po
  *  @param {THREE.Vector3} up -  use this as the target camera up direction
  *  @param {THREE.Vector3} worldUp - (optional) use this as the target world up direction
  */
-Autodesk.Viewing.Navigation.prototype.setRequestTransitionWithUp = function( state, pos, coi, fov, up, worldUp )
+Navigation.prototype.setRequestTransitionWithUp = function( state, pos, coi, fov, up, worldUp )
 {
     if( state )
     {
@@ -62124,7 +63265,7 @@ Autodesk.Viewing.Navigation.prototype.setRequestTransitionWithUp = function( sta
  *  @returns {Object} - If a transition request is active, an object with properties "position" (Vector3), "coi" (Vector3), "fov" (Number), "up" (Vector3), "worldUp" (Vector3), "reorient" (boolean). Returns null when no transition is active.
  *  @see setRequestTransitionWithUp
  */
-Autodesk.Viewing.Navigation.prototype.getRequestTransition = function()
+Navigation.prototype.getRequestTransition = function()
 {
     return this.__destinationView;
 };
@@ -62134,7 +63275,7 @@ Autodesk.Viewing.Navigation.prototype.getRequestTransition = function()
  * Used internally to indicate that a transition is active.
  *  @param {boolean} state - value of the transtion status
  */
-Autodesk.Viewing.Navigation.prototype.setTransitionActive = function( state )
+Navigation.prototype.setTransitionActive = function( state )
 {
     this.__transitionActive = !!state;
 };
@@ -62143,7 +63284,7 @@ Autodesk.Viewing.Navigation.prototype.setTransitionActive = function( state )
  *  Check the status of a view transition request.
  *  @returns {boolean} - value of the transtion status
  */
-Autodesk.Viewing.Navigation.prototype.getTransitionActive = function()
+Navigation.prototype.getTransitionActive = function()
 {
     return this.__transitionActive;
 };
@@ -62152,7 +63293,7 @@ Autodesk.Viewing.Navigation.prototype.getTransitionActive = function()
  *  @param {number} atDistance - Distance from the camera at which to compute the view frustum size.
  *  @returns {THREE.Vector2} The size of the view frustum at this distance from the camera.
  */
-Autodesk.Viewing.Navigation.prototype.getWorldSize = function(atDistance)
+Navigation.prototype.getWorldSize = function(atDistance)
 {
     var viewport = this.getScreenViewport();
     var aspect = viewport.width / viewport.height;
@@ -62168,7 +63309,7 @@ Autodesk.Viewing.Navigation.prototype.getWorldSize = function(atDistance)
  *  @param {number} y - Normalized screen Y coordinate in [0, 1] range (top == 0)
  *  @returns {THREE.Vector3} - Point in world space
  */
-Autodesk.Viewing.Navigation.prototype.getWorldPoint = function(x, y)
+Navigation.prototype.getWorldPoint = function(x, y)
 {
     /*
     var x = (mouseX - this.viewport.left) / this.viewport.width;
@@ -62223,7 +63364,7 @@ Autodesk.Viewing.Navigation.prototype.getWorldPoint = function(x, y)
 /**
  * @returns {number} - The perpendicular distance from the camera to the plane containing the pivot point.
  */
-Autodesk.Viewing.Navigation.prototype.getPivotPlaneDistance = function()
+Navigation.prototype.getPivotPlaneDistance = function()
 {
     var pivot = this.getPivotPoint();
     var view  = this.getEyeVector();
@@ -62238,8 +63379,12 @@ Autodesk.Viewing.Navigation.prototype.getPivotPlaneDistance = function()
  *  @param {number} deltaY - Normalized Y distance to pan down/up (negative/positive).
  *  @param {number} atDistance - Pan distance is scaled by the size of the view frustum at this distance from the camera.
  */
-Autodesk.Viewing.Navigation.prototype.panRelative = function( deltaX, deltaY, atDistance )
+Navigation.prototype.panRelative = function( deltaX, deltaY, atDistance )
 {
+    if (!this.isActionEnabled('pan')) {
+        return;
+    }
+
     var trackSpeed = this.getWorldSize(atDistance);
     var offsetX = deltaX * trackSpeed.x;
     var offsetY = deltaY * trackSpeed.y;
@@ -62257,9 +63402,9 @@ Autodesk.Viewing.Navigation.prototype.panRelative = function( deltaX, deltaY, at
  *  @param {number} distance - World space distance to move the camera by.
  *  @param {THREE.Vector3} point - World space position used to define the dolly direction.
  */
-Autodesk.Viewing.Navigation.prototype.dollyFromPoint = function( distance, point )
+Navigation.prototype.dollyFromPoint = function( distance, point )
 {
-    if( Math.abs(distance) <= this.__kEpsilon )
+    if( !this.isActionEnabled('zoom') || Math.abs(distance) <= this.__kEpsilon )
         return;
 
     var position = this.getPosition();
@@ -62294,7 +63439,7 @@ Autodesk.Viewing.Navigation.prototype.dollyFromPoint = function( distance, point
  *
  *  Not applicable to 2D.
  */
-Autodesk.Viewing.Navigation.prototype.toPerspective = function()
+Navigation.prototype.toPerspective = function()
 {
     if( this.getIs2D() )
     {
@@ -62304,7 +63449,7 @@ Autodesk.Viewing.Navigation.prototype.toPerspective = function()
 
     var camera = this.getCamera();
 
-    if( !this.__options.lockNavigation && !camera.isPerspective )
+    if( !camera.isPerspective )
     {
         // stderr("Nav: toPerspective");
         camera.toPerspective();
@@ -62315,11 +63460,11 @@ Autodesk.Viewing.Navigation.prototype.toPerspective = function()
 /**
  *  Change current camera to orthographic camera
  */
-Autodesk.Viewing.Navigation.prototype.toOrthographic = function()
+Navigation.prototype.toOrthographic = function()
 {
     var camera = this.getCamera();
 
-    if( !this.__options.lockNavigation && camera.isPerspective )
+    if( camera.isPerspective )
     {
         // stderr("Nav: toOrtho");
         camera.toOrthographic();
@@ -62328,7 +63473,7 @@ Autodesk.Viewing.Navigation.prototype.toOrthographic = function()
 };
 
 
-Autodesk.Viewing.Navigation.snapToAxis = function(v) {
+Navigation.snapToAxis = function(v) {
     var absv = new THREE.Vector3(Math.abs(v.x), Math.abs(v.y), Math.abs(v.z));
 
     if (absv.x > absv.y && absv.x > absv.z)
@@ -62339,7 +63484,12 @@ Autodesk.Viewing.Navigation.snapToAxis = function(v) {
         v.set(0, 0, v.z > 0 ? 1 : -1);
 
     return v;
-};;/** @license Copyright (c) 2013 Autodesk Inc. */
+};
+
+Autodesk.Viewing.Navigation = Navigation;
+
+})();
+;/** @license Copyright (c) 2013 Autodesk Inc. */
 /** Version : @buildnum@ */
 
 (function() {
@@ -63239,6 +64389,11 @@ var av = Autodesk.Viewing,
             }
         });
 
+        this.addEventListener(av.NAVIGATION_MODE_CHANGED_EVENT, function (event) {
+            viewer.updateToolbarButtons(viewer.container.clientWidth, viewer.container.clientHeight);
+            viewer.centerToolBar();
+        });
+
         this.initEscapeHandlers();
 
         // Now that all the ui is created, localize it.
@@ -63290,6 +64445,8 @@ var av = Autodesk.Viewing,
 
         this.removeEventListener(av.RENDER_OPTION_CHANGED_EVENT, this.onRenderOptionChanged);
         this.onRenderOptionChanged = null;
+        this.removeEventListener(av.VIEWER_STATE_RESTORED_EVENT, this.onRestoreState);
+        this.onRestoreState = null;
 
         this.progressbar = null;
 
@@ -63619,7 +64776,7 @@ var av = Autodesk.Viewing,
             // Add FOV hotkey
             var previousToolForFOV;
             onPress = function () {
-                if (viewer.toolController.getIsLocked()) {
+                if (viewer.toolController.getIsLocked() || !viewer.navigation.isActionEnabled('fov')) {
                     return false;
                 }
 
@@ -63628,7 +64785,7 @@ var av = Autodesk.Viewing,
                 return true;
             };
             onRelease = function () {
-                if (viewer.toolController.getIsLocked()) {
+                if (viewer.toolController.getIsLocked() || !viewer.navigation.isActionEnabled('fov')) {
                     return false;
                 }
 
@@ -63647,7 +64804,7 @@ var av = Autodesk.Viewing,
         // Add Roll hotkey
         var previousToolForRoll;
         onPress = function () {
-            if (viewer.toolController.getIsLocked()) {
+            if (viewer.toolController.getIsLocked() || !viewer.navigation.isActionEnabled('roll')) {
                 return false;
             }
 
@@ -63656,7 +64813,7 @@ var av = Autodesk.Viewing,
             return true;
         };
         onRelease = function () {
-            if (viewer.toolController.getIsLocked()) {
+            if (viewer.toolController.getIsLocked() || !viewer.navigation.isActionEnabled('roll')) {
                 return false;
             }
 
@@ -63992,6 +65149,13 @@ var av = Autodesk.Viewing,
                 panel.syncUI();
             };
             viewer.addEventListener(av.RENDER_OPTION_CHANGED_EVENT, this.onRenderOptionChanged);
+
+            this.onRestoreState = function() {
+                if (viewer.explodeSlider) {
+                    viewer.explodeSlider.value = viewer.getExplodeScale();
+                }
+            };
+            viewer.addEventListener(av.VIEWER_STATE_RESTORED_EVENT, this.onRestoreState);
 
             this.viewerOptionButton.displayLines = this.addOptionToggle(subMenu, "Display Lines", true, function (checked) {
                 viewer.hideLines(!checked);
@@ -64753,8 +65917,18 @@ var av = Autodesk.Viewing,
 
         // 515px threshold
         display = width > 515 ? "block" : "none";
-        ctrl = this.navTools.getControl('toolbar-cameraSubmenuTool');
-        if (ctrl) ctrl.setDisplay(display);
+        var camMenu = this.navTools.getControl('toolbar-cameraSubmenuTool');
+        if (camMenu) {
+            camMenu.setDisplay(display);
+            ctrl = camMenu.subMenu.getControl('toolbar-homeTool');
+            if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('gotoview') ? 'block' : 'none');
+            ctrl = camMenu.subMenu.getControl('toolbar-fitToViewTool');
+            if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('gotoview') ? 'block' : 'none');
+            ctrl = camMenu.subMenu.getControl('toolbar-focalLengthTool');
+            if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('fov') ? 'block' : 'none');
+            ctrl = camMenu.subMenu.getControl('toolbar-rollTool');
+            if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('roll') ? 'block' : 'none');
+        }
 
         // 700px threshold
         display = width > 700 ? "block" : "none";
@@ -64766,15 +65940,15 @@ var av = Autodesk.Viewing,
         // 740px threshold
         display = width > 740 ? "block" : "none";
         ctrl = this.navTools.getControl('toolbar-beelineTool');
-        if (ctrl) ctrl.setDisplay(display);
+        if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('walk') ? display : 'none');
         ctrl = this.navTools.getControl('toolbar-firstPersonTool');
-        if (ctrl) ctrl.setDisplay(display);
+        if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('walk') ? display : 'none');
         ctrl = this.navTools.getControl('toolbar-zoomTool');
-        if (ctrl) ctrl.setDisplay(display);
+        if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('zoom') ? display : 'none');
         ctrl = this.navTools.getControl('toolbar-panTool');
-        if (ctrl) ctrl.setDisplay(display);
+        if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('pan') ? display : 'none');
         ctrl = this.navTools.getControl('toolbar-orbitTools');
-        if (ctrl) ctrl.setDisplay(display);
+        if (ctrl) ctrl.setDisplay(this.navigation.isActionEnabled('orbit') ? display : 'none');
     };
 
     avp.GuiViewer3D = GuiViewer3D;
@@ -65901,6 +67075,13 @@ proto.resetAnimationStatus = function (){
         this.androidSend.resetAnimationStatus();
 };
 
+proto.setPauseUI = function (){
+    if (this.ios)
+        this.iosSend('setPauseUI');
+    else if (this.android)
+        this.androidSend.setToPaused();
+};
+
 proto.updateAnimationTime = function (time){
     if (this.ios)
         this.iosSend('updateAnimationTime', time);
@@ -66307,10 +67488,16 @@ ViewerPropertyPanel.prototype.initialize = function () {
 
     var that = this;
 
-    that.addEventListener(that.viewer, av.SELECTION_CHANGED_EVENT, function (event) {
-        that.currentNodeIds = event.dbIdArray;
-        that.currentModel = event.model;
-        that.isSelection = event.dbIdArray.length > 0;
+    that.addEventListener(that.viewer, av.AGGREGATE_SELECTION_CHANGED_EVENT, function (event) {
+
+        if (event.selections && event.selections.length) {
+            that.currentNodeIds = event.selections[0].dbIdArray;
+            that.currentModel = event.selections[0].model;
+            that.isSelection = event.selections[0].dbIdArray.length > 0;
+        } else {
+            that.isSelection = false;
+        }
+
         that.isDirty = true;
         that.requestProperties();
     });
@@ -66483,11 +67670,27 @@ Autodesk.Viewing.Extensions.ViewerPropertyPanel = ViewerPropertyPanel;
 var ViewerLayersPanel = function (viewer) {
     var parentContainer = viewer.container;
     Autodesk.Viewing.UI.LayersPanel.call(this, viewer, parentContainer, parentContainer.id + "ViewerLayersPanel");
+
+    this.onRestoreStateBinded = this.onRestoreState.bind(this);
+    this.viewer.addEventListener(Autodesk.Viewing.VIEWER_STATE_RESTORED_EVENT, this.onRestoreStateBinded);
 };
 
 ViewerLayersPanel.prototype = Object.create(Autodesk.Viewing.UI.LayersPanel.prototype);
 ViewerLayersPanel.prototype.constructor = ViewerLayersPanel;
 Autodesk.Viewing.Extensions.ViewerPanelMixin.call( ViewerLayersPanel.prototype );
+
+
+ViewerLayersPanel.prototype.uninitialize = function() {
+    if (this.onRestoreStateBinded) {
+        this.viewer.removeEventListener(Autodesk.Viewing.VIEWER_STATE_RESTORED_EVENT, this.onRestoreStateBinded);
+        this.onRestoreStateBinded = null;
+    }
+    Autodesk.Viewing.UI.LayersPanel.prototype.uninitialize.call(this);
+};
+
+ViewerLayersPanel.prototype.onRestoreState = function() {
+    this.update();
+};
 
 /**
  * Override this method to do something when the user clicks on a tree node
@@ -66552,7 +67755,9 @@ Autodesk.Viewing.Extensions.ViewerLayersPanel = ViewerLayersPanel;
 
 "use strict";
 
-var ave = Autodesk.Viewing.Extensions,
+var av = Autodesk.Viewing,
+    avp = av.Private,
+    ave = Autodesk.Viewing.Extensions,
     avu = Autodesk.Viewing.UI;
 
 /**
@@ -66746,7 +67951,7 @@ ViewerSettingsPanel.prototype.createPerformancePanel = function()
             viewer.setGhosting(checked);
         }, "ghosting");
 
-        this.optimizeNavigationhkBoxId = this.addCheckbox(perfTab, "Smooth navigation", isMobileDevice(), function(checked) {
+        this.optimizeNavigationhkBoxId = this.addCheckbox(perfTab, "Smooth navigation", av.isMobileDevice(), function(checked) {
             viewer.setOptimizeNavigation(checked);
         }, "optimizeNavigation");
 
@@ -69092,7 +70297,6 @@ Autodesk.Viewing.Extensions.Oculus.StereoRenderContext = function(options) {
                 _viewer.addEventListener(av.ISOLATE_EVENT, sendViewerState);
                 _viewer.addEventListener(av.HIDE_EVENT, sendViewerState);
                 _viewer.addEventListener(av.SHOW_EVENT, sendViewerState);
-                _viewer.addEventListener(av.HIGHLIGHT_EVENT, sendViewerState);
                 _viewer.addEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
                 _viewer.addEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
                 _viewer.addEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
@@ -69114,7 +70318,6 @@ Autodesk.Viewing.Extensions.Oculus.StereoRenderContext = function(options) {
                 _viewer.removeEventListener(av.ISOLATE_EVENT, sendViewerState);
                 _viewer.removeEventListener(av.HIDE_EVENT, sendViewerState);
                 _viewer.removeEventListener(av.SHOW_EVENT, sendViewerState);
-                _viewer.removeEventListener(av.HIGHLIGHT_EVENT, sendViewerState);
                 _viewer.removeEventListener(av.EXPLODE_CHANGE_EVENT, sendViewerState);
                 _viewer.removeEventListener(av.LAYER_VISIBILITY_CHANGED_EVENT, sendViewerState);
                 _viewer.removeEventListener(av.CUTPLANES_CHANGE_EVENT, sendViewerState);
@@ -70269,6 +71472,10 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
 
     this.attemptFlight = function(normalizedScreenPosition, mode)
     {
+        if (!_navapi.isActionEnabled('walk')) {
+            return;
+        }
+
         var intersectionPoints = getIntersectionPoints(normalizedScreenPosition);
 
         if (intersectionPoints.length > 0) {
@@ -70362,6 +71569,8 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
 
     this.handleGesture = function( event )
     {
+        Autodesk.Viewing.Private.HudMessage.dismiss();
+
         switch( event.type )
         {
             case "dragstart":
@@ -70387,6 +71596,8 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
 
     this.handleButtonDown = function( event, button )
     {
+        Autodesk.Viewing.Private.HudMessage.dismiss();
+
         _mouseButtons += 1 << button;
 
         if (button === 0) {
@@ -70409,6 +71620,8 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
 
     this.handleSingleClick = function( event, button )
     {
+        Autodesk.Viewing.Private.HudMessage.dismiss();
+
         // Anything besides LMB should revert viewer to initial state
         if (button === 0) {
             var normalizedScreenLocation = {
@@ -70487,7 +71700,8 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
             "messageKey"    : "The view is set to Orthographic Beeline",
             "messageDefaultValue"  : "The view is set to Orthographic. Using this tool will switch to Perspective."
         };
-        Autodesk.Viewing.Private.HudMessage.displayMessage(_container, messageSpecs);
+        var closeCallback = function() {}; // dummy callback function so that the 'X' is shown
+        Autodesk.Viewing.Private.HudMessage.displayMessage(_container, messageSpecs, closeCallback);
     };
 
     this.showFocalWarningMessage = function()
@@ -70497,7 +71711,8 @@ Autodesk.Viewing.Extensions.Beeline.BeelineTool = function( viewerImpl, viewerAp
             "messageKey"    : "The view is set to a long focal length",
             "messageDefaultValue"  : "This view has a long focal length. Using this tool will set a short focal length."
         };
-        Autodesk.Viewing.Private.HudMessage.displayMessage(_container, messageSpecs);
+        var closeCallback = function() {}; // dummy callback function so that the 'X' is shown
+        Autodesk.Viewing.Private.HudMessage.displayMessage(_container, messageSpecs, closeCallback);
     };
 
     this.watchCamera = function(e)
@@ -70596,6 +71811,9 @@ NavToolsExtension.prototype.createUI = function()
     var viewer = this.viewer;
     var toolbar = viewer.getToolbar(true);
     var navTools = toolbar.getControl(av.TOOLBAR.NAVTOOLSID);
+    var navActionDisplayMode = function(action) {
+        return viewer.navigation.isActionEnabled(action) ? 'block' : 'none'
+    };
 
     navTools.returnToDefault = function() {};
 
@@ -70603,6 +71821,7 @@ NavToolsExtension.prototype.createUI = function()
         var orbitToolsButton = new AVU.ComboButton('toolbar-orbitTools');
         orbitToolsButton.setToolTip('Orbit');
         orbitToolsButton.setIcon("adsk-icon-orbit-constrained");
+        orbitToolsButton.setDisplay(navActionDisplayMode('orbit'));
 
         this.createOrbitSubmenu(orbitToolsButton);
 
@@ -70619,6 +71838,7 @@ NavToolsExtension.prototype.createUI = function()
     panButton.setToolTip('Pan');
     panButton.setIcon("adsk-icon-pan");
     panButton.onClick = createNavToggler(viewer, panButton, 'pan');
+    panButton.setDisplay(navActionDisplayMode('pan'));
 
     navTools.addControl(panButton);
     navTools.panbutton = panButton;
@@ -70627,6 +71847,7 @@ NavToolsExtension.prototype.createUI = function()
     dollyButton.setToolTip('Zoom');
     dollyButton.setIcon("adsk-icon-zoom");
     dollyButton.onClick = createNavToggler(viewer, dollyButton, 'dolly');
+    dollyButton.setDisplay(navActionDisplayMode('zoom'));
 
     navTools.addControl(dollyButton);
     navTools.dollybutton = dollyButton;
@@ -70673,6 +71894,9 @@ NavToolsExtension.prototype.createCameraSubmenu = function(parentButton)
     var viewer = this.viewer;
     var toolbar = viewer.getToolbar(true);
     var navTools = toolbar.getControl(av.TOOLBAR.NAVTOOLSID);
+    var navActionDisplayMode = function(action) {
+        return viewer.navigation.isActionEnabled(action) ? 'block' : 'none'
+    };
 
     if (isTouchDevice()) {
         var homeButton = new AVU.Button('toolbar-homeTool');
@@ -70684,6 +71908,7 @@ NavToolsExtension.prototype.createCameraSubmenu = function(parentButton)
             viewer.setActiveNavigationTool(defaultNavToolName);
             parentButton.restoreDefault();
         };
+        homeButton.setDisplay(navActionDisplayMode('gotoview'));
 
         parentButton.addControl(homeButton);
         navTools.homebutton = homeButton;
@@ -70700,6 +71925,7 @@ NavToolsExtension.prototype.createCameraSubmenu = function(parentButton)
         viewer.setActiveNavigationTool(defaultNavToolName);
         parentButton.restoreDefault();
     };
+    fitToViewButton.setDisplay(navActionDisplayMode('gotoview'));
 
     parentButton.addControl(fitToViewButton);
     navTools.fovbutton = fitToViewButton;
@@ -70710,6 +71936,7 @@ NavToolsExtension.prototype.createCameraSubmenu = function(parentButton)
         fovButton.setToolTip('Focal length');
         fovButton.setIcon("adsk-icon-fov");
         fovButton.onClick = createNavToggler(viewer, fovButton, 'fov');
+        fovButton.setDisplay(navActionDisplayMode('fov'));
 
         parentButton.addControl(fovButton);
         navTools.fovbutton = fovButton;
@@ -70720,6 +71947,7 @@ NavToolsExtension.prototype.createCameraSubmenu = function(parentButton)
     rollButton.setToolTip('Roll');
     rollButton.setIcon("adsk-icon-roll");
     rollButton.onClick = createNavToggler(viewer, rollButton, 'worldup');
+    rollButton.setDisplay(navActionDisplayMode('roll'));
 
     parentButton.addControl(rollButton);
     navTools.rollbutton = rollButton;
@@ -70899,7 +72127,8 @@ avet.NavToolsExtension = NavToolsExtension;
 
 av.theExtensionManager.registerExtension('Autodesk.DefaultTools.NavTools', NavToolsExtension);
 
-})();;
+})();
+;
 (function() {
 
 'use strict';
@@ -71088,6 +72317,8 @@ MeasureExtension.prototype.enableMeasureTool = function(enable) {
     var toolController = this.viewer.toolController,
         isActive = this.tool.isActive();
 
+    this.viewer.impl.disableRollover(enable);
+
     if (enable && !isActive) {
         toolController.activateTool("measure");
         if (this.measureToolButton) {
@@ -71224,7 +72455,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
     // UI.
     var _indicator = null;
     var _measurePanel = null;
-    var _cursor = "url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAKT2lDQ1BQaG90b3Nob3AgSUNDIHByb2ZpbGUAAHjanVNnVFPpFj333vRCS4iAlEtvUhUIIFJCi4AUkSYqIQkQSoghodkVUcERRUUEG8igiAOOjoCMFVEsDIoK2AfkIaKOg6OIisr74Xuja9a89+bN/rXXPues852zzwfACAyWSDNRNYAMqUIeEeCDx8TG4eQuQIEKJHAAEAizZCFz/SMBAPh+PDwrIsAHvgABeNMLCADATZvAMByH/w/qQplcAYCEAcB0kThLCIAUAEB6jkKmAEBGAYCdmCZTAKAEAGDLY2LjAFAtAGAnf+bTAICd+Jl7AQBblCEVAaCRACATZYhEAGg7AKzPVopFAFgwABRmS8Q5ANgtADBJV2ZIALC3AMDOEAuyAAgMADBRiIUpAAR7AGDIIyN4AISZABRG8lc88SuuEOcqAAB4mbI8uSQ5RYFbCC1xB1dXLh4ozkkXKxQ2YQJhmkAuwnmZGTKBNA/g88wAAKCRFRHgg/P9eM4Ors7ONo62Dl8t6r8G/yJiYuP+5c+rcEAAAOF0ftH+LC+zGoA7BoBt/qIl7gRoXgugdfeLZrIPQLUAoOnaV/Nw+H48PEWhkLnZ2eXk5NhKxEJbYcpXff5nwl/AV/1s+X48/Pf14L7iJIEyXYFHBPjgwsz0TKUcz5IJhGLc5o9H/LcL//wd0yLESWK5WCoU41EScY5EmozzMqUiiUKSKcUl0v9k4t8s+wM+3zUAsGo+AXuRLahdYwP2SycQWHTA4vcAAPK7b8HUKAgDgGiD4c93/+8//UegJQCAZkmScQAAXkQkLlTKsz/HCAAARKCBKrBBG/TBGCzABhzBBdzBC/xgNoRCJMTCQhBCCmSAHHJgKayCQiiGzbAdKmAv1EAdNMBRaIaTcA4uwlW4Dj1wD/phCJ7BKLyBCQRByAgTYSHaiAFiilgjjggXmYX4IcFIBBKLJCDJiBRRIkuRNUgxUopUIFVIHfI9cgI5h1xGupE7yAAygvyGvEcxlIGyUT3UDLVDuag3GoRGogvQZHQxmo8WoJvQcrQaPYw2oefQq2gP2o8+Q8cwwOgYBzPEbDAuxsNCsTgsCZNjy7EirAyrxhqwVqwDu4n1Y8+xdwQSgUXACTYEd0IgYR5BSFhMWE7YSKggHCQ0EdoJNwkDhFHCJyKTqEu0JroR+cQYYjIxh1hILCPWEo8TLxB7iEPENyQSiUMyJ7mQAkmxpFTSEtJG0m5SI+ksqZs0SBojk8naZGuyBzmULCAryIXkneTD5DPkG+Qh8lsKnWJAcaT4U+IoUspqShnlEOU05QZlmDJBVaOaUt2ooVQRNY9aQq2htlKvUYeoEzR1mjnNgxZJS6WtopXTGmgXaPdpr+h0uhHdlR5Ol9BX0svpR+iX6AP0dwwNhhWDx4hnKBmbGAcYZxl3GK+YTKYZ04sZx1QwNzHrmOeZD5lvVVgqtip8FZHKCpVKlSaVGyovVKmqpqreqgtV81XLVI+pXlN9rkZVM1PjqQnUlqtVqp1Q61MbU2epO6iHqmeob1Q/pH5Z/YkGWcNMw09DpFGgsV/jvMYgC2MZs3gsIWsNq4Z1gTXEJrHN2Xx2KruY/R27iz2qqaE5QzNKM1ezUvOUZj8H45hx+Jx0TgnnKKeX836K3hTvKeIpG6Y0TLkxZVxrqpaXllirSKtRq0frvTau7aedpr1Fu1n7gQ5Bx0onXCdHZ4/OBZ3nU9lT3acKpxZNPTr1ri6qa6UbobtEd79up+6Ynr5egJ5Mb6feeb3n+hx9L/1U/W36p/VHDFgGswwkBtsMzhg8xTVxbzwdL8fb8VFDXcNAQ6VhlWGX4YSRudE8o9VGjUYPjGnGXOMk423GbcajJgYmISZLTepN7ppSTbmmKaY7TDtMx83MzaLN1pk1mz0x1zLnm+eb15vft2BaeFostqi2uGVJsuRaplnutrxuhVo5WaVYVVpds0atna0l1rutu6cRp7lOk06rntZnw7Dxtsm2qbcZsOXYBtuutm22fWFnYhdnt8Wuw+6TvZN9un2N/T0HDYfZDqsdWh1+c7RyFDpWOt6azpzuP33F9JbpL2dYzxDP2DPjthPLKcRpnVOb00dnF2e5c4PziIuJS4LLLpc+Lpsbxt3IveRKdPVxXeF60vWdm7Obwu2o26/uNu5p7ofcn8w0nymeWTNz0MPIQ+BR5dE/C5+VMGvfrH5PQ0+BZ7XnIy9jL5FXrdewt6V3qvdh7xc+9j5yn+M+4zw33jLeWV/MN8C3yLfLT8Nvnl+F30N/I/9k/3r/0QCngCUBZwOJgUGBWwL7+Hp8Ib+OPzrbZfay2e1BjKC5QRVBj4KtguXBrSFoyOyQrSH355jOkc5pDoVQfujW0Adh5mGLw34MJ4WHhVeGP45wiFga0TGXNXfR3ENz30T6RJZE3ptnMU85ry1KNSo+qi5qPNo3ujS6P8YuZlnM1VidWElsSxw5LiquNm5svt/87fOH4p3iC+N7F5gvyF1weaHOwvSFpxapLhIsOpZATIhOOJTwQRAqqBaMJfITdyWOCnnCHcJnIi/RNtGI2ENcKh5O8kgqTXqS7JG8NXkkxTOlLOW5hCepkLxMDUzdmzqeFpp2IG0yPTq9MYOSkZBxQqohTZO2Z+pn5mZ2y6xlhbL+xW6Lty8elQfJa7OQrAVZLQq2QqboVFoo1yoHsmdlV2a/zYnKOZarnivN7cyzytuQN5zvn//tEsIS4ZK2pYZLVy0dWOa9rGo5sjxxedsK4xUFK4ZWBqw8uIq2Km3VT6vtV5eufr0mek1rgV7ByoLBtQFr6wtVCuWFfevc1+1dT1gvWd+1YfqGnRs+FYmKrhTbF5cVf9go3HjlG4dvyr+Z3JS0qavEuWTPZtJm6ebeLZ5bDpaql+aXDm4N2dq0Dd9WtO319kXbL5fNKNu7g7ZDuaO/PLi8ZafJzs07P1SkVPRU+lQ27tLdtWHX+G7R7ht7vPY07NXbW7z3/T7JvttVAVVN1WbVZftJ+7P3P66Jqun4lvttXa1ObXHtxwPSA/0HIw6217nU1R3SPVRSj9Yr60cOxx++/p3vdy0NNg1VjZzG4iNwRHnk6fcJ3/ceDTradox7rOEH0x92HWcdL2pCmvKaRptTmvtbYlu6T8w+0dbq3nr8R9sfD5w0PFl5SvNUyWna6YLTk2fyz4ydlZ19fi753GDborZ752PO32oPb++6EHTh0kX/i+c7vDvOXPK4dPKy2+UTV7hXmq86X23qdOo8/pPTT8e7nLuarrlca7nuer21e2b36RueN87d9L158Rb/1tWeOT3dvfN6b/fF9/XfFt1+cif9zsu72Xcn7q28T7xf9EDtQdlD3YfVP1v+3Njv3H9qwHeg89HcR/cGhYPP/pH1jw9DBY+Zj8uGDYbrnjg+OTniP3L96fynQ89kzyaeF/6i/suuFxYvfvjV69fO0ZjRoZfyl5O/bXyl/erA6xmv28bCxh6+yXgzMV70VvvtwXfcdx3vo98PT+R8IH8o/2j5sfVT0Kf7kxmTk/8EA5jz/GMzLdsAAAAgY0hSTQAAeiUAAICDAAD5/wAAgOkAAHUwAADqYAAAOpgAABdvkl/FRgAAAKZJREFUeNrclLEKwzAQQ9+FgH/Nk7d8ViFT+6cG36IsNXgIdMg5kAoOIw8WSDoDvAEN04BdEhFjgCTR4e6klFxSIgDLSNydbdsAPgRCktRaUylFkfZ0Z2qtVTlnAfugGibwAur3JFrAxoBnYGEy1pGYmQCLLNB6Uqmw182M9eRS0yzqGo+y6D9rytSQR8vM7DKfbtHy4x+/xG8J+d4W9WAi8fxFOwYA8W0ypu2ZfcsAAAAASUVORK5CYII=), wait";
+    var _cursor = "url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAKT2lDQ1BQaG90b3Nob3AgSUNDIHByb2ZpbGUAAHjanVNnVFPpFj333vRCS4iAlEtvUhUIIFJCi4AUkSYqIQkQSoghodkVUcERRUUEG8igiAOOjoCMFVEsDIoK2AfkIaKOg6OIisr74Xuja9a89+bN/rXXPues852zzwfACAyWSDNRNYAMqUIeEeCDx8TG4eQuQIEKJHAAEAizZCFz/SMBAPh+PDwrIsAHvgABeNMLCADATZvAMByH/w/qQplcAYCEAcB0kThLCIAUAEB6jkKmAEBGAYCdmCZTAKAEAGDLY2LjAFAtAGAnf+bTAICd+Jl7AQBblCEVAaCRACATZYhEAGg7AKzPVopFAFgwABRmS8Q5ANgtADBJV2ZIALC3AMDOEAuyAAgMADBRiIUpAAR7AGDIIyN4AISZABRG8lc88SuuEOcqAAB4mbI8uSQ5RYFbCC1xB1dXLh4ozkkXKxQ2YQJhmkAuwnmZGTKBNA/g88wAAKCRFRHgg/P9eM4Ors7ONo62Dl8t6r8G/yJiYuP+5c+rcEAAAOF0ftH+LC+zGoA7BoBt/qIl7gRoXgugdfeLZrIPQLUAoOnaV/Nw+H48PEWhkLnZ2eXk5NhKxEJbYcpXff5nwl/AV/1s+X48/Pf14L7iJIEyXYFHBPjgwsz0TKUcz5IJhGLc5o9H/LcL//wd0yLESWK5WCoU41EScY5EmozzMqUiiUKSKcUl0v9k4t8s+wM+3zUAsGo+AXuRLahdYwP2SycQWHTA4vcAAPK7b8HUKAgDgGiD4c93/+8//UegJQCAZkmScQAAXkQkLlTKsz/HCAAARKCBKrBBG/TBGCzABhzBBdzBC/xgNoRCJMTCQhBCCmSAHHJgKayCQiiGzbAdKmAv1EAdNMBRaIaTcA4uwlW4Dj1wD/phCJ7BKLyBCQRByAgTYSHaiAFiilgjjggXmYX4IcFIBBKLJCDJiBRRIkuRNUgxUopUIFVIHfI9cgI5h1xGupE7yAAygvyGvEcxlIGyUT3UDLVDuag3GoRGogvQZHQxmo8WoJvQcrQaPYw2oefQq2gP2o8+Q8cwwOgYBzPEbDAuxsNCsTgsCZNjy7EirAyrxhqwVqwDu4n1Y8+xdwQSgUXACTYEd0IgYR5BSFhMWE7YSKggHCQ0EdoJNwkDhFHCJyKTqEu0JroR+cQYYjIxh1hILCPWEo8TLxB7iEPENyQSiUMyJ7mQAkmxpFTSEtJG0m5SI+ksqZs0SBojk8naZGuyBzmULCAryIXkneTD5DPkG+Qh8lsKnWJAcaT4U+IoUspqShnlEOU05QZlmDJBVaOaUt2ooVQRNY9aQq2htlKvUYeoEzR1mjnNgxZJS6WtopXTGmgXaPdpr+h0uhHdlR5Ol9BX0svpR+iX6AP0dwwNhhWDx4hnKBmbGAcYZxl3GK+YTKYZ04sZx1QwNzHrmOeZD5lvVVgqtip8FZHKCpVKlSaVGyovVKmqpqreqgtV81XLVI+pXlN9rkZVM1PjqQnUlqtVqp1Q61MbU2epO6iHqmeob1Q/pH5Z/YkGWcNMw09DpFGgsV/jvMYgC2MZs3gsIWsNq4Z1gTXEJrHN2Xx2KruY/R27iz2qqaE5QzNKM1ezUvOUZj8H45hx+Jx0TgnnKKeX836K3hTvKeIpG6Y0TLkxZVxrqpaXllirSKtRq0frvTau7aedpr1Fu1n7gQ5Bx0onXCdHZ4/OBZ3nU9lT3acKpxZNPTr1ri6qa6UbobtEd79up+6Ynr5egJ5Mb6feeb3n+hx9L/1U/W36p/VHDFgGswwkBtsMzhg8xTVxbzwdL8fb8VFDXcNAQ6VhlWGX4YSRudE8o9VGjUYPjGnGXOMk423GbcajJgYmISZLTepN7ppSTbmmKaY7TDtMx83MzaLN1pk1mz0x1zLnm+eb15vft2BaeFostqi2uGVJsuRaplnutrxuhVo5WaVYVVpds0atna0l1rutu6cRp7lOk06rntZnw7Dxtsm2qbcZsOXYBtuutm22fWFnYhdnt8Wuw+6TvZN9un2N/T0HDYfZDqsdWh1+c7RyFDpWOt6azpzuP33F9JbpL2dYzxDP2DPjthPLKcRpnVOb00dnF2e5c4PziIuJS4LLLpc+Lpsbxt3IveRKdPVxXeF60vWdm7Obwu2o26/uNu5p7ofcn8w0nymeWTNz0MPIQ+BR5dE/C5+VMGvfrH5PQ0+BZ7XnIy9jL5FXrdewt6V3qvdh7xc+9j5yn+M+4zw33jLeWV/MN8C3yLfLT8Nvnl+F30N/I/9k/3r/0QCngCUBZwOJgUGBWwL7+Hp8Ib+OPzrbZfay2e1BjKC5QRVBj4KtguXBrSFoyOyQrSH355jOkc5pDoVQfujW0Adh5mGLw34MJ4WHhVeGP45wiFga0TGXNXfR3ENz30T6RJZE3ptnMU85ry1KNSo+qi5qPNo3ujS6P8YuZlnM1VidWElsSxw5LiquNm5svt/87fOH4p3iC+N7F5gvyF1weaHOwvSFpxapLhIsOpZATIhOOJTwQRAqqBaMJfITdyWOCnnCHcJnIi/RNtGI2ENcKh5O8kgqTXqS7JG8NXkkxTOlLOW5hCepkLxMDUzdmzqeFpp2IG0yPTq9MYOSkZBxQqohTZO2Z+pn5mZ2y6xlhbL+xW6Lty8elQfJa7OQrAVZLQq2QqboVFoo1yoHsmdlV2a/zYnKOZarnivN7cyzytuQN5zvn//tEsIS4ZK2pYZLVy0dWOa9rGo5sjxxedsK4xUFK4ZWBqw8uIq2Km3VT6vtV5eufr0mek1rgV7ByoLBtQFr6wtVCuWFfevc1+1dT1gvWd+1YfqGnRs+FYmKrhTbF5cVf9go3HjlG4dvyr+Z3JS0qavEuWTPZtJm6ebeLZ5bDpaql+aXDm4N2dq0Dd9WtO319kXbL5fNKNu7g7ZDuaO/PLi8ZafJzs07P1SkVPRU+lQ27tLdtWHX+G7R7ht7vPY07NXbW7z3/T7JvttVAVVN1WbVZftJ+7P3P66Jqun4lvttXa1ObXHtxwPSA/0HIw6217nU1R3SPVRSj9Yr60cOxx++/p3vdy0NNg1VjZzG4iNwRHnk6fcJ3/ceDTradox7rOEH0x92HWcdL2pCmvKaRptTmvtbYlu6T8w+0dbq3nr8R9sfD5w0PFl5SvNUyWna6YLTk2fyz4ydlZ19fi753GDborZ752PO32oPb++6EHTh0kX/i+c7vDvOXPK4dPKy2+UTV7hXmq86X23qdOo8/pPTT8e7nLuarrlca7nuer21e2b36RueN87d9L158Rb/1tWeOT3dvfN6b/fF9/XfFt1+cif9zsu72Xcn7q28T7xf9EDtQdlD3YfVP1v+3Njv3H9qwHeg89HcR/cGhYPP/pH1jw9DBY+Zj8uGDYbrnjg+OTniP3L96fynQ89kzyaeF/6i/suuFxYvfvjV69fO0ZjRoZfyl5O/bXyl/erA6xmv28bCxh6+yXgzMV70VvvtwXfcdx3vo98PT+R8IH8o/2j5sfVT0Kf7kxmTk/8EA5jz/GMzLdsAAAAgY0hSTQAAeiUAAICDAAD5/wAAgOkAAHUwAADqYAAAOpgAABdvkl/FRgAAAKZJREFUeNrclLEKwzAQQ9+FgH/Nk7d8ViFT+6cG36IsNXgIdMg5kAoOIw8WSDoDvAEN04BdEhFjgCTR4e6klFxSIgDLSNydbdsAPgRCktRaUylFkfZ0Z2qtVTlnAfugGibwAur3JFrAxoBnYGEy1pGYmQCLLNB6Uqmw182M9eRS0yzqGo+y6D9rytSQR8vM7DKfbtHy4x+/xG8J+d4W9WAi8fxFOwYA8W0ypu2ZfcsAAAAASUVORK5CYII=), auto";
 
     // Snapper
     var _snapper = null;
@@ -71245,6 +72476,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
     var _secondViewportIndex = null;
 
     var _hasUI = Autodesk.Viewing.Private.GuiViewer3D && viewer instanceof Autodesk.Viewing.Private.GuiViewer3D;
+
+    var _clip = null;
 
     this.register = function()
     {
@@ -71430,6 +72663,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
         _activePoint = 1;
         _distances = {};
         _angle = 0;
+        _clip = null;
 
         if (_indicator) {
             _indicator.hide();
@@ -71441,6 +72675,15 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             if (_measurePanel.isolateMeasure) {
                 this.clearIsolate();
             }
+        }
+        //if (_viewer.model.is2d() && _snapper) {
+        //    _snapper.setClip();
+        //}
+        if (_viewer.model.is2d()) {
+            viewer.impl.updateViewportId(0);
+
+            if (_snapper)
+                _snapper.setFirstClickVpId(null);
         }
     };
 
@@ -71462,6 +72705,21 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             _firstViewportIndex = _secondViewportIndex;
             _firstCircularArcCenter = _secondCircularArcCenter;
 
+            //if (_viewer.model.is2d()) {
+            //    _indicator.drawGreyOutPlane(_firstViewportIndex);
+            //
+            //    // Need to pass the clip to Snapper (disable snapper in greying out area), only snap in the clip
+            //    if (_snapper)
+            //        _snapper.setClip(_clip);
+            //}
+            if (_viewer.model.is2d()) {
+                // Pass viewport Id to LineShader to make all other geometries with different viewport transparent
+                viewer.impl.updateViewportId(_firstViewportIndex);
+
+                if (_snapper)
+                    _snapper.setFirstClickVpId(_firstViewportIndex);
+            }
+
             // redraw the first pick
             _redraw = true;
             if (_firstClickGeometry === SNAP_VERTEX) {
@@ -71471,6 +72729,16 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 _indicator.showFirstEdge(_firstClick, _firstIntersectPoint);
             }
             else if (_firstClickGeometry === SNAP_FACE) {
+                _indicator.showFirstFace(_firstClick, _firstIntersectPoint);
+            }
+            else if (_firstClickGeometry === SNAP_CIRCULARARC) {
+
+                _firstClick.center = _secondClick.center;
+                _firstClick.radius = _secondClick.radius;
+                _indicator.showFirstEdge(_firstClick, _firstIntersectPoint);
+            }
+            else if (_firstClickGeometry === SNAP_CURVEDFACE) {
+
                 _indicator.showFirstFace(_firstClick, _firstIntersectPoint);
             }
             _redraw = false;
@@ -71507,6 +72775,14 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
 
         if (_measurePanel && _measurePanel.isolateMeasure) {
             this.clearIsolate();
+        }
+
+        if (_viewer.model.is2d()) {
+            // Pass viewport Id to LineShader to make all other geometries with different viewport transparent
+            viewer.impl.updateViewportId(_firstViewportIndex);
+
+            if (_snapper)
+                _snapper.setFirstClickVpId(_firstViewportIndex);
         }
     };
 
@@ -71621,6 +72897,23 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 _firstViewportIndex = _snapper.getViewportIndex();
                 _firstClickGeometry = _snapper.getHighlightGeometry();
                 _firstIntersectPoint = _snapper.getIntersectPoint();
+
+                //if (_viewer.model.is2d()) {
+                //    _indicator.drawGreyOutPlane(_firstViewportIndex);
+                //
+                //    // Need to pass the clip to Snapper (disable snapper in greying out area), only snap in the clip
+                //    if (_snapper)
+                //        _snapper.setClip(_clip);
+                //}
+
+                // Only snap the geometries which belong to the same viewport as the first selection
+                if (_viewer.model.is2d()) {
+                    // Pass viewport Id to LineShader to make all other geometries with different viewport transparent
+                    viewer.impl.updateViewportId(_firstViewportIndex);
+
+                    if (_snapper)
+                        _snapper.setFirstClickVpId(_firstViewportIndex);
+                }
 
                 _firstClick = _snapper.getGeometry();
 
@@ -71959,6 +73252,18 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     if (_measurePanel && _measurePanel.isolateMeasure) {
                         this.isolateMeasurement();
                     }
+
+                    // Clear the clip in snapper (enable snapper in greying out area) after the
+                    // second selection, then user can select the objects in greying out area.
+                    //if (_viewer.model.is2d() && _snapper)
+                    //    _snapper.setClip();
+
+                    if (_viewer.model.is2d()) {
+                        viewer.impl.updateViewportId(0);
+
+                        if (_snapper)
+                            _snapper.setFirstClickVpId(null);
+                    }
                 }
 
                 _indicator.updateLabelPositions();
@@ -71969,6 +73274,9 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
         else {  // show "rubber band" even when user is NOT over any 2nd pick geometry
             if (_activePoint === 2) {
                 var cursorPosition = this.inverseProject(event.canvasX, event.canvasY);
+
+                //if (_viewer.model.is2d() && !_viewer.model.pointInPolygon(cursorPosition.x, cursorPosition.y, _clip.contours, _clip.points))
+                //    return false;
 
                 if (_firstClickGeometry === SNAP_VERTEX) { // do vertex to vertex measure
 
@@ -72135,6 +73443,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             kAngleOutlineOverlayName = 'MeasureTool-angle-outline',
             kExtensionLineOverlayName = 'MeasureTool-extensionLine',
             kExtensionFaceOverlayName = 'MeasureTool-extensionFace',
+            kGreyOutPlaneOverlayName = 'MeasureTool-greyOutPlane',
             _materialPoint = null,
             _materialLine = null,
             _materialFace = null,
@@ -72142,6 +73451,7 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             _materialAngleOutline = null,
             _materialExtensionLine = null,
             _materialExtensionFace = null,
+            _materialGreyOutPlane = null,
             _endPoints = {first: {}, second: {}},
             _edges = {first: {}, second: {}},
             _faces = {first: {}, second: {}},
@@ -72206,6 +73516,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     label = endPoint.label = document.createElement('div');
                     label.className = 'measure-label';
                     _viewer.container.appendChild(label);
+
+                    label.style.pointerEvents = 'none';
 
                     var label_icon = document.createElement('div');
                     label_icon.className = 'adsk-icon-' + name + ' measure-label-icon';
@@ -72359,6 +73671,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     label.className = 'measure-label';
                     _viewer.container.appendChild(label);
 
+                    label.style.pointerEvents = 'none';
+
                     // Stop showing length of edges per Jay's request
                     //var label_text = document.createElement('div');
                     //label_text.className = 'measure-label-text';
@@ -72488,6 +73802,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     label.className = 'measure-label';
                     _viewer.container.appendChild(label);
 
+                    label.style.pointerEvents = 'none';
+
                     // Stop showing area of faces per Jay's request
                     //var label_text = document.createElement('div');
                     //label_text.className = 'measure-label-text';
@@ -72532,6 +73848,52 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             face.updateMatrixWorld();
 
             _viewer.impl.addOverlay(kExtensionFaceOverlayName, face);
+        };
+
+        this.drawGreyOutPlane = function(vpId) {
+
+            if (!_materialGreyOutPlane) {
+                _materialGreyOutPlane = new THREE.MeshPhongMaterial({
+                        color: 0x000000,
+                        ambient: 0x000000,
+                        opacity: 0.5,
+                        transparent: true,
+                        depthTest: false,
+                        depthWrite: false,
+                        side: THREE.DoubleSide
+                    }
+                );
+
+                _viewer.impl.createOverlayScene(kGreyOutPlaneOverlayName);
+            }
+
+            var pw = _viewer.model.getMetadata('page_dimensions', 'page_width');
+            var ph = _viewer.model.getMetadata('page_dimensions', 'page_height');
+
+            var paperShape = new THREE.Shape();
+            paperShape.moveTo(0, 0);
+            paperShape.lineTo(pw, 0);
+            paperShape.lineTo(pw, ph);
+            paperShape.lineTo(0, ph);
+            paperShape.lineTo(0, 0);
+
+            var clip = _clip = _viewer.model.getClip(vpId);
+
+            // TODO: Need to handle multiple contours in clip, for now we only draw the first one.
+            var cntr = clip.contours[0];
+            var clipPath = new THREE.Path();
+            clipPath.moveTo(clip.points[cntr[0]].x, clip.points[cntr[0]].y);
+            for (var i = 1; i < cntr.length; i++) {
+                clipPath.lineTo(clip.points[cntr[i]].x, clip.points[cntr[i]].y);
+            }
+            clipPath.lineTo(clip.points[cntr[0]].x, clip.points[cntr[0]].y);
+
+            paperShape.holes.push(clipPath);
+
+            var paperGeom = new THREE.ShapeGeometry(paperShape);
+            var paperMesh = new THREE.Mesh(paperGeom, _materialGreyOutPlane);
+
+            _viewer.impl.addOverlay(kGreyOutPlaneOverlayName, paperMesh);
         };
 
         this.getEdgeLength = function(edge) {
@@ -72873,9 +74235,9 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                                 //}, true);
                                 //label.appendChild(button);
 
-                            } else {
-                                label.style.pointerEvents = 'none';
                             }
+
+                            label.style.pointerEvents = 'none';
 
                             if (item.axis) {
                                 //label.style.color = '#' + item.color;
@@ -73706,6 +75068,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     text.className = 'measure-length-text';
                     label.appendChild(text);
 
+                    label.style.pointerEvents = 'none';
+
                     // This button is for Markup and Comments
                     //var button = document.createElement('div');
                     //button.className = 'measure-length-button';
@@ -73762,6 +75126,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     var text = document.createElement('div');
                     text.className = 'measure-length-text';
                     label.appendChild(text);
+
+                    label.style.pointerEvents = 'none';
 
                     // This button is for Markup and Comments
                     //var button = document.createElement('div');
@@ -74383,6 +75749,8 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                     text.className = 'measure-length-text';
                     label.appendChild(text);
 
+                    label.style.pointerEvents = 'none';
+
                     // This button is for Markup and Comments
                     //var button = document.createElement('div');
                     //button.className = 'measure-length-button';
@@ -74561,6 +75929,10 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
                 _viewer.impl.clearOverlay(kExtensionFaceOverlayName);
             }
 
+            if (_materialGreyOutPlane) {
+                _viewer.impl.clearOverlay(kGreyOutPlaneOverlayName);
+            }
+
             _viewer.impl.invalidate(false, false, /*overlayDirty=*/true);
         };
 
@@ -74702,6 +76074,11 @@ Autodesk.Viewing.Extensions.Measure.MeasureTool = function( viewer, options )
             if (_materialExtensionFace) {
                 _materialExtensionFace = null;
                 _viewer.impl.removeOverlayScene(kExtensionFaceOverlayName);
+            }
+
+            if (_materialGreyOutPlane) {
+                _materialGreyOutPlane = null;
+                _viewer.impl.clearOverlay(kGreyOutPlaneOverlayName);
             }
 
             for (name in _lines) {
@@ -75467,6 +76844,9 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
     var _circularArcCenter = null;
     var _circularArcRadius = null;
 
+    var _clip = null;
+    var _firstClickVpId = null; // the viewport index of the first selection for 2D
+
     this.isActive = function() {
         return _active;
     };
@@ -75576,6 +76956,14 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
 
     this.isSnapped = function() {
         return _isSnapped;
+    };
+
+    this.setClip = function(clip) {
+        _clip = clip;
+    };
+
+    this.setFirstClickVpId = function(vpId) {
+        _firstClickVpId = vpId;
     };
 
     this.isEqualWithPrecision = function(a, b) {
@@ -76588,6 +77976,10 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
         var intersectPoint = result.intersectPoint;
         var fragIds = result.fragId;
 
+        //if (_clip && !_viewer.model.pointInPolygon(intersectPoint.x, intersectPoint.y, _clip.contours, _clip.points)) {
+        //    return;
+        //}
+
         if (typeof fragIds === "undefined") {
             return;
         }
@@ -76613,6 +78005,12 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
 
         if (gc.circularArc) {
 
+            _viewportIndex2d = gc.vpIdCircular;
+
+            // Only snap the geometries which belong to the same viewport as the first selection
+            if (_firstClickVpId !== null && _firstClickVpId !== _viewportIndex2d)
+                return;
+
             if (intersectPoint.distanceTo(gc.circularArc.vertices[0]) < _radius) {
 
                 _geomVertex = gc.circularArc.vertices[0];
@@ -76635,12 +78033,16 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 _geomHighlighted = SNAP_CIRCULARARC;
             }
 
-            _viewportIndex2d = gc.vpIdCircular;
-
             _isSnapped = true;
 
         }
         else if (gc.ellipticalArc) {
+
+            _viewportIndex2d = gc.vpIdElliptical;
+
+            // Only snap the geometries which belong to the same viewport as the first selection
+            if (_firstClickVpId !== null && _firstClickVpId !== _viewportIndex2d)
+                return;
 
             if (intersectPoint.distanceTo(gc.ellipticalArc.vertices[0]) < _radius) {
 
@@ -76665,12 +78067,16 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 _geomHighlighted = SNAP_CIRCULARARC;
             }
 
-            _viewportIndex2d = gc.vpIdElliptical;
-
             _isSnapped = true;
 
         }
         else if (gc.lineGeom.vertices.length) {
+
+            _viewportIndex2d = gc.vpIdLine;
+
+            // Only snap the geometries which belong to the same viewport as the first selection
+            if (_firstClickVpId !== null && _firstClickVpId !== _viewportIndex2d)
+                return;
 
             if (intersectPoint.distanceTo(gc.lineGeom.vertices[0]) < _radius) {
 
@@ -76690,8 +78096,6 @@ Autodesk.Viewing.Extensions.Measure.Snapper = function(viewer) {
                 this.drawLine(_geomEdge);
                 _geomHighlighted = SNAP_EDGE;
             }
-
-            _viewportIndex2d = gc.vpIdLine;
 
             _isSnapped = true;
         }
@@ -77206,7 +78610,7 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
         _isActive = true;
 
         // Display the HUD on startup but only if "don't show me again" wasn't requested
-        if (!_bDontShowAgain_HelpHUD) {
+        if (viewerapi.getFirstPersonToolPopup() && !_bDontShowAgain_HelpHUD) {
             showHelpHUD();
         }
 
@@ -77567,7 +78971,7 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
     this.update = function()
     {
 
-        if (!_isActive)
+        if (!_isActive || !_navapi.isActionEnabled('walk'))
             return false;
 
         var delta = _clock.getDelta();//returns delta in unit seconds
@@ -77811,7 +79215,8 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
                 : "Move the cursor to change the view orientation")
         };
 
-        showHUD(messageSpecs, 0);
+        var closeCallback = function() {}; // dummy callback function so that the 'X' is shown
+        showHUD(messageSpecs, 0, closeCallback);
     };
 
 
@@ -77827,8 +79232,10 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
             "checkboxChecked"       : _bDontShowAgain_HelpHUD
         };
 
-        showHUD(messageSpecs, 0, null, null, function(e) {
+        var closeCallback = function() {}; // dummy callback function so that the 'X' is shown
+        showHUD(messageSpecs, 0, closeCallback, null, function(e) {
             _bDontShowAgain_HelpHUD = e.target.checked;
+            viewerapi.setFirstPersonToolPopup(!e.target.checked);
         });
     };
 
@@ -77846,7 +79253,8 @@ Autodesk.Viewing.Extensions.FirstPerson.FirstPersonTool = function ( viewerapi )
     };
 };
 
-})();;
+})();
+;
 (function() {
 
 //
@@ -79428,6 +80836,19 @@ Autodesk.Viewing.Extensions.FusionOrbit.FusionOrbitTool = function() {
     var _updateCamera = function() {
 
         // if (_mouse.dx === 0 && _mouse.dy === 0) return;
+        switch (_mouse.mode) {
+            case _orbitModes.ROLL:
+                if (!_this.navapi.isActionEnabled('roll')) {
+                    return;
+                }
+                break;
+            case _orbitModes.HORIZONTAL:
+            case _orbitModes.VERTICAL:
+                if (!_this.navapi.isActionEnabled('orbit')) {
+                    return;
+                }
+                break;
+        }
 
         var eyeVec = _camera.target.clone().sub(_camera.position).normalize();
         var rightVec = eyeVec.clone().cross(_camera.up).normalize();
@@ -79988,11 +81409,12 @@ AutodeskNamespace('Autodesk.Viewing.Private.Collaboration');
         this.panel.container.appendChild(this.panel.body);
         var text1 = Autodesk.Viewing.i18n.translate("Go to this link");
         var text2 = Autodesk.Viewing.i18n.translate("Scan the QR code with your device");
+        var text3 = Autodesk.Viewing.i18n.translate("or");
         this.panel.body.innerHTML = [
-            '<p>' + text1 + '</p>',
+            '<p data-i18n="' + text1 + '">' + text1 + '</p>',
             '<p><a class="url" target="_blank" href="#">Link</a></p>',
-            '<p>or</p>',
-            '<p>' + text2 + '</p>',
+            '<p data-i18n="'+ text3 +'">' + text3 + '</p>',
+            '<p data-i18n="' + text2 + '">' + text2 + '</p>',
             '<img class="qr-img" src="">',
         ].join("\n");
         this.panel.link = this.panel.container.querySelector(".url");
@@ -80062,6 +81484,13 @@ AutodeskNamespace('Autodesk.Viewing.Private.Collaboration');
             return;
         }
 
+        var scope = this;
+        avp.loadDependency("lmv_io", "socket.io-1.3.5.js", function(){
+            scope.connectAux(cb);
+        });
+    };
+
+    ave.RemoteControl.prototype.connectAux = function(cb) {
         var scope = this;
         var viewer = this.viewer;
         scope.client.addEventListener("connectSucceeded", function(e) {
@@ -81239,7 +82668,7 @@ Autodesk.Viewing.Extensions.Section.SectionTool = function(viewer, options)
 
                     var mdata = { mesh: vbb.toMesh() };
 
-                    BufferGeometryUtils.meshToGeometry(mdata);
+                    avp.BufferGeometryUtils.meshToGeometry(mdata);
 
                     var bg2d = mdata.geometry;
                     bg2d.streamingDraw = true;
@@ -85708,32 +87137,33 @@ function init_TransformGizmos() {
 	}
 
 }(this));
-;AutodeskNamespace('Autodesk.Viewing');
-AutodeskNamespace('Autodesk.Viewing.Private');
-
-var auth = null;
-var VIEWING_URL;
-var ACM_SESSION_URL;
-var OSS_URL;
-var PROTEIN_ROOT = null;
-var PRISM_ROOT = null;
-var LOCALIZATION_REL_PATH = "";
-var LMV_VIEWER_VERSION = "2.2";  // Gets replaced with content from deployment/package.json
-var LMV_VIEWER_PATCH = "29";// Gets replaced with build number from TeamCity
-var LMV_BUILD_TYPE = "Production"; // Either Development, Staging or Production
-var LMV_RESOURCE_VERSION = null;
-var LMV_RESOURCE_ROOT = "";
-
-function stderr() {
-    if (ENABLE_TRACE) {
-        console.log.apply(console, arguments);
-    }
-}
-
-
+;
 (function() {
 
-    var avp = Autodesk.Viewing.Private;
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+    var global = av.getGlobal();
+
+    global.auth = null;
+    global.VIEWING_URL = undefined;
+    global.ACM_SESSION_URL = undefined;
+    global.OSS_URL = undefined;
+    global.PROTEIN_ROOT = null;
+    global.PRISM_ROOT = null;
+    global.LOCALIZATION_REL_PATH = "";
+    global.LMV_VIEWER_VERSION = "2.5";  // Gets replaced with content from deployment/package.json
+    global.LMV_VIEWER_PATCH = "35";// Gets replaced with build number from TeamCity
+    global.LMV_BUILD_TYPE = "Production"; // Either Development, Staging or Production
+    global.LMV_RESOURCE_VERSION = null;
+    global.LMV_RESOURCE_ROOT = "";
+    global.LMV_THIRD_PARTY_COOKIE = undefined;
+
+    global.stderr = function() {
+        if (ENABLE_TRACE) {
+            console.log.apply(console, arguments);
+        }
+    };
 
     avp.env = null;
     avp.logger = null;
@@ -85741,6 +87171,7 @@ function stderr() {
     avp.docItemId = null;
 
     avp.token = {
+        accessToken : null,
         getAccessToken : null,
         tokenRefreshInterval : null
     };
@@ -85751,7 +87182,7 @@ function stderr() {
     avp.GPU_MEMORY_LIMIT = 256 * 1024 * 1024;
     avp.GPU_OBJECT_LIMIT = 10000;
 
-    var isWeakDevice = (isAndroidDevice() || isIOSDevice());
+    var isWeakDevice = (av.isMobileDevice());
     if (!isWeakDevice) {
         // This is the fragments count that will persistent in memory all the time
         // even memory is low and some of geometry will be deleted.
@@ -85835,6 +87266,13 @@ function stderr() {
         stg: "https://developer-stg.api.autodesk.com",
         prod: "https://developer.api.autodesk.com"
     };
+
+    // The apps on https://developer.autodesk.com had to be created under an ADS account... Ask for brozp
+    var AdpConfigs = {
+        dev: { CLIENT_ID: 'lmv-dev', CLIENT_KEY: 'vcmQyLIGxGeqGRPYDoVQeeoRUAFgibZp', ENDPOINT: 'https://ase-dev.autodesk.com' },
+        stg: { CLIENT_ID: 'lmv-stag', CLIENT_KEY: 'kjemi1rwAgsqIqyvDUtc9etPD6MsAzbV', ENDPOINT: 'https://ase-stg.autodesk.com' },
+        prod: { CLIENT_ID: 'lmv-prod', CLIENT_KEY: 'iaoUM2CRGydfn703yfPq4MAogZi8I5u4', ENDPOINT: 'https://ase.autodesk.com' }
+    }
 
     var APIS = {
         ACM : '/oss-ext/v1/acmsessions',
@@ -86095,6 +87533,42 @@ function stderr() {
 
     };
 
+    // Refresh the token in request header, in case that the third party cookie is disabled
+    avp.refreshRequestHeader = function(token) {
+
+        av.HTTP_REQUEST_HEADERS["Authorization"] = "Bearer " + token;
+
+    };
+
+    avp.refreshToken = function(token, onSuccess, onError) {
+
+        // Store the token, it will be used when third-party cookies are disabled
+        avp.token.accessToken = token;
+
+        // At the beginning, try to store the token in cookie
+        if (LMV_THIRD_PARTY_COOKIE === undefined) {
+            avp.refreshCookie(token, onSuccess, onError);
+        } else {
+            doTokenRefresh();
+        }
+
+        // if third-party cookies are enabled in browser, then put token in cookie
+        // if not, put token into request header
+        function doTokenRefresh() {
+
+            if (LMV_THIRD_PARTY_COOKIE) {
+
+                avp.refreshCookie(token, onSuccess, onError);
+
+            } else {
+
+                avp.refreshRequestHeader(token);
+                onSuccess();
+
+            }
+        }
+
+    };
 
     avp.initializeAuth = function (onSuccessCallback, options) {
 
@@ -86118,7 +87592,7 @@ function stderr() {
         if (options && options.getAccessToken) {
             function onGetAccessToken(token /* access token value. */, expire /* expire time, in seconds. */) {
                 accessToken = token;
-                avp.refreshCookie(accessToken, avp.token.tokenRefreshInterval ? null /* If this is a token refresh call,
+                avp.refreshToken(accessToken, avp.token.tokenRefreshInterval ? null /* If this is a token refresh call,
                  don't invoke the onSuccessCallback which will loadDocument and so on. */
                     : onSuccessCallback);
                 var interval = expire - 60; // Refresh 1 minute before token expire.
@@ -86136,19 +87610,20 @@ function stderr() {
 
             //Backwards compatibility with the old synchronous API
             if (typeof accessToken == "string" && accessToken) {
-                avp.refreshCookie(accessToken, onSuccessCallback);
+                avp.refreshToken(accessToken, onSuccessCallback);
             }
 
         } else if (options && options.accessToken) {
             accessToken = options.accessToken;
             avp.refreshCookie(accessToken, onSuccessCallback);
+            avp.refreshToken(accessToken);
         } else {
             accessToken = avp.getParameterByName("accessToken");
             if (!accessToken) {
-                accessToken = "QYNrnn1T44Jy3wWMKJaT6RHmMgg=";
+                accessToken = "9AMaRKBoPCIBy61JmQ8OLLLyRblS";
                 console.log("Warning : no access token is provided. Use built in token : " + accessToken);
             }
-            avp.refreshCookie(accessToken, onSuccessCallback);
+            avp.refreshToken(accessToken, onSuccessCallback);
         }
 
         return auth;
@@ -86160,8 +87635,54 @@ function stderr() {
             endpoint: avp.EnvironmentConfigurations[avp.env].LMV.LOGGING,
             eventCallback: options ? options.eventCallback : undefined
         };
-
         avp.logger = new avp.Logger(loggerConfig);
+
+        if (options && options.hasOwnProperty('useADP') && options.useADP == false) {
+            return;
+        }
+
+        // Load Autodesk Data Platform client
+        // (and if we're in RequireJS environment, use its APIs to avoid problems)
+        var url = 'https://ase-cdn.autodesk.com/adp/v1.0.1/js/adp-web-analytics-sdk.min.js';
+        var callback = function() {
+            if (typeof (Adp) === 'undefined') {
+                stderr('Autodesk Data Platform SDK not found');
+                return;
+            }
+
+            var adpConfig;
+            switch (LMV_BUILD_TYPE) {
+                case 'Production': adpConfig = AdpConfigs['prod']; break;
+                case 'Staging': adpConfig = AdpConfigs['stg']; break;
+                default: adpConfig = AdpConfigs['dev']; break;
+            }
+            var facets = {
+                product: {
+                    name: 'LMV',
+                    line_name: 'LMV',
+                    key: adpConfig.CLIENT_ID,
+                    id: adpConfig.CLIENT_KEY,
+                    build_id: LMV_VIEWER_VERSION + '.' + LMV_VIEWER_PATCH,
+                    build_tag: avp.env
+                }
+            };
+            var config = {
+                server: adpConfig.ENDPOINT,
+                enable_geo_data: false,
+                enable_browser_data: true,
+                enable_session_messages: true
+            };
+            avp.logger.adp = new Adp(facets, config);
+        };
+
+        if (typeof requirejs !== 'undefined') {
+            requirejs([url], function(adp) {
+                window['Adp'] = adp;
+                callback();
+            });
+        } else {
+            avp.loadDependency('Adp', url, callback);
+        }
     };
 
     avp.initializeProtein = function () {
@@ -86283,11 +87804,10 @@ function stderr() {
 
         LOCALIZATION_REL_PATH = "res/locales/" + language + "/";
         Autodesk.Viewing.i18n.init(options, function (t) {
-            Autodesk.Viewing.i18n.localize();
+            Autodesk.Viewing.i18n.clearDebugLocString(); //Calls localize as well
             if (callback) {
                 callback();
             }
-            ;
         });
     };
 
@@ -86359,12 +87879,12 @@ function stderr() {
 
     /**
      * Loads a script (e.g. an external library JS) and calls the callback once loaded.
-     * Used for delayed loading of required libraries
+     * Used for delayed loading of required libraries. Accepts both relative and absolute URLs.
      */
     avp.loadDependency = function(libNamespace, libName, callback) {
         if (typeof window[libNamespace] == "undefined") {
             var s = document.createElement("SCRIPT");
-            s.src = avp.getResourceUrl(libName);
+            s.src = libName.indexOf('://') > 0 ? libName : avp.getResourceUrl(libName);
             document.head.appendChild(s);
             if (callback)
                 s.onload = callback;
@@ -86395,6 +87915,7 @@ function stderr() {
      *                                               onSuccess function, and the token expire time (in seconds) being the second input parameter for the
      *                                               function. Viewer relies on both getAccessToken and the expire time to automatically renew token, so
      *                                               it is critical that getAccessToken must be implemented as described here.
+     *  @param {boolean} [options.useADP] - whether to report analytics to ADP. True by default.
      *
      *  @param {string} [options.accessToken] - An access token
      *  @param {string} [options.webGLHelpLink] - A link to a help page on webGL if it's disabled.

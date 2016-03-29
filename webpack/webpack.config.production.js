@@ -48,7 +48,7 @@ module.exports = {
       viewer3D: '/libs/lmv/viewer3D.min.js',
       template: './layout/index.ejs',
       bundle: '/js/bundle.min.js',
-      title: 'Viewer',
+      title: 'LMV React',
       minify: {
         removeComments: true,
         collapseWhitespace: true,

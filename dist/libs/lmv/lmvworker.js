@@ -1,18 +1,11 @@
 
-//This file is the first one when creating minified build
-//and is used to set certain flags that are needed
-//for the concatenated build.
-
-var IS_CONCAT_BUILD = true;
-
-/** @define {string} */
-var BUILD_LMV_WORKER_URL = "lmvworker.js";
-var LMV_WORKER_URL = BUILD_LMV_WORKER_URL;
-
-var ENABLE_DEBUG = false;
-var ENABLE_TRACE = false;
-var ENABLE_INLINE_WORKER = true;
-
+function getGlobal() {
+    return (typeof window !== "undefined" && window !== null)
+            ? window
+            : (typeof self !== "undefined" && self !== null)
+                ? self
+                : this;
+}
 
 /**
  * Create namespace
@@ -20,7 +13,7 @@ var ENABLE_INLINE_WORKER = true;
  * @return {Object} namespace
  */
 var AutodeskNamespace = function (s) {
-    var ns = typeof window !== "undefined" && window !== null ? window : self;
+    var ns = getGlobal();
 
     var parts = s.split('.');
     for (var i = 0; i < parts.length; ++i) {
@@ -40,7 +33,30 @@ AutodeskNamespace("Autodesk.Viewing.Shaders");
 
 AutodeskNamespace('Autodesk.Viewing.UI');
 
-var _isIE11 = !!navigator.userAgent.match(/Trident\/7\./);
+AutodeskNamespace('Autodesk.LMVTK');
+
+Autodesk.Viewing.getGlobal = getGlobal;
+
+(typeof module !== "undefined") && (module.exports = { AutodeskNamespace: AutodeskNamespace,
+                                                       Autodesk: Autodesk });
+
+
+function getGlobal() {
+    return (typeof window !== "undefined" && window !== null)
+            ? window
+            : (typeof self !== "undefined" && self !== null)
+                ? self
+                : GLOBAL;
+}
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
+av.getGlobal = getGlobal;
+
+var isBrowser = av.isBrowser = (typeof navigator !== "undefined");
+
+var _isIE11 = av.isIE11 = isBrowser && !!navigator.userAgent.match(/Trident\/7\./);
 
 // fix IE events
 if(typeof window !== "undefined" && _isIE11){
@@ -123,7 +139,14 @@ function exitFullscreen() {
 
 // Determines if the browser is in full screen
 function inFullscreen(){
-return (document.fullscreenEnabled || document.mozFullScreenElement || document.webkitIsFullScreen || document.msFullscreenElement) ? true : false
+
+    // Special case for Ms-Edge that has webkitIsFullScreen with correct value
+    // and fullscreenEnabled with wrong value (thanks MS)
+    if ("webkitIsFullScreen" in document) return document.webkitIsFullScreen;
+    return !!(document.mozFullScreenElement ||
+        document.msFullscreenElement ||
+        document.fullscreenEnabled || // Check last-ish because it is true in Ms-Edge
+        document.querySelector(".viewer-fill-browser")); // Fallback for iPad
 }
 
 function fullscreenElement() {
@@ -155,17 +178,51 @@ function isTouchDevice() {
     return ('ontouchstart' in window);
 }
 
-function isIOSDevice() {
+av.isIOSDevice = function() {
+    if (!isBrowser) return false;
     return /ip(ad|hone|od)/.test(navigator.userAgent.toLowerCase());
-}
+};
 
-function isAndroidDevice() {
+av.isAndroidDevice = function() {
+    if (!isBrowser) return false;
     return (navigator.userAgent.toLowerCase().indexOf('android') !== -1);
+};
+
+av.isMobileDevice = function() {
+    if (!isBrowser) return false;
+    return av.isIOSDevice() || av.isAndroidDevice();
+};
+
+function isSafari() {
+    if (!isBrowser) return false;
+    var _ua = navigator.userAgent.toLowerCase();
+    return (_ua.indexOf("safari") !== -1) && (_ua.indexOf("chrome") === -1);
 }
 
-function isMobileDevice() {
-    return isIOSDevice() || isAndroidDevice();
-}
+var rescueFromPolymer = (function() {
+
+    if (isSafari()) {
+
+        return function(object) {
+
+            if (!window.Polymer)
+                return object;
+
+            for (var p in object) {
+                if (p.indexOf("__impl") !== -1) {
+                    return object[p];
+                }
+            }
+            return object;
+        };
+
+    } else {
+
+        return function(o) { return o; };
+
+    }
+
+})();
 
 /**
  * Detects if WebGL is enabled.
@@ -185,6 +242,7 @@ function detectWebGL()
         for (var i = 0; i < 4; i++) {
             try {
                 context = canvas.getContext(names[i]);
+                context = rescueFromPolymer(context);
                 if (context && typeof context.getParameter === "function") {
                     // WebGL is enabled.
                     //
@@ -216,10 +274,1124 @@ function touchStartToClick(e) {
 //Safari doesn't have the Performance object
 //We only need the now() function, so that's easy to emulate.
 (function() {
-    var global = typeof window !== "undefined" && window !== null ? window : self;
+    var global = getGlobal();
     if (!global.performance)
         global.performance = Date;
 })();
+
+
+
+//This file is the first one when creating minified build
+//and is used to set certain flags that are needed
+//for the concatenated build.
+
+var av = Autodesk.Viewing;
+
+var global = av.getGlobal();
+
+global.IS_CONCAT_BUILD = true;
+
+/** @define {string} */
+global.BUILD_LMV_WORKER_URL = "lmvworker.js";
+global.LMV_WORKER_URL = global.BUILD_LMV_WORKER_URL;
+
+global.ENABLE_DEBUG = false;
+global.ENABLE_TRACE = false;
+global.ENABLE_INLINE_WORKER = true;
+
+/**
+ * @author mrdoob / http://mrdoob.com/
+ * @author *kile / http://kile.stravaganza.org/
+ * @author philogb / http://blog.thejit.org/
+ * @author mikael emtinger / http://gomo.se/
+ * @author egraether / http://egraether.com/
+ * @author WestLangley / http://github.com/WestLangley
+ */
+/* Pruned version of THREE.Vector3, for use in the LMV web worker */
+
+
+LmvVector3 = function ( x, y, z ) {
+
+	this.x = x || 0;
+	this.y = y || 0;
+	this.z = z || 0;
+
+};
+
+LmvVector3.prototype = {
+
+	constructor: LmvVector3,
+
+	set: function ( x, y, z ) {
+
+		this.x = x;
+		this.y = y;
+		this.z = z;
+
+		return this;
+
+	},
+
+	setX: function ( x ) {
+
+		this.x = x;
+
+		return this;
+
+	},
+
+	setY: function ( y ) {
+
+		this.y = y;
+
+		return this;
+
+	},
+
+	setZ: function ( z ) {
+
+		this.z = z;
+
+		return this;
+
+	},
+
+	setComponent: function ( index, value ) {
+
+		switch ( index ) {
+
+			case 0: this.x = value; break;
+			case 1: this.y = value; break;
+			case 2: this.z = value; break;
+			default: throw new Error( 'index is out of range: ' + index );
+
+		}
+
+	},
+
+	getComponent: function ( index ) {
+
+		switch ( index ) {
+
+			case 0: return this.x;
+			case 1: return this.y;
+			case 2: return this.z;
+			default: throw new Error( 'index is out of range: ' + index );
+
+		}
+
+	},
+
+	clone: function () {
+
+		return new this.constructor( this.x, this.y, this.z );
+
+	},
+
+	copy: function ( v ) {
+
+		this.x = v.x;
+		this.y = v.y;
+		this.z = v.z;
+
+		return this;
+
+	},
+
+	add: function ( v, w ) {
+
+		if ( w !== undefined ) {
+
+			console.warn( 'THREE.Vector3: .add() now only accepts one argument. Use .addVectors( a, b ) instead.' );
+			return this.addVectors( v, w );
+
+		}
+
+		this.x += v.x;
+		this.y += v.y;
+		this.z += v.z;
+
+		return this;
+
+	},
+
+	addScalar: function ( s ) {
+
+		this.x += s;
+		this.y += s;
+		this.z += s;
+
+		return this;
+
+	},
+
+	addVectors: function ( a, b ) {
+
+		this.x = a.x + b.x;
+		this.y = a.y + b.y;
+		this.z = a.z + b.z;
+
+		return this;
+
+	},
+
+	addScaledVector: function ( v, s ) {
+
+		this.x += v.x * s;
+		this.y += v.y * s;
+		this.z += v.z * s;
+
+		return this;
+
+	},
+
+	sub: function ( v, w ) {
+
+		if ( w !== undefined ) {
+
+			console.warn( 'THREE.Vector3: .sub() now only accepts one argument. Use .subVectors( a, b ) instead.' );
+			return this.subVectors( v, w );
+
+		}
+
+		this.x -= v.x;
+		this.y -= v.y;
+		this.z -= v.z;
+
+		return this;
+
+	},
+
+	subScalar: function ( s ) {
+
+		this.x -= s;
+		this.y -= s;
+		this.z -= s;
+
+		return this;
+
+	},
+
+	subVectors: function ( a, b ) {
+
+		this.x = a.x - b.x;
+		this.y = a.y - b.y;
+		this.z = a.z - b.z;
+
+		return this;
+
+	},
+
+	multiply: function ( v, w ) {
+
+		if ( w !== undefined ) {
+
+			console.warn( 'THREE.Vector3: .multiply() now only accepts one argument. Use .multiplyVectors( a, b ) instead.' );
+			return this.multiplyVectors( v, w );
+
+		}
+
+		this.x *= v.x;
+		this.y *= v.y;
+		this.z *= v.z;
+
+		return this;
+
+	},
+
+	multiplyScalar: function ( scalar ) {
+
+		this.x *= scalar;
+		this.y *= scalar;
+		this.z *= scalar;
+
+		return this;
+
+	},
+
+	multiplyVectors: function ( a, b ) {
+
+		this.x = a.x * b.x;
+		this.y = a.y * b.y;
+		this.z = a.z * b.z;
+
+		return this;
+
+	},
+
+	applyMatrix3: function ( m ) {
+
+		var x = this.x;
+		var y = this.y;
+		var z = this.z;
+
+		var e = m.elements;
+
+		this.x = e[ 0 ] * x + e[ 3 ] * y + e[ 6 ] * z;
+		this.y = e[ 1 ] * x + e[ 4 ] * y + e[ 7 ] * z;
+		this.z = e[ 2 ] * x + e[ 5 ] * y + e[ 8 ] * z;
+
+		return this;
+
+	},
+
+	applyMatrix4: function ( m ) {
+
+		// input: THREE.Matrix4 affine matrix
+
+		var x = this.x, y = this.y, z = this.z;
+
+		var e = m.elements;
+
+		this.x = e[ 0 ] * x + e[ 4 ] * y + e[ 8 ]  * z + e[ 12 ];
+		this.y = e[ 1 ] * x + e[ 5 ] * y + e[ 9 ]  * z + e[ 13 ];
+		this.z = e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z + e[ 14 ];
+
+		return this;
+
+	},
+
+	applyProjection: function ( m ) {
+
+		// input: THREE.Matrix4 projection matrix
+
+		var x = this.x, y = this.y, z = this.z;
+
+		var e = m.elements;
+		var d = 1 / ( e[ 3 ] * x + e[ 7 ] * y + e[ 11 ] * z + e[ 15 ] ); // perspective divide
+
+		this.x = ( e[ 0 ] * x + e[ 4 ] * y + e[ 8 ]  * z + e[ 12 ] ) * d;
+		this.y = ( e[ 1 ] * x + e[ 5 ] * y + e[ 9 ]  * z + e[ 13 ] ) * d;
+		this.z = ( e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z + e[ 14 ] ) * d;
+
+		return this;
+
+	},
+
+	applyQuaternion: function ( q ) {
+
+		var x = this.x;
+		var y = this.y;
+		var z = this.z;
+
+		var qx = q.x;
+		var qy = q.y;
+		var qz = q.z;
+		var qw = q.w;
+
+		// calculate quat * vector
+
+		var ix =  qw * x + qy * z - qz * y;
+		var iy =  qw * y + qz * x - qx * z;
+		var iz =  qw * z + qx * y - qy * x;
+		var iw = - qx * x - qy * y - qz * z;
+
+		// calculate result * inverse quat
+
+		this.x = ix * qw + iw * - qx + iy * - qz - iz * - qy;
+		this.y = iy * qw + iw * - qy + iz * - qx - ix * - qz;
+		this.z = iz * qw + iw * - qz + ix * - qy - iy * - qx;
+
+		return this;
+
+	},
+
+	transformDirection: function ( m ) {
+
+		// input: THREE.Matrix4 affine matrix
+		// vector interpreted as a direction
+
+		var x = this.x, y = this.y, z = this.z;
+
+		var e = m.elements;
+
+		this.x = e[ 0 ] * x + e[ 4 ] * y + e[ 8 ]  * z;
+		this.y = e[ 1 ] * x + e[ 5 ] * y + e[ 9 ]  * z;
+		this.z = e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z;
+
+		this.normalize();
+
+		return this;
+
+	},
+
+	divide: function ( v ) {
+
+		this.x /= v.x;
+		this.y /= v.y;
+		this.z /= v.z;
+
+		return this;
+
+	},
+
+	divideScalar: function ( scalar ) {
+
+		if ( scalar !== 0 ) {
+
+			var invScalar = 1 / scalar;
+
+			this.x *= invScalar;
+			this.y *= invScalar;
+			this.z *= invScalar;
+
+		} else {
+
+			this.x = 0;
+			this.y = 0;
+			this.z = 0;
+
+		}
+
+		return this;
+
+	},
+
+	min: function ( v ) {
+
+		if ( this.x > v.x ) {
+
+			this.x = v.x;
+
+		}
+
+		if ( this.y > v.y ) {
+
+			this.y = v.y;
+
+		}
+
+		if ( this.z > v.z ) {
+
+			this.z = v.z;
+
+		}
+
+		return this;
+
+	},
+
+	max: function ( v ) {
+
+		if ( this.x < v.x ) {
+
+			this.x = v.x;
+
+		}
+
+		if ( this.y < v.y ) {
+
+			this.y = v.y;
+
+		}
+
+		if ( this.z < v.z ) {
+
+			this.z = v.z;
+
+		}
+
+		return this;
+
+	},
+
+	clamp: function ( min, max ) {
+
+		// This function assumes min < max, if this assumption isn't true it will not operate correctly
+
+		if ( this.x < min.x ) {
+
+			this.x = min.x;
+
+		} else if ( this.x > max.x ) {
+
+			this.x = max.x;
+
+		}
+
+		if ( this.y < min.y ) {
+
+			this.y = min.y;
+
+		} else if ( this.y > max.y ) {
+
+			this.y = max.y;
+
+		}
+
+		if ( this.z < min.z ) {
+
+			this.z = min.z;
+
+		} else if ( this.z > max.z ) {
+
+			this.z = max.z;
+
+		}
+
+		return this;
+
+	},
+
+	clampScalar: function () {
+
+		var min, max;
+
+		return function clampScalar( minVal, maxVal ) {
+
+			if ( min === undefined ) {
+
+				min = new LmvVector3();
+				max = new LmvVector3();
+
+			}
+
+			min.set( minVal, minVal, minVal );
+			max.set( maxVal, maxVal, maxVal );
+
+			return this.clamp( min, max );
+
+		};
+
+	}(),
+
+	floor: function () {
+
+		this.x = Math.floor( this.x );
+		this.y = Math.floor( this.y );
+		this.z = Math.floor( this.z );
+
+		return this;
+
+	},
+
+	ceil: function () {
+
+		this.x = Math.ceil( this.x );
+		this.y = Math.ceil( this.y );
+		this.z = Math.ceil( this.z );
+
+		return this;
+
+	},
+
+	round: function () {
+
+		this.x = Math.round( this.x );
+		this.y = Math.round( this.y );
+		this.z = Math.round( this.z );
+
+		return this;
+
+	},
+
+	roundToZero: function () {
+
+		this.x = ( this.x < 0 ) ? Math.ceil( this.x ) : Math.floor( this.x );
+		this.y = ( this.y < 0 ) ? Math.ceil( this.y ) : Math.floor( this.y );
+		this.z = ( this.z < 0 ) ? Math.ceil( this.z ) : Math.floor( this.z );
+
+		return this;
+
+	},
+
+	negate: function () {
+
+		this.x = - this.x;
+		this.y = - this.y;
+		this.z = - this.z;
+
+		return this;
+
+	},
+
+	dot: function ( v ) {
+
+		return this.x * v.x + this.y * v.y + this.z * v.z;
+
+	},
+
+	lengthSq: function () {
+
+		return this.x * this.x + this.y * this.y + this.z * this.z;
+
+	},
+
+	length: function () {
+
+		return Math.sqrt( this.x * this.x + this.y * this.y + this.z * this.z );
+
+	},
+
+	lengthManhattan: function () {
+
+		return Math.abs( this.x ) + Math.abs( this.y ) + Math.abs( this.z );
+
+	},
+
+	normalize: function () {
+
+		return this.divideScalar( this.length() );
+
+	},
+
+	setLength: function ( l ) {
+
+		var oldLength = this.length();
+
+		if ( oldLength !== 0 && l !== oldLength  ) {
+
+			this.multiplyScalar( l / oldLength );
+
+		}
+
+		return this;
+
+	},
+
+	lerp: function ( v, alpha ) {
+
+		this.x += ( v.x - this.x ) * alpha;
+		this.y += ( v.y - this.y ) * alpha;
+		this.z += ( v.z - this.z ) * alpha;
+
+		return this;
+
+	},
+
+	lerpVectors: function ( v1, v2, alpha ) {
+
+		this.subVectors( v2, v1 ).multiplyScalar( alpha ).add( v1 );
+
+		return this;
+
+	},
+
+	cross: function ( v, w ) {
+
+		if ( w !== undefined ) {
+
+			console.warn( 'THREE.Vector3: .cross() now only accepts one argument. Use .crossVectors( a, b ) instead.' );
+			return this.crossVectors( v, w );
+
+		}
+
+		var x = this.x, y = this.y, z = this.z;
+
+		this.x = y * v.z - z * v.y;
+		this.y = z * v.x - x * v.z;
+		this.z = x * v.y - y * v.x;
+
+		return this;
+
+	},
+
+	crossVectors: function ( a, b ) {
+
+		var ax = a.x, ay = a.y, az = a.z;
+		var bx = b.x, by = b.y, bz = b.z;
+
+		this.x = ay * bz - az * by;
+		this.y = az * bx - ax * bz;
+		this.z = ax * by - ay * bx;
+
+		return this;
+
+	},
+
+	projectOnVector: function () {
+
+		var v1, dot;
+
+		return function projectOnVector( vector ) {
+
+			if ( v1 === undefined ) v1 = new LmvVector3();
+
+			v1.copy( vector ).normalize();
+
+			dot = this.dot( v1 );
+
+			return this.copy( v1 ).multiplyScalar( dot );
+
+		};
+
+	}(),
+
+	projectOnPlane: function () {
+
+		var v1;
+
+		return function projectOnPlane( planeNormal ) {
+
+			if ( v1 === undefined ) v1 = new LmvVector3();
+
+			v1.copy( this ).projectOnVector( planeNormal );
+
+			return this.sub( v1 );
+
+		}
+
+	}(),
+
+	reflect: function () {
+
+		// reflect incident vector off plane orthogonal to normal
+		// normal is assumed to have unit length
+
+		var v1;
+
+		return function reflect( normal ) {
+
+			if ( v1 === undefined ) v1 = new LmvVector3();
+
+			return this.sub( v1.copy( normal ).multiplyScalar( 2 * this.dot( normal ) ) );
+
+		}
+
+	}(),
+
+	distanceTo: function ( v ) {
+
+		return Math.sqrt( this.distanceToSquared( v ) );
+
+	},
+
+	distanceToSquared: function ( v ) {
+
+		var dx = this.x - v.x;
+		var dy = this.y - v.y;
+		var dz = this.z - v.z;
+
+		return dx * dx + dy * dy + dz * dz;
+
+	},
+
+	setEulerFromRotationMatrix: function ( m, order ) {
+
+		console.error( 'THREE.Vector3: .setEulerFromRotationMatrix() has been removed. Use Euler.setFromRotationMatrix() instead.' );
+
+	},
+
+	setEulerFromQuaternion: function ( q, order ) {
+
+		console.error( 'THREE.Vector3: .setEulerFromQuaternion() has been removed. Use Euler.setFromQuaternion() instead.' );
+
+	},
+
+	getPositionFromMatrix: function ( m ) {
+
+		console.warn( 'THREE.Vector3: .getPositionFromMatrix() has been renamed to .setFromMatrixPosition().' );
+
+		return this.setFromMatrixPosition( m );
+
+	},
+
+	getScaleFromMatrix: function ( m ) {
+
+		console.warn( 'THREE.Vector3: .getScaleFromMatrix() has been renamed to .setFromMatrixScale().' );
+
+		return this.setFromMatrixScale( m );
+
+	},
+
+	getColumnFromMatrix: function ( index, matrix ) {
+
+		console.warn( 'THREE.Vector3: .getColumnFromMatrix() has been renamed to .setFromMatrixColumn().' );
+
+		return this.setFromMatrixColumn( index, matrix );
+
+	},
+
+	setFromMatrixPosition: function ( m ) {
+
+		this.x = m.elements[ 12 ];
+		this.y = m.elements[ 13 ];
+		this.z = m.elements[ 14 ];
+
+		return this;
+
+	},
+
+	setFromMatrixScale: function ( m ) {
+
+		var sx = this.set( m.elements[ 0 ], m.elements[ 1 ], m.elements[ 2 ] ).length();
+		var sy = this.set( m.elements[ 4 ], m.elements[ 5 ], m.elements[ 6 ] ).length();
+		var sz = this.set( m.elements[ 8 ], m.elements[ 9 ], m.elements[ 10 ] ).length();
+
+		this.x = sx;
+		this.y = sy;
+		this.z = sz;
+
+		return this;
+
+	},
+
+	setFromMatrixColumn: function ( index, matrix ) {
+
+		var offset = index * 4;
+
+		var me = matrix.elements;
+
+		this.x = me[ offset ];
+		this.y = me[ offset + 1 ];
+		this.z = me[ offset + 2 ];
+
+		return this;
+
+	},
+
+	equals: function ( v ) {
+
+		return ( ( v.x === this.x ) && ( v.y === this.y ) && ( v.z === this.z ) );
+
+	},
+
+	fromArray: function ( array, offset ) {
+
+		if ( offset === undefined ) offset = 0;
+
+		this.x = array[ offset ];
+		this.y = array[ offset + 1 ];
+		this.z = array[ offset + 2 ];
+
+		return this;
+
+	},
+
+	toArray: function ( array, offset ) {
+
+		if ( array === undefined ) array = [];
+		if ( offset === undefined ) offset = 0;
+
+		array[ offset ] = this.x;
+		array[ offset + 1 ] = this.y;
+		array[ offset + 2 ] = this.z;
+
+		return array;
+
+	},
+
+	fromAttribute: function ( attribute, index, offset ) {
+
+		if ( offset === undefined ) offset = 0;
+
+		index = index * attribute.itemSize + offset;
+
+		this.x = attribute.array[ index ];
+		this.y = attribute.array[ index + 1 ];
+		this.z = attribute.array[ index + 2 ];
+
+		return this;
+
+	}
+
+};
+
+/**
+ * @author bhouston / http://exocortex.com
+ * @author WestLangley / http://github.com/WestLangley
+ */
+/* Pruned version of THREE.Box3, for use in the LMV web worker */
+
+
+var LmvBox3 = function ( min, max ) {
+
+	this.min = ( min !== undefined ) ? min : new LmvVector3( Infinity, Infinity, Infinity );
+	this.max = ( max !== undefined ) ? max : new LmvVector3( - Infinity, - Infinity, - Infinity );
+
+};
+
+LmvBox3.prototype = {
+
+	constructor: LmvBox3,
+
+	set: function ( min, max ) {
+
+		this.min.copy( min );
+		this.max.copy( max );
+
+		return this;
+
+	},
+
+	setFromPoints: function ( points ) {
+
+		this.makeEmpty();
+
+		for ( var i = 0, il = points.length; i < il; i ++ ) {
+
+			this.expandByPoint( points[ i ] );
+
+		}
+
+		return this;
+
+	},
+
+	setFromArray: function ( array, offset ) {
+
+		this.min.x = array[offset];
+		this.min.y = array[offset+1];
+		this.min.z = array[offset+2];
+
+		this.max.x = array[offset+3];
+		this.max.y = array[offset+4];
+		this.max.z = array[offset+5];
+
+		return this;
+
+	},
+
+	copyToArray: function (array, offset) {
+
+		array[offset]   = this.min.x;
+		array[offset+1] = this.min.y;
+		array[offset+2] = this.min.z;
+
+		array[offset+3] = this.max.x;
+		array[offset+4] = this.max.y;
+		array[offset+5] = this.max.z;
+
+	},
+
+	setFromCenterAndSize: function () {
+
+		var v1 = new LmvVector3();
+
+		return function ( center, size ) {
+
+			var halfSize = v1.copy( size ).multiplyScalar( 0.5 );
+
+			this.min.copy( center ).sub( halfSize );
+			this.max.copy( center ).add( halfSize );
+
+			return this;
+
+		};
+
+	}(),
+
+	clone: function () {
+
+		return new this.constructor().copy( this );
+
+	},
+
+	copy: function ( box ) {
+
+		this.min.copy( box.min );
+		this.max.copy( box.max );
+
+		return this;
+
+	},
+
+	makeEmpty: function () {
+
+		this.min.x = this.min.y = this.min.z = Infinity;
+		this.max.x = this.max.y = this.max.z = - Infinity;
+
+		return this;
+
+	},
+
+	empty: function () {
+
+		// this is a more robust check for empty than ( volume <= 0 ) because volume can get positive with two negative axes
+
+		return ( this.max.x < this.min.x ) || ( this.max.y < this.min.y ) || ( this.max.z < this.min.z );
+
+	},
+
+	center: function ( optionalTarget ) {
+
+		var result = optionalTarget || new LmvVector3();
+		return result.addVectors( this.min, this.max ).multiplyScalar( 0.5 );
+
+	},
+
+	size: function ( optionalTarget ) {
+
+		var result = optionalTarget || new LmvVector3();
+		return result.subVectors( this.max, this.min );
+
+	},
+
+	expandByPoint: function ( point ) {
+
+		this.min.min( point );
+		this.max.max( point );
+
+		return this;
+
+	},
+
+	expandByVector: function ( vector ) {
+
+		this.min.sub( vector );
+		this.max.add( vector );
+
+		return this;
+
+	},
+
+	expandByScalar: function ( scalar ) {
+
+		this.min.addScalar( - scalar );
+		this.max.addScalar( scalar );
+
+		return this;
+
+	},
+
+	containsPoint: function ( point ) {
+
+		if ( point.x < this.min.x || point.x > this.max.x ||
+		     point.y < this.min.y || point.y > this.max.y ||
+		     point.z < this.min.z || point.z > this.max.z ) {
+
+			return false;
+
+		}
+
+		return true;
+
+	},
+
+	containsBox: function ( box ) {
+
+		if ( ( this.min.x <= box.min.x ) && ( box.max.x <= this.max.x ) &&
+			 ( this.min.y <= box.min.y ) && ( box.max.y <= this.max.y ) &&
+			 ( this.min.z <= box.min.z ) && ( box.max.z <= this.max.z ) ) {
+
+			return true;
+
+		}
+
+		return false;
+
+	},
+
+	getParameter: function ( point, optionalTarget ) {
+
+		// This can potentially have a divide by zero if the box
+		// has a size dimension of 0.
+
+		var result = optionalTarget || new LmvVector3();
+
+		return result.set(
+			( point.x - this.min.x ) / ( this.max.x - this.min.x ),
+			( point.y - this.min.y ) / ( this.max.y - this.min.y ),
+			( point.z - this.min.z ) / ( this.max.z - this.min.z )
+		);
+
+	},
+
+	isIntersectionBox: function ( box ) {
+
+		// using 6 splitting planes to rule out intersections.
+
+		if ( box.max.x < this.min.x || box.min.x > this.max.x ||
+		     box.max.y < this.min.y || box.min.y > this.max.y ||
+		     box.max.z < this.min.z || box.min.z > this.max.z ) {
+
+			return false;
+
+		}
+
+		return true;
+
+	},
+
+	clampPoint: function ( point, optionalTarget ) {
+
+		var result = optionalTarget || new LmvVector3();
+		return result.copy( point ).clamp( this.min, this.max );
+
+	},
+
+	distanceToPoint: function () {
+
+		var v1 = new LmvVector3();
+
+		return function ( point ) {
+
+			var clampedPoint = v1.copy( point ).clamp( this.min, this.max );
+			return clampedPoint.sub( point ).length();
+
+		};
+
+	}(),
+
+	intersect: function ( box ) {
+
+		this.min.max( box.min );
+		this.max.min( box.max );
+
+		return this;
+
+	},
+
+	union: function ( box ) {
+
+		this.min.min( box.min );
+		this.max.max( box.max );
+
+		return this;
+
+	},
+
+	applyMatrix4: function () {
+
+		var points = [
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3(),
+			new LmvVector3()
+		];
+
+		return function ( matrix ) {
+
+			// NOTE: I am using a binary pattern to specify all 2^3 combinations below
+			points[ 0 ].set( this.min.x, this.min.y, this.min.z ).applyMatrix4( matrix ); // 000
+			points[ 1 ].set( this.min.x, this.min.y, this.max.z ).applyMatrix4( matrix ); // 001
+			points[ 2 ].set( this.min.x, this.max.y, this.min.z ).applyMatrix4( matrix ); // 010
+			points[ 3 ].set( this.min.x, this.max.y, this.max.z ).applyMatrix4( matrix ); // 011
+			points[ 4 ].set( this.max.x, this.min.y, this.min.z ).applyMatrix4( matrix ); // 100
+			points[ 5 ].set( this.max.x, this.min.y, this.max.z ).applyMatrix4( matrix ); // 101
+			points[ 6 ].set( this.max.x, this.max.y, this.min.z ).applyMatrix4( matrix ); // 110
+			points[ 7 ].set( this.max.x, this.max.y, this.max.z ).applyMatrix4( matrix );  // 111
+
+			this.makeEmpty();
+			this.setFromPoints( points );
+
+			return this;
+
+		};
+
+	}(),
+
+	translate: function ( offset ) {
+
+		this.min.add( offset );
+		this.max.add( offset );
+
+		return this;
+
+	},
+
+	equals: function ( box ) {
+
+		return box.min.equals( this.min ) && box.max.equals( this.max );
+
+	}
+
+};
+
 /**
  * @author mrdoob / http://mrdoob.com/
  * @author supereggbert / http://www.paulbrunt.co.uk/
@@ -1019,21 +2191,90 @@ U.prototype.k=function(){var b=this.input,d,a;d=this.q.k();this.a=this.q.a;if(th
 }(this));
 
 
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
+// http://www.onicos.com/staff/iz/amuse/javascript/expert/utf.txt
+/* utf.js - UTF-8 <=> UTF-16 convertion
+ *
+ * Copyright (C) 1999 Masanao Izumo <iz@onicos.co.jp>
+ * Version: 1.0
+ * LastModified: Dec 25 1999
+ * This library is free.  You can redistribute it and/or modify it.
+ */
+function utf8BlobToStr(array, start, length) {
+    var out, i, len, c;
+    var char2, char3;
+
+    out = "";
+    len = length;
+    i = 0;
+    while(i < len) {
+        c = array[start + i++];
+        switch(c >> 4)
+        {
+          case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+            // 0xxxxxxx
+            out += String.fromCharCode(c);
+            break;
+          case 12: case 13:
+            // 110x xxxx   10xx xxxx
+            char2 = array[i++];
+            out += String.fromCharCode(((c & 0x1F) << 6) | (char2 & 0x3F));
+            break;
+          case 14:
+            // 1110 xxxx  10xx xxxx  10xx xxxx
+            char2 = array[i++];
+            char3 = array[i++];
+            out += String.fromCharCode(((c & 0x0F) << 12) |
+                           ((char2 & 0x3F) << 6) |
+                           ((char3 & 0x3F) << 0));
+            break;
+        }
+    }
+
+    return out;
+}
+
+var USE_MANUAL_UTF8 = true;
+
+lmv.utf8ArrayToString = function(array, start, length) {
+
+    if (start === undefined)
+        start = 0;
+    if (length === undefined)
+        length = array.length;
+
+    if (USE_MANUAL_UTF8) {
+        return utf8BlobToStr(array, start, length);
+    } else {
+        var encodedString = "";
+        for (var i=start, iEnd=start+length; i<iEnd; i++)
+            encodedString += String.fromCharCode(array[i]);
+
+        return decodeURIComponent(escape(encodedString));
+    }
+};
+
+//We will use these shared memory arrays to
+//convert from bytes to the desired data type.
+var convBuf = new ArrayBuffer(8);
+var convUint8 = new Uint8Array(convBuf);
+var convUint16 = new Uint16Array(convBuf);
+var convInt32 = new Int32Array(convBuf);
+var convUint32 = new Uint32Array(convBuf);
+var convFloat32 = new Float32Array(convBuf);
+var convFloat64 = new Float64Array(convBuf);
+
+
 /** @constructor */
 function InputStream(buf) {
     this.buffer = buf;
     this.offset = 0;
     this.byteLength = buf.length;
-
-    //We will use these shared memory arrays to
-    //convert from bytes to the desired data type.
-    this.convBuf = new ArrayBuffer(8);
-    this.convUint8 = new Uint8Array(this.convBuf);
-    this.convUint16 = new Uint16Array(this.convBuf);
-    this.convInt32 = new Int32Array(this.convBuf);
-    this.convUint32 = new Uint32Array(this.convBuf);
-    this.convFloat32 = new Float32Array(this.convBuf);
-    this.convFloat64 = new Float64Array(this.convBuf);
 }
 
 
@@ -1057,16 +2298,16 @@ InputStream.prototype.getVarints = function () {
         shiftBy += 7;
     } while (b & 0x80);
     return value;
-}
+};
 
 InputStream.prototype.getUint8 = function() {
     return this.buffer[this.offset++];
 };
 
 InputStream.prototype.getUint16 = function() {
-    this.convUint8[0] = this.buffer[this.offset++];
-    this.convUint8[1] = this.buffer[this.offset++];
-    return this.convUint16[0];
+    convUint8[0] = this.buffer[this.offset++];
+    convUint8[1] = this.buffer[this.offset++];
+    return convUint16[0];
 };
 
 InputStream.prototype.getInt16 = function() {
@@ -1079,68 +2320,135 @@ InputStream.prototype.getInt16 = function() {
 
 InputStream.prototype.getInt32 = function() {
     var src = this.buffer;
-    var dst = this.convUint8;
+    var dst = convUint8;
     var off = this.offset;
     dst[0] = src[off];
     dst[1] = src[off+1];
     dst[2] = src[off+2];
     dst[3] = src[off+3];
     this.offset += 4;
-    return this.convInt32[0];
+    return convInt32[0];
 };
 
 InputStream.prototype.getUint32 = function() {
     var src = this.buffer;
-    var dst = this.convUint8;
+    var dst = convUint8;
     var off = this.offset;
     dst[0] = src[off];
     dst[1] = src[off+1];
     dst[2] = src[off+2];
     dst[3] = src[off+3];
     this.offset += 4;
-    return this.convUint32[0];
+    return convUint32[0];
 };
 
 InputStream.prototype.getFloat32 = function() {
     var src = this.buffer;
-    var dst = this.convUint8;
+    var dst = convUint8;
     var off = this.offset;
     dst[0] = src[off];
     dst[1] = src[off+1];
     dst[2] = src[off+2];
     dst[3] = src[off+3];
     this.offset += 4;
-    return this.convFloat32[0];
+    return convFloat32[0];
+};
+
+//Specialized copy which copies 4 byte integers into 2-byte target.
+//Used for downcasting OCTM int32 index buffers to int16 index buffers,
+//in cases we know we don't need more (LMVTK guarantees 2 byte indices).
+InputStream.prototype.getIndicesArray = function(buffer, offset, numItems) {
+
+    var src = this.buffer;
+    var dst = new Uint8Array(buffer, offset, numItems*2);
+    var off = this.offset;
+
+    for (var i= 0, iEnd=numItems*2; i<iEnd; i+=2) {
+        dst[i] = src[off];
+        dst[i+1] = src[off+1];
+        off += 4;
+    }
+
+    this.offset = off;
+};
+
+InputStream.prototype.getVector3Array = function(arr, numItems, startOffset, stride) {
+    var src = this.buffer;
+    var off = this.offset;
+
+    //We cannot use Float32Array copying here because the
+    //source stream is out of alignment
+    var dst = new Uint8Array(arr.buffer);
+
+    if (stride === 3 && startOffset === 0) {
+        var len = numItems*12;
+        dst.set(src.subarray(off, off+len));
+        this.offset += len;
+    } else {
+
+        stride *= 4;
+        var aoff = startOffset * 4;
+        for (var i=0; i<numItems; i++) {
+            for (var j=0; j<12; j++) {
+                dst[aoff+j] = src[off++];
+            }
+            aoff += stride;
+        }
+
+        this.offset = off;
+    }
+};
+
+InputStream.prototype.getVector2Array = function(arr, numItems, startOffset, stride) {
+    var src = this.buffer;
+    var dst = new Uint8Array(arr.buffer);
+    var off = this.offset;
+
+    stride *= 4;
+    var aoff = startOffset * 4;
+    for (var i=0; i<numItems; i++) {
+        for (var j=0; j<8; j++) {
+            dst[aoff+j] = src[off++];
+        }
+        aoff += stride;
+    }
+
+    this.offset = off;
+};
+
+InputStream.prototype.getVector4 = function(arr, offset) {
+    var src = this.buffer;
+    var dst = convUint8;
+    var off = this.offset;
+    var conv = convFloat32;
+
+    for (var j=0; j<4; j++) {
+        dst[0] = src[off];
+        dst[1] = src[off+1];
+        dst[2] = src[off+2];
+        dst[3] = src[off+3];
+        arr[offset+j] = conv[0];
+        off += 4;
+    }
+
+    this.offset = off;
 };
 
 InputStream.prototype.getFloat64 = function() {
     var src = this.buffer;
-    var dst = this.convUint8;
+    var dst = convUint8;
     var off = this.offset;
     for (var i=0; i<8; i++)
         dst[i] = src[off+i];
     this.offset += 8;
-    return this.convFloat64[0];
+    return convFloat64[0];
 };
 
+
+
 InputStream.prototype.getString = function(len) {
-    var src = this.buffer;
-    var dst = "";
-
-    for (var i = this.offset, iEnd = this.offset + len; i < iEnd; i++) {
-        dst += String.fromCharCode(src[i]);
-    }
-
+    var res = lmv.utf8ArrayToString(this.buffer, this.offset, len);
     this.offset += len;
-
-    var res;
-    try {
-        res = decodeURIComponent(escape(dst));
-    } catch (e) {
-        res = dst;
-        debug("Failed to decode string " + res);
-    }
-
     return res;
 };
 
@@ -1150,18 +2458,24 @@ InputStream.prototype.reset = function (buf) {
     this.byteLength = buf.length;
 };
 
+lmv.InputStream = InputStream;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
 
 
-
-VBUtils = {
-
+lmv.VBUtils = {
 
 
     deduceUVRepetition: function(mesh) {
 
         for (var p in mesh.vblayout) {
 
-            if (p.indexOf("uv") != 0)
+            if (p.indexOf("uv") != 0 || p.indexOf("uvw") == 0)
                 continue;
 
             var baseOffset = mesh.vblayout[p].offset;
@@ -1257,30 +2571,37 @@ VBUtils = {
 
 };
 
+})();
 
-(function(ns) {
+
+(function() {
 
 "use strict";
 
-var VBB_LINE_SEGMENT = 0x10,
-    VBB_ARC_CIRCULAR = 0x20,
-    VBB_ARC_ELLIPTICAL = 0x30,
-    VBB_TEX_QUAD = 0x40,
-    VBB_ONE_TRIANGLE = 0x50,
-
-    VBB_INSTANCED_FLAG = 0,
-    VBB_SEG_START_RIGHT = 1,
-    VBB_SEG_START_LEFT = 2,
-    VBB_SEG_END_RIGHT = 3,
-    VBB_SEG_END_LEFT = 4;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 var TAU = Math.PI * 2;
 
-var VBB_COLOR_OFFSET = 6,
-    VBB_DBID_OFFSET = 7,
-    VBB_LINETYPE_OFFSET = 8,
-    VBB_FLAGS_OFFSET = 9;
+var VBB_GT_TRIANGLE_INDEXED = 0,
+    VBB_GT_LINE_SEGMENT     = 1,
+    VBB_GT_ARC_CIRCULAR     = 2,
+    VBB_GT_ARC_ELLIPTICAL   = 3,
+    VBB_GT_TEX_QUAD         = 4,
+    VBB_GT_ONE_TRIANGLE     = 5;
 
+var VBB_INSTANCED_FLAG  = 0, // this is intentionally 0 for the instancing case!
+    VBB_SEG_START_RIGHT = 0, // this starts intentionally at 0!
+    VBB_SEG_START_LEFT  = 1,
+    VBB_SEG_END_RIGHT   = 2,
+    VBB_SEG_END_LEFT    = 3;
+
+var VBB_COLOR_OFFSET    = 6,
+    VBB_DBID_OFFSET     = 7,
+    VBB_FLAGS_OFFSET    = 8,
+    VBB_LAYER_VP_OFFSET = 9;
+
+var QUAD_TRIANGLE_INDICES = [ 0,1,3, 0,3,2 ];
 
 function VertexBufferBuilder(useInstancing, allocSize)
 {
@@ -1296,31 +2617,32 @@ function VertexBufferBuilder(useInstancing, allocSize)
     //this.stride = 10;
     this.stride = 12;
 
-    this.vb = new ArrayBuffer(this.stride * 4 * (this.useInstancing ? MAX_VCOUNT / 4 : MAX_VCOUNT));
+    this.vb  = new ArrayBuffer(this.stride * 4 * (this.useInstancing ? MAX_VCOUNT / 4 : MAX_VCOUNT));
     this.vbf = new Float32Array(this.vb);
     this.vbi = new Int32Array(this.vb);
     this.vcount = 0;
 
-    if (!this.useInstancing)
-        this.ib = new Uint16Array(MAX_VCOUNT);
-    else
-        this.ib = null;
-
+    this.ib = this.useInstancing ? null : new Uint16Array(MAX_VCOUNT);
     this.icount = 0;
 
-    this.minx = this.miny = Infinity;
+    this.minx = this.miny =  Infinity;
     this.maxx = this.maxy = -Infinity;
 
     //Keeps track of objectIds referenced by geometry in the VB
     this.dbIds = {};
 
-    this.numEllipticals = 0;
-    this.numCirculars = 0;
+    this.numEllipticals   = 0;
+    this.numCirculars     = 0;
     this.numTriangleGeoms = 0;
 }
 
 VertexBufferBuilder.prototype.expandStride = function()
 {
+    // since we already set the stride to the current max value of 12 in the
+    // constructor above, we don't need to do anything here right now...
+    return;
+
+/*
     //Currently hardcoded to expand by 4 floats.
     var expandBy = 2;
 
@@ -1344,47 +2666,50 @@ VertexBufferBuilder.prototype.expandStride = function()
             dst[od+j] = src[os+j];
     }
 
-
     this.vb = nvb;
     this.vbf = new Float32Array(nvb);
     this.vbi = new Int32Array(nvb);
     this.stride = nstride;
+*/
 };
 
 VertexBufferBuilder.prototype.addToBounds = function(x, y)
 {
-    if (x < this.minx)
-        this.minx = x;
-    if (x > this.maxx)
-        this.maxx = x;
-    if (y < this.miny)
-        this.miny = y;
-    if (y > this.maxy)
-        this.maxy = y;
+    if (x < this.minx) this.minx = x;
+    if (x > this.maxx) this.maxx = x;
+    if (y < this.miny) this.miny = y;
+    if (y > this.maxy) this.maxy = y;
 };
 
-VertexBufferBuilder.prototype.setVertexFlag = function(vindex, layer, vertexId, geomType) {
+VertexBufferBuilder.prototype.setCommonVertexAttribs = function(offset, vertexId, geomType, color, dbId, layerId, vpId, linePattern)
+{
+    // align changes here with the "decodeCommonAttribs()" function in LineShader.js and VertexBufferReader.js!!!
+    vertexId    = (vertexId    &   0xff); //  8 bit
+    geomType    = (geomType    &   0xff); //  8 bit
+    linePattern = (linePattern &   0xff); //  8 bit
+    layerId     = (layerId     & 0xffff); // 16 bit
+    vpId        = (vpId        & 0xffff); // 16 bit
 
-    var val = geomType | vertexId | (layer << 16);
+    this.vbi[offset + VBB_FLAGS_OFFSET]    = vertexId | (geomType << 8) | (linePattern << 16); // vertexId: int8; geomType: int8; linePattern: int8; unused: int8
+    this.vbi[offset + VBB_COLOR_OFFSET]    = color;
+    this.vbi[offset + VBB_DBID_OFFSET]     = dbId;
+    this.vbi[offset + VBB_LAYER_VP_OFFSET] = layerId | (vpId << 16); // layerId: int16; vpId: int16
 
-    this.vbi[vindex * this.stride + VBB_FLAGS_OFFSET] = val;
-};
-
-
+    this.dbIds[dbId] = 1; // mark this feature as used
+}
 
 //Creates a non-indexed triangle geometry vertex (triangle vertex coords stored in single vertex structure)
-VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, vpId)
+VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
-
         var offset = (vi+i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x1;
+        // align changes here with the "decodeTriangleData()" function in LineShader.js!!!
+        vbf[offset]   = x1;
         vbf[offset+1] = y1;
         vbf[offset+2] = x2;
 
@@ -1392,41 +2717,57 @@ VertexBufferBuilder.prototype.addVertexTriangleGeom = function(x1, y1, x2, y2, x
         vbf[offset+4] = x3;
         vbf[offset+5] = y3;
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = vpId << 16;
-
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_ONE_TRIANGLE, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
-        this.dbIds[dbId] = 1;
     }
 
     return vi;
 };
 
 
-VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlong, totalDistance, lineWidthHalf, color, dbId, vpId, lineType)
+VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlong, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
         var offset = (vi + i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x;
+        // align changes here with the "decodeSegmentData()" function in LineShader.js!!!
+        vbf[offset]   = x;
         vbf[offset+1] = y;
         vbf[offset+2] = angle;
 
         vbf[offset+3] = distanceAlong;
-        vbf[offset+4] = lineWidthHalf;
+        vbf[offset+4] = lineWidth * 0.5; // we are storing only the half width (i.e., the radius)
         vbf[offset+5] = totalDistance;
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | lineType;
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_LINE_SEGMENT, color, dbId, layerId, vpId, lineType);
+        this.vcount++;
+    }
 
-        this.dbIds[dbId] = 1;
+    return vi;
+};
+
+VertexBufferBuilder.prototype.addVertexTexQuad = function(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId)
+{
+    var vi  = this.vcount;
+    var vbf = this.vbf;
+
+    var repeat = this.useInstancing ? 1 : 4;
+    for (var i=0; i<repeat; i++) {
+        var offset = (vi + i) * this.stride;
+
+        // align changes here with the "decodeTexQuadData()" function in LineShader.js!!!
+        vbf[offset]   = centerX;
+        vbf[offset+1] = centerY;
+        vbf[offset+2] = rotation;
+
+        vbf[offset+3] = width;
+        vbf[offset+4] = height;
+
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, VBB_GT_TEX_QUAD, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
     }
 
@@ -1434,36 +2775,32 @@ VertexBufferBuilder.prototype.addVertexLine = function(x, y, angle, distanceAlon
 };
 
 
-VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle, major, minor, tilt, lineWidthHalf, color, dbId, vpId)
+VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle, major, minor, tilt, lineWidth, color, dbId, layerId, vpId)
 {
-    var vi = this.vcount;
+    var vi  = this.vcount;
+    var vbf = this.vbf;
+
+    var geomType = (major == minor) ? VBB_GT_ARC_CIRCULAR : VBB_GT_ARC_ELLIPTICAL;
 
     var repeat = this.useInstancing ? 1 : 4;
-
     for (var i=0; i<repeat; i++) {
         var offset = (vi+i) * this.stride;
-        var vbf = this.vbf;
 
-        vbf[offset] = x;
+        // align changes here with the "decodeArcData()" function in LineShader.js!!!
+        vbf[offset]   = x;
         vbf[offset+1] = y;
         vbf[offset+2] = startAngle;
 
         vbf[offset+3] = endAngle;
-        vbf[offset+4] = lineWidthHalf;
-        vbf[offset+5] = major;
+        vbf[offset+4] = lineWidth * 0.5; // we are storing only the half width (i.e., the radius)
+        vbf[offset+5] = major; // = radius for circular arcs
 
-        this.vbi[offset+VBB_COLOR_OFFSET] = color;
-        this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-        this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | 0;
-
-        //In the non-instanced case, the vertex flag
-        //is at offset 8, so do not use that.
-        if (major != minor) {
+        if (geomType === VBB_GT_ARC_ELLIPTICAL) {
             vbf[offset+10] = minor;
             vbf[offset+11] = tilt;
         }
 
-        this.dbIds[dbId] = 1;
+        this.setCommonVertexAttribs(offset, VBB_SEG_START_RIGHT + i, geomType, color, dbId, layerId, vpId, /*linePattern*/0);
         this.vcount++;
     }
 
@@ -1480,77 +2817,57 @@ VertexBufferBuilder.prototype.addVertexArc = function(x, y, startAngle, endAngle
 //====================================================================================================
 //====================================================================================================
 
-VertexBufferBuilder.prototype.addVertex = function(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addVertex = function(x, y, color, dbId, layerId, vpId)
 {
     if (this.useInstancing)
         return;//not supported if instancing is used.
 
-    var vi = this.vcount;
-    var offset = vi * this.stride;
-    var vbf = this.vbf;
+    var vi     = this.vcount;
+    var offset = this.stride * vi;
+    var vbf    = this.vbf;
 
-    vbf[offset] = x;
+    // align changes here with the "decodeTriangleData()" function in LineShader.js!!!
+    vbf[offset]   = x;
     vbf[offset+1] = y;
-    vbf[offset+2] = angle;
 
-    vbf[offset+3] = distanceAlong;
-    vbf[offset+4] = lineWidthHalf;
-    vbf[offset+5] = 0;
-
-    this.vbi[offset+VBB_COLOR_OFFSET] = color;
-    this.vbi[offset+VBB_DBID_OFFSET] = dbId;
-    this.vbi[offset+VBB_LINETYPE_OFFSET] = (vpId << 16) | 0;
-
-    this.setVertexFlag(vi, layer, 0, 0);
-
+    this.setCommonVertexAttribs(offset, /*vertexId*/0, VBB_GT_TRIANGLE_INDEXED, color, dbId, layerId, vpId, /*linePattern*/0);
     this.vcount++;
-    this.dbIds[dbId] = 1;
 
     return vi;
 };
 
 
-VertexBufferBuilder.prototype.addVertexPolytriangle = function(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addVertexPolytriangle = function(x, y, color, dbId, layerId, vpId)
 {
     if (this.useInstancing)
         return;//not supported if instancing is used.
 
-    this.addVertex(x, y, angle, distanceAlong, lineWidthHalf, color, dbId, layer, vpId);
+    this.addVertex(x, y, color, dbId, layerId, vpId);
 
     this.addToBounds(x, y);
 };
 
-VertexBufferBuilder.prototype.setVertexColor = function(i, color)
-{
-    if (this.useInstancing)
-        return;//not supported if instancing is used.
-
-    var offset = i * this.stride;
-    this.vbi[offset + VBB_COLOR_OFFSET] = color;
-};
-
-VertexBufferBuilder.prototype.addTriangle = function(i0, i1, i2) {
+VertexBufferBuilder.prototype.addIndices = function(indices, vindex) {
 
     if (this.useInstancing)
         return; //not supported if instancing is used.
 
     var ib = this.ib;
-
     var ii = this.icount;
 
-    if (ii + 3 >= ib.length) {
+    if (ii + indices.length >= ib.length) {
         var ibnew = new Uint16Array(ib.length * 2);
-        for (var i=0; i<ii; i++) {
+        for (var i=0; i<ii; ++i) {
             ibnew[i] = ib[i];
         }
         this.ib = ib = ibnew;
     }
 
-    ib[ii] = i0;
-    ib[ii+1] = i1;
-    ib[ii+2] = i2;
+    for(var i=0; i<indices.length; ++i) {
+        ib[ii+i] = vindex + indices[i];
+    }
 
-    this.icount += 3;
+    this.icount += indices.length;
 };
 
 //====================================================================================================
@@ -1560,69 +2877,59 @@ VertexBufferBuilder.prototype.addTriangle = function(i0, i1, i2) {
 //====================================================================================================
 
 
-VertexBufferBuilder.prototype.finalizeQuad = function(v, geomType, layer) {
-
+VertexBufferBuilder.prototype.finalizeQuad = function(vindex)
+{
     if (!this.useInstancing) {
-        this.addTriangle(v, v+1, v+2);
-        this.addTriangle(v, v+2, v+3);
-
-        //Set the flags specific to each vertex
-        this.setVertexFlag(v,   layer, VBB_SEG_START_RIGHT, geomType);
-        this.setVertexFlag(v+1, layer, VBB_SEG_END_RIGHT,   geomType);
-        this.setVertexFlag(v+2, layer, VBB_SEG_END_LEFT,    geomType);
-        this.setVertexFlag(v+3, layer, VBB_SEG_START_LEFT,  geomType);
-    } else {
-        //Set the flags specific to each vertex
-        this.setVertexFlag(v,   layer, VBB_INSTANCED_FLAG, geomType);
+        this.addIndices(QUAD_TRIANGLE_INDICES, vindex);
     }
 };
 
 
-VertexBufferBuilder.prototype.addSegment = function(x1, y1, x2, y2, totalDistance, lineWidth, color, dbId, layer, vpId, lineType)
+VertexBufferBuilder.prototype.addSegment = function(x1, y1, x2, y2, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType)
 {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    var theta = 0;
-
-    if (dx || dy )
-        theta = Math.atan2(dy, dx);
-
-    var segLen = Math.sqrt(dx*dx + dy*dy);
-
-    //We store a radius value in the vertex, so halve it
-    lineWidth *= 0.5;
+    var angle  = (dx || dy) ? Math.atan2(dy, dx)       : 0.0;
+    var segLen = (dx || dy) ? Math.sqrt(dx*dx + dy*dy) : 0.0;
 
     //Add four vertices for the bbox of this line segment
     //This call sets the stuff that's common for all four
-    var v = this.addVertexLine(x1, y1, theta, segLen, totalDistance, lineWidth, color, dbId, vpId, lineType);
+    var v = this.addVertexLine(x1, y1, angle, segLen, totalDistance, lineWidth, color, dbId, layerId, vpId, lineType);
 
-    this.finalizeQuad(v, VBB_LINE_SEGMENT, layer);
-
+    this.finalizeQuad(v);
     this.addToBounds(x1, y1);
     this.addToBounds(x2, y2);
 };
 
 
 //Creates a non-indexed triangle geometry (triangle vertex coords stored in single vertex structure)
-VertexBufferBuilder.prototype.addTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layer, vpId) {
-
+VertexBufferBuilder.prototype.addTriangleGeom = function(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId)
+{
     this.numTriangleGeoms++;
 
-    var v = this.addVertexTriangleGeom(x1, y1, x2, y2, x3, y3, color, dbId, layer, vpId);
+    var v = this.addVertexTriangleGeom(x1, y1, x2, y2, x3, y3, color, dbId, layerId, vpId);
 
-    this.finalizeQuad(v, VBB_ONE_TRIANGLE, layer);
-
+    this.finalizeQuad(v);
     this.addToBounds(x1, y1);
     this.addToBounds(x2, y2);
     this.addToBounds(x3, y3);
 };
 
+VertexBufferBuilder.prototype.addArc = function(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layerId, vpId)
+{
+    if(major == minor)  {
+        this.numCirculars++;
+    } else {
+        this.numEllipticals++;
+    }
 
-VertexBufferBuilder.prototype.addCircularArc = function(cx, cy, start, end, radius, lineWidth, color, dbId, layer, vpId) {
+    // This is a workaround, when the circular arc has rotation, the extractor cannot handle it.
+    // After the fix is deployed in extractor, this can be removed.
+    var result = fixUglyArc(start, end);
+    start = result.start;
+    end   = result.end;
 
-    this.numCirculars++;
-
-    //If both start and end angles are exactly 0, it's a complete circle
+    //If both start and end angles are exactly 0, it's a complete ellipse/circle
     //This is working around a bug in the F2D writer, where an fmod operation will potentially.
     //convert 2pi to 0.
     if (start == 0 && end == 0)
@@ -1630,70 +2937,19 @@ VertexBufferBuilder.prototype.addCircularArc = function(cx, cy, start, end, radi
 
     //Add two zero length segments as round caps at the end points
     {
-        //If it's a full ellipse, then we don't need caps
         //If it's a full ellipse, then we don't need caps
         var range = Math.abs(start - end);
         if (range > 0.0001 && Math.abs(range - TAU) > 0.0001)
         {
-            var sx = cx + radius * Math.cos(start);
-            var sy = cy + radius * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layer, vpId);
-
-            var ex = cx + radius * Math.cos(end);
-            var ey = cy + radius * Math.sin(end);
-
-            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layer, vpId);
-
-            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range
-            //to get exact bounds
-        }
-        else
-        {
-            this.addToBounds(cx - radius, cy - radius);
-            this.addToBounds(cx + radius, cy + radius);
-        }
-    }
-
-    lineWidth *= 0.5;
-
-    var v = this.addVertexArc(cx, cy, start, end, radius, radius, 0, lineWidth, color, dbId, vpId);
-
-    this.finalizeQuad(v, VBB_ARC_CIRCULAR, layer);
-};
-
-
-VertexBufferBuilder.prototype.addEllipticalArc = function(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layer, vpId) {
-
-    //color = 0xff00ffff;
-
-    this.expandStride();
-    this.numEllipticals++;
-
-    //If both start and end angles are exactly 0, it's a complete ellipse
-    //This is working around a bug in the F2D writer, where an fmod operation will potentially.
-    //convert 2pi to 0.
-    if (start == 0 && end == 0)
-        end = TAU;
-
-    //Add two zero length segments as round caps at the end points
-    {
-        //If it's a full ellipse, then we don't need caps
-        var range = Math.abs(start - end);
-        if (Math.abs(range - TAU) > 0.0001)
-        {
             var sx = cx + major * Math.cos(start);
             var sy = cy + minor * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layer, vpId);
+            this.addSegment(sx, sy, sx, sy, 0, lineWidth, color, dbId, layerId, vpId);
 
             var ex = cx + major * Math.cos(end);
             var ey = cy + minor * Math.sin(end);
+            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layerId, vpId);
 
-            this.addSegment(ex, ey, ex, ey, 0, lineWidth, color, dbId, layer, vpId);
-
-            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range
-            //to get exact bounds
+            //TODO: also must add all the vertices at all multiples of PI/2 in the start-end range to get exact bounds
         }
         else
         {
@@ -1702,60 +2958,55 @@ VertexBufferBuilder.prototype.addEllipticalArc = function(cx, cy, start, end, ma
         }
     }
 
-    lineWidth *= 0.5;
+    var v = this.addVertexArc(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, layerId, vpId);
 
-    var v = this.addVertexArc(cx, cy, start, end, major, minor, tilt, lineWidth, color, dbId, vpId);
-
-    this.finalizeQuad(v, VBB_ARC_ELLIPTICAL, layer);
+    this.finalizeQuad(v);
 
     //Testing caps
-    if (0){
+    if(false) {
         //If it's a full ellipse, then we don't need caps
         var range = Math.abs(start - end);
         if (Math.abs(range - TAU) > 0.0001)
         {
             var sx = cx + major * Math.cos(start);
             var sy = cy + minor * Math.sin(start);
-
-            this.addSegment(sx, sy, sx, sy, 0, 2 * lineWidth, 0xff00ffff, dbId, layer, vpId);
+            this.addSegment(sx, sy, sx, sy, 0, lineWidth, 0xff00ffff, dbId, layerId, vpId);
 
             var ex = cx + major * Math.cos(end);
             var ey = cy + minor * Math.sin(end);
-
-            this.addSegment(ex, ey, ex, ey, 0, 2 * lineWidth, 0xff00ffff, dbId, layer, vpId);
+            this.addSegment(ex, ey, ex, ey, 0, lineWidth, 0xff00ffff, dbId, layerId, vpId);
         }
     }
+}
 
-};
 
-
-VertexBufferBuilder.prototype.addTexturedQuad = function(x, y, w, h, dbId, layer, vpId)
+VertexBufferBuilder.prototype.addTexturedQuad = function(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId)
 {
-    var hh = h * 0.5;
-
     //Height is specified using the line weight field.
     //This will result in height being clamped to at least one pixel
     //but that's ok (zero height for an image would be rare).
-    var v = this.addVertexLine(x, y + hh, 0, w, 0, hh, 0xff00ffff, dbId, vpId, 0);
+    var v = this.addVertexTexQuad(centerX, centerY, width, height, rotation, color, dbId, layerId, vpId);
 
-    this.finalizeQuad(v, VBB_TEX_QUAD, layer);
+    this.finalizeQuad(v);
 
-    this.addToBounds(x, y);
-    this.addToBounds(x+w, y+h);
+    var cos = 0.5 * Math.cos(rotation);
+    var sin = 0.5 * Math.sin(rotation);
+    var w = Math.abs(width * cos) + Math.abs(height * sin);
+    var h = Math.abs(width * sin) + Math.abs(height * cos);
+    this.addToBounds(centerX - w, centerY - h);
+    this.addToBounds(centerX + w, centerY + h);
 };
 
-VertexBufferBuilder.prototype.isFull = function(addCount) {
-    if (!addCount)
-        addCount = 3;
+VertexBufferBuilder.prototype.isFull = function(addCount)
+{
+    addCount = addCount || 3;
+    var mult = this.useInstancing ? 4 : 1;
 
-    if (this.useInstancing)
-        return (this.vcount*4 + addCount > 32767);
-    else
-        return (this.vcount + addCount > 32767);
+    return (this.vcount * mult + addCount > 32767);
 };
 
-VertexBufferBuilder.prototype.toMesh = function() {
-
+VertexBufferBuilder.prototype.toMesh = function()
+{
     var mesh = {};
 
     mesh.vb = new Float32Array(this.vb.slice(0, this.vcount * this.stride * 4));
@@ -1764,87 +3015,117 @@ VertexBufferBuilder.prototype.toMesh = function() {
     var d = this.useInstancing ? 1 : 0;
 
     mesh.vblayout = {
-        "fields1" :    {offset: 0,                  itemSize: 3, bytesPerItem: 4, divisor: d },
-        "fields2" :    {offset: 3,                  itemSize: 3, bytesPerItem: 4, divisor: d },
-        "color4b":     {offset: VBB_COLOR_OFFSET,   itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true },
-        "dbId4b":      {offset: VBB_DBID_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true},
-        "linetype4b":  {offset: VBB_LINETYPE_OFFSET,itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false},
-        "flags4b":     {offset: VBB_FLAGS_OFFSET,   itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false}
+        "fields1" :    { offset: 0,                   itemSize: 3, bytesPerItem: 4, divisor: d, normalize: false },
+        "fields2" :    { offset: 3,                   itemSize: 3, bytesPerItem: 4, divisor: d, normalize: false },
+        "color4b":     { offset: VBB_COLOR_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: true  },
+        "dbId4b":      { offset: VBB_DBID_OFFSET,     itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false },
+        "flags4b":     { offset: VBB_FLAGS_OFFSET,    itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false },
+        "layerVp4b":   { offset: VBB_LAYER_VP_OFFSET, itemSize: 4, bytesPerItem: 1, divisor: d, normalize: false }
     };
 
     //Are we using an expanded vertex layout -- then add the extra attribute to the layout
     if (this.stride > 10) {
-        mesh.vblayout["extraParams"] = {offset: 10, itemSize: 2, bytesPerItem: 4, divisor: d, normalize: false};
+        mesh.vblayout["extraParams"] = { offset: 10, itemSize: 2, bytesPerItem: 4, divisor: d, normalize: false };
     }
 
     if (this.useInstancing) {
-
-        for (var attr in mesh.vblayout) {
-            mesh.vblayout[attr].divisor = 1;
-        }
-
         mesh.numInstances = this.vcount;
 
         //Set up trivial vertexId and index attributes
 
-        var instFlags = new Int32Array(4);
-        instFlags[0] = VBB_SEG_START_RIGHT;
-        instFlags[1] = VBB_SEG_END_RIGHT;
-        instFlags[2] = VBB_SEG_END_LEFT;
-        instFlags[3] = VBB_SEG_START_LEFT;
-
-        mesh.vblayout.instFlags4b = { offset:0, itemSize: 4, bytesPerItem: 1, normalize: false, divisor: 0 };
+        var instFlags = new Int32Array([ VBB_SEG_START_RIGHT, VBB_SEG_START_LEFT, VBB_SEG_END_RIGHT, VBB_SEG_END_LEFT ]);
+        mesh.vblayout.instFlags4b = { offset: 0, itemSize: 4, bytesPerItem: 1, divisor: 0, normalize: false };
         mesh.vblayout.instFlags4b.array = instFlags.buffer;
 
-        var idx = mesh.indices = new Uint16Array(6);
-        idx[0] = 0; idx[1] = 1; idx[2] = 2;
-        idx[3] = 0; idx[4] = 2; idx[5] = 3;
-    }
-    else {
-
-        mesh.indices = new Uint16Array(this.ib.buffer.slice(0, this.icount*2));
+        var idx = mesh.indices = new Uint16Array(QUAD_TRIANGLE_INDICES);
+    } else {
+        mesh.indices = new Uint16Array(this.ib.buffer.slice(0, 2 * this.icount));
     }
 
     mesh.dbIds = this.dbIds;
 
-    var w = this.maxx-this.minx;
-    var h = this.maxy-this.miny;
+    var w  = this.maxx - this.minx;
+    var h  = this.maxy - this.miny;
     var sz = Math.max(w, h);
 
     mesh.boundingBox = {
-        min: { x:this.minx, y:this.miny, z:-sz * 1e-3 },
-        max: { x:this.maxx, y:this.maxy, z:sz * 1e-3 }
+        min: { x: this.minx, y: this.miny, z: -sz * 1e-3 },
+        max: { x: this.maxx, y: this.maxy, z:  sz * 1e-3 }
     };
 
     //Also compute a rough bounding sphere
-    var bs = mesh.boundingSphere = {};
-
-    bs.center = { x:0.5 * (this.minx + this.maxx),
-                  y:0.5 * (this.miny + this.maxy),
-                  z:0 };
-
-    bs.radius = 0.5 * Math.sqrt(w*w + h*h);
+    var bs = mesh.boundingSphere = {
+        center: {
+            x: 0.5 * (this.minx + this.maxx),
+            y: 0.5 * (this.miny + this.maxy),
+            z: 0.0
+        },
+        radius: 0.5 * Math.sqrt(w*w + h*h)
+    };
 
     return mesh;
 };
 
+// The following logic attempts to "fix" imprecisions in arc definitions introduced
+// by Heidi's fixed point math, in case that the extractor doesn't handle it correctly.
 
-ns.VertexBufferBuilder = VertexBufferBuilder;
+var fixUglyArc = function (start, end)
+{
+    //Snap critical angles exactly
+    function snapCritical() {
+        function fuzzyEquals(a, b) { return (Math.abs(a - b) < 1e-3); }
 
-})(Autodesk.Viewing.Private);
+        if (fuzzyEquals(start, 0))   start = 0.0;
+        if (fuzzyEquals(end,   0))   end   = 0.0;
+        if (fuzzyEquals(start, TAU)) start = TAU;
+        if (fuzzyEquals(end,   TAU)) end   = TAU;
+    }
+
+    snapCritical();
+
+    //OK, in some cases the angles are both over-rotated...
+    if (start > end) {
+        while (start > TAU) {
+            start -= TAU;
+            end   -= TAU;
+        }
+    } else {
+        while (end > TAU) {
+            start -= TAU;
+            end   -= TAU;
+        }
+    }
+
+    //Snap critical angles exactly -- again
+    snapCritical();
+
+    //If the arc crosses the x axis, we have to make it clockwise...
+    //This is a side effect of bringing over-rotated arcs in range above.
+    //For example start = 5.0, end = 7.0 will result in start < 0 and end > 0,
+    //so we have to make start > end in order to indicate we are crossing angle = 0.
+    if (start < 0 && end > 0) {
+        start += TAU;
+    }
+
+    return {start: start, end: end};
+};
+
+avp.VertexBufferBuilder = VertexBufferBuilder;
+
+})();
+
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
+var warnedGzip = false;
 
 /** @constructor */
 function PackFileReader(data)
 {
-    //When server side (S3 and viewing service) is configured properly,
-    //browser can decompress the pack file for us.
-    //Here the check is for backward compatibility purpose.
-    if (data[0] == 31 && data[1] == 139) {
-        var gunzip = new Zlib.Gunzip(data);
-        data = gunzip.decompress();
-    }
-
-    var stream = this.stream = new InputStream(data);
+    var stream = this.stream = new lmv.InputStream(data);
 
     var len = stream.getInt32();
     this.type = stream.getString(len);
@@ -2099,9 +3380,17 @@ PackFileReader.prototype.readPathID = function() {
     return path;
 };
 
+lmv.PackFileReader = PackFileReader;
+
+})();
+
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
 
 
-
 //=====================================================================
 //=====================================================================
 //=====================================================================
@@ -2110,6 +3399,29 @@ PackFileReader.prototype.readPathID = function() {
 //=====================================================================
 //=====================================================================
 
+var ntmp = new Float32Array(3);
+
+var INV_PI = 1.0 / Math.PI;
+
+//Faster approximation to atan2
+//http://math.stackexchange.com/questions/1098487/atan2-faster-approximation
+//The algorithm does not deal with special cases such as x=0,y=0x=0,y=0,
+//nor does it consider special IEEE-754 floating-point operands such as infinities and NaN.
+function atan2(y, x) {
+    var ax = Math.abs(x);
+    var ay = Math.abs(y);
+    //var a = (ax > ay) ? ay / ax : ax / ay;
+    var a = Math.min(ax, ay) / Math.max(ax, ay);
+    var s = a * a;
+    var r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+    if (ay > ax)
+        r = 1.57079637 - r;
+    if (x < 0)
+        r = 3.14159274 - r;
+    if (y < 0)
+        r = -r;
+    return r;
+}
 
 function readOpenCTM_RAW(stream, mesh) {
 
@@ -2123,59 +3435,55 @@ function readOpenCTM_RAW(stream, mesh) {
 
     var vcount = mesh.vertexCount;
     var tcount = mesh.triangleCount;
+    var stride = mesh.vbstride;
 
-    //We cannot use a straight memcopy for the indices
-    //since we have to downcast from OCTM uint32
-    //to uint16.
-    var meshindices = mesh.indices = new Uint16Array(tcount*3);
-    for (var i=0, iEnd=tcount*3; i<iEnd; i++)
-        meshindices[i] = stream.getInt32();
+    //We will create a single ArrayBuffer to back both the vertex and index buffers
+    //The indices will be places after the vertex information, because we need alignment
+    //of 4 bytes
+    var vbSizeFloat = vcount * stride;
+    var totalSizeInFloats = vbSizeFloat + ((tcount*3*2 + 3) / 4)|0;
+    var ab = new ArrayBuffer(totalSizeInFloats * 4);
+
+    var vbf = mesh.vb = new Float32Array(ab, 0, vbSizeFloat);
+
+    mesh.indices = new Uint16Array(ab, vbSizeFloat*4, tcount*3);
+    stream.getIndicesArray(vbf.buffer, vbSizeFloat*4, tcount*3);
 
     name = stream.getString(4);
     if (name != "VERT") return null;
 
-    var stride = mesh.vbstride;
-    var vbf = mesh.vb;
     var vbi;
-
     //See if we want to pack the normals into two shorts
     if (mesh.vblayout.normal && mesh.vblayout.normal.itemSize === 2)
         vbi = new Uint16Array(vbf.buffer);
 
     //Read positions
-    for (var i= 0, offset=mesh.vblayout['position'].offset;
-         i<vcount;
-         i++, offset += stride)
-    {
-        vbf[offset] =   stream.getFloat32();
-        vbf[offset+1] = stream.getFloat32();
-        vbf[offset+2] = stream.getFloat32();
-    }
+    stream.getVector3Array(vbf, vcount, mesh.vblayout['position'].offset, stride);
 
     //Read normals
     if (mesh.flags & 1) {
         name = stream.getString(4);
         if (name != "NORM") return null;
 
-        for (var i=0, offset=mesh.vblayout['normal'].offset;
-             i<vcount;
-             i++, offset += stride)
-         {
-            if (vbi) {
-                var nx = stream.getFloat32(), ny = stream.getFloat32(), nz = stream.getFloat32();
+        if (vbi) {
+            if (ntmp.length < vcount*3)
+                ntmp = new Float32Array(vcount*3);
+            stream.getVector3Array(ntmp, vcount, 0, 3);
 
-                var pnx = (Math.atan2(ny, nx) / Math.PI + 1.0) * 0.5;
-                var pny = (nz + 1.0) * 0.5;
+            for (var i=0, offset=mesh.vblayout['normal'].offset;
+                 i<vcount;
+                 i++, offset += stride)
+            {
+                var pnx = (atan2(ntmp[i*3+1], ntmp[i*3]) * INV_PI + 1.0) * 0.5;
+                var pny = (ntmp[i*3+2] + 1.0) * 0.5;
 
                 vbi[offset*2] = (pnx * 65535)|0;
                 vbi[offset*2+1] = (pny * 65535)|0;
-
-            } else {
-                vbf[offset] =   stream.getFloat32();
-                vbf[offset+1] = stream.getFloat32();
-                vbf[offset+2] = stream.getFloat32();                
             }
+        } else {
+            stream.getVector3Array(vbf, vcount, mesh.vblayout['normal'].offset, stride);
         }
+
     }
 
     //Read uv layers
@@ -2193,16 +3501,12 @@ function readOpenCTM_RAW(stream, mesh) {
         if (t)
             uvname += (t+1).toString();
 
-        for (var i=0, offset=mesh.vblayout[uvname].offset;
-             i<vcount;
-             i++, offset += stride)
-        {
-            vbf[offset] =   stream.getFloat32();
-            vbf[offset+1] = stream.getFloat32();
-        }
+        stream.getVector2Array(vbf, vcount, mesh.vblayout[uvname].offset, stride);
     }
 
-    //Read vertex colors (and skip any other attributes that we don't know)
+    var attributeOffset = stride - (mesh.attribMapCount||0) * 3;
+
+    //Read vertex colors and uvw (and skip any other attributes that we don't know)
     for (var t=0; t<mesh.attribMapCount; t++) {
         name = stream.getString(4);
         if (name != "ATTR") return null;
@@ -2211,24 +3515,36 @@ function readOpenCTM_RAW(stream, mesh) {
             name : readOpenCTMString()
         };
 
-        //Special case of vertex colors
-        if (attr.name.indexOf("Color") != -1) {
+        console.log("attribute", attr.name);
 
-            for (var i=0, offset=mesh.vblayout['color'].offset;
-                 i<vcount;
-                 i++, offset += stride) {
-                vbf[offset] = stream.getFloat32();
-                vbf[offset+1] = stream.getFloat32();
-                vbf[offset+2] = stream.getFloat32();
-                stream.getFloat32(); //skip past alpha -- currently our shader expects a vec3 vertex color.
-            }
-
-        } else {
+        var attrname;
+        if (attr.name.indexOf("Color") != -1)//Special case of vertex colors
+            attrname = 'color';
+        else if (attr.name.indexOf("UVW") != -1)//Only used by prism 3d wood.
+            attrname = 'uvw';
+        else {
             //Other attributes, though we don't know what to do with those
             mesh.attrs.push(attr);
             stream.getBytes(vcount*16); //skip past
+            continue;
         }
+
+        mesh.vblayout[attrname] = { offset : attributeOffset, itemSize : 3};
+
+        var v4 = [0,0,0,0];
+        for (var i=0, offset=attributeOffset;
+                i<vcount;
+                i++, offset += stride) {
+            stream.getVector4(v4,0);
+            vbf[offset] = v4[0];
+            vbf[offset+1] = v4[1];
+            vbf[offset+2] = v4[2];
+            //Ignoring the alpha term. For color attribute, we can actually pack it in a 4-byte attribute,
+            //but we do not know in advance (when we allocate the target buffer) if the OCTM attribute is UVW or color
+        }
+        attributeOffset += 3;
     }
+
 }
 
 
@@ -2281,8 +3597,7 @@ var readOpenCTM = function(stream) {
     if (mesh.flags & 1)
         mesh.vbstride += usePackedNormals ? 1 : 3; //normal
     mesh.vbstride += 2 * (mesh.texMapCount || 0); //texture coords
-    if (mesh.attribMapCount > 0)
-        mesh.vbstride += 3; //we only interleave the color attribute, and we reduce that to RGB from ARGB.
+    mesh.vbstride += 3 * (mesh.attribMapCount || 0); //we now support color and uvw. Both of them use three floats.
 
     mesh.vblayout = {};
     var offset = 0;
@@ -2308,24 +3623,18 @@ var readOpenCTM = function(stream) {
             offset += 2;
         }
     }
-    if (mesh.attribMapCount) {
-        mesh.vblayout['color'] = { offset : offset, itemSize : 3};
-    }
-
-    mesh.vb = new Float32Array(mesh.vertexCount * mesh.vbstride);
-
 
     //Now read and populate the mesh data
     if (method == "RAW") {
         readOpenCTM_RAW(stream, mesh);
-        VBUtils.deduceUVRepetition(mesh);
-        VBUtils.computeBounds3D(mesh);
+        lmv.VBUtils.deduceUVRepetition(mesh);
+        lmv.VBUtils.computeBounds3D(mesh);
         return mesh;
     }
     else if (method == "MG2") {
         readOpenCTM_MG2(stream, mesh);
-        VBUtils.deduceUVRepetition(mesh);
-        VBUtils.computeBounds3D(mesh);
+        lmv.VBUtils.deduceUVRepetition(mesh);
+        lmv.VBUtils.computeBounds3D(mesh);
         return mesh;
     }
     else
@@ -2386,14 +3695,8 @@ var readLines = function(pfr, tse) {
     var vbf = mesh.vb;
     var stride = mesh.vbstride;
     var stream = pfr.stream;
-    for (var i= 0, offset = mesh.vblayout['position'].offset, iEnd=mesh.vertexCount;
-         i<iEnd;
-         i++, offset += stride)
-    {
-        vbf[offset] = stream.getFloat32();
-        vbf[offset+1] = stream.getFloat32();
-        vbf[offset+2] = stream.getFloat32();
-    }
+
+    stream.getVector3Array(vbf, mesh.vertexCount, mesh.vblayout['position'].offset, stride);
 
     // Determine color if specified
     if (hasColor) {
@@ -2442,7 +3745,7 @@ var readLines = function(pfr, tse) {
         }
     }
 
-    VBUtils.computeBounds3D(mesh);
+    lmv.VBUtils.computeBounds3D(mesh);
 
     return mesh;
 };
@@ -2463,6 +3766,16 @@ function readGeometry(pfr, entry, format) {
 
     return null;
 }
+
+lmv.readGeometry = readGeometry;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
 
 function readLightDefinition(pfr, entry) {
     var tse = pfr.seekToEntry(entry);
@@ -2487,6 +3800,15 @@ function readLightDefinition(pfr, entry) {
 
     return light;
 }
+
+lmv.readLightDefinition = readLightDefinition;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
 
 
 function readCameraDefinition(pfr, inst) {
@@ -2517,9 +3839,21 @@ function readCameraDefinition(pfr, inst) {
     return cam;
 }
 
+lmv.readCameraDefinition = readCameraDefinition;
+
+})();
+
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+var av = Autodesk.Viewing,
+    avp = av.Private;
+
 //FragList represents an array of fragments, stored in Structure of Arrays form
 //which allows us to free some parts easily and transfer the fragment information in large chunks.
-var NUM_FRAGMENT_LIMITS = (isAndroidDevice() || isIOSDevice()) ? null : null;
+var NUM_FRAGMENT_LIMITS = (av.isMobileDevice()) ? null : null;
 
 /** @constructor */
 function FragList() {
@@ -2539,7 +3873,7 @@ function FragList() {
     this.topoIndexes = null;
 }
 
-function readGeometryMetadataIntoFragments(pfr, globalOffset, fragments) {
+function readGeometryMetadataIntoFragments(pfr, fragments) {
     var length = fragments.geomDataIndexes.length;
     var stream = pfr.stream;
     var primsCount = 0;
@@ -2581,7 +3915,7 @@ function readGeometryMetadataIntoFragments(pfr, globalOffset, fragments) {
     return primsCount;
 }
 
-function readGeometryMetadata(pfr, geoms, globalOffset)
+function readGeometryMetadata(pfr, geoms)
 {
     var numGeoms = pfr.getEntryCounts();
     var stream = pfr.stream;
@@ -2624,7 +3958,7 @@ function readGeometryMetadata(pfr, geoms, globalOffset)
 
 // Convert a list of object id (dbid) to a list of integers where each integer is an index of the fragment
 // in fragment list that associated with the object id.
-function objectIds2FragmentIndices(pfr, frags, globalOffset, ids) {
+function objectIds2FragmentIndices(pfr, ids) {
     var ret = [];
 
     if (!ids) {
@@ -2658,7 +3992,7 @@ function objectIds2FragmentIndices(pfr, frags, globalOffset, ids) {
         }
 
         // Transform
-        pfr.readTransform(entry, null, 12 * entry, globalOffset);
+        pfr.readTransform(entry, null, 12 * entry);
 
         // Bounding box
         for (var i = 0; i < 6; i++) {
@@ -2671,13 +4005,14 @@ function objectIds2FragmentIndices(pfr, frags, globalOffset, ids) {
                 ret.push(entry);
             }
         }
-
-        return ret;
     }
+
+    return ret;
 }
 
-function readFragments(pfr, frags, globalOffset, ids) {
-    var filteredIndices = objectIds2FragmentIndices(pfr, frags, globalOffset, ids);
+
+function readFragments(pfr, frags, globalOffset, placementTransform, ids) {
+    var filteredIndices = objectIds2FragmentIndices(pfr, ids);
 
     //Initialize all the fragments structures
     //once we know how many fragments we have.
@@ -2700,7 +4035,23 @@ function readFragments(pfr, frags, globalOffset, ids) {
     var geomDataIndexes = frags.geomDataIndexes =       new Int32Array(numFrags);
     var fragId2dbId     = frags.fragId2dbId =           new Int32Array(numFrags); //NOTE: this potentially truncates IDs bigger than 4 billion -- can be converted to array if needed.
 
+    var tmpBox;
+    var tmpMat;
+    if (placementTransform) {
+        tmpBox = new LmvBox3();
+        tmpMat = new LmvMatrix4().fromArray(placementTransform.elements);
+    }
+
     //Helper functions used by the main fragment read loop.
+
+    function applyPlacement(index) {
+        if (placementTransform) {
+            var offset = index * 6;
+            tmpBox.setFromArray(fragBoxes, offset);
+            tmpBox.applyMatrix4(tmpMat);
+            tmpBox.copyToArray(fragBoxes, offset);
+        }
+    }
 
     function readBoundingBox(entry) {
         var offset = entry * 6;
@@ -2750,10 +4101,12 @@ function readFragments(pfr, frags, globalOffset, ids) {
         if (tse.version > 3) {
             // With this version the transforms translations is subtracted from the BB
             readBoundingBoxOffset(entry, transforms, 12*entry + 9);
+            applyPlacement(entry);
         }
         else {
             readBoundingBox(entry);
-            
+            applyPlacement(entry);
+
             if (globalOffset) {
                 var offset = entry * 6;
                 fragBoxes[offset++] -= globalOffset.x;
@@ -2840,6 +4193,19 @@ function filterFragments(frags, ids) {
     return bb;
 }
 
+lmv.FragList = FragList;
+lmv.readGeometryMetadataIntoFragments = readGeometryMetadataIntoFragments;
+lmv.readGeometryMetadata = readGeometryMetadata;
+lmv.filterFragments = filterFragments;
+lmv.readFragments = readFragments;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
 
 function readInstance(pfr, entry, globalOffset) {
     var tse = pfr.seekToEntry(entry);
@@ -2862,13 +4228,22 @@ function readInstance(pfr, entry, globalOffset) {
     }
 }
 
+lmv.readInstance = readInstance;
+
+})();
+(function() {
+
+var av = Autodesk.Viewing,
+    lmv = Autodesk.LMVTK,
+    avp = av.Private;
 
 // Threshold to enable loading/handling fragments and geometry metadata in a memory optimized way.
 // 6 Mb for weak device, 32 Mb for others. And the size is the compressed size.
-var MAX_FRAGMENT_PACK_SIZE = (isAndroidDevice() || isIOSDevice()) ? (6 * 1024 * 1024) : (32 * 1024 *1024);
+var MAX_FRAGMENT_PACK_SIZE = (av.isMobileDevice()) ? (6 * 1024 * 1024) : (32 * 1024 *1024);
 
 /** @constructor */
 function Package(zipPack) {
+
     this.unzip = new Zlib.Unzip(zipPack);
 
     this.manifest = null;
@@ -2931,28 +4306,18 @@ Package.prototype.loadAsyncResource = function(loadContext, resourcePath, conten
     function xhrCB(responseData) {
         svf.pendingRequests--;
 
-        if (responseData) {
-            var data = new Uint8Array(responseData);
-
-            if (data[0] == 31 && data[1] == 139) {
-                var gunzip = new Zlib.Gunzip(data);
-                data = gunzip.decompress();
-            }
-
-            callback(data);
-        }
+        callback(responseData);
 
         if (svf.pendingRequests == 0)
             svf.postLoad(loadContext);
     }
-    
-    Autodesk.Viewing.Private.ViewingService.get(loadContext.viewing_url, 'items', loadContext.basePath + resourcePath, xhrCB, loadContext.onFailureCallback,
-            {withCredentials:!!loadContext.auth,
-            responseType:'arraybuffer',
-            asynchronous:true,
-            headers:loadContext.headers,
-            queryParams:loadContext.queryParams,
-            oss_url: loadContext.oss_url});
+
+    avp.ViewingService.getItemWorker(loadContext, loadContext.basePath + resourcePath,
+                            xhrCB,
+                            loadContext.onFailureCallback,
+                            { asynchronous:true }
+                           );
+
 };
 
 Package.prototype.loadManifest = function(loadContext) {
@@ -2962,9 +4327,9 @@ Package.prototype.loadManifest = function(loadContext) {
     if (!manifestJson)
         return false;
 
-    var jdr = new InputStream(manifestJson);
+    var jdr = new lmv.InputStream(manifestJson);
     this.manifest = JSON.parse(jdr.getString(manifestJson.byteLength));
-}
+};
 
 Package.prototype.loadRemainingSvf = function(loadContext) {
     var svf = this;
@@ -2978,7 +4343,7 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
     var assets = manifest["assets"];
     
     var metadataJson = unzip.decompress("metadata.json");
-    var jdr = new InputStream(metadataJson);
+    var jdr = new lmv.InputStream(metadataJson);
 
     // Test to see if this is json (not a binary header)
     // Done by verifying that there is no 0 (Hence ASCII)
@@ -3085,7 +4450,7 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
             //For simple materials, we want the file named "Materials.json" and not "ProteinMaterials.json"
             if (path.indexOf("Protein") == -1) {
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    var jdr = new InputStream(data);
+                    var jdr = new lmv.InputStream(data);
                     var byteLength = data.byteLength;
                     if (0 < byteLength) {
                         svf.materials = JSON.parse(jdr.getString(byteLength));
@@ -3098,7 +4463,7 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
                 //With some Prism materials that have properties we can handle, but
                 //are not in the Simple variant.
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    var jdr = new InputStream(data);
+                    var jdr = new lmv.InputStream(data);
                     var byteLength = data.byteLength;
                     if (0 < byteLength) {
                         svf.proteinMaterials = JSON.parse(jdr.getString(byteLength));
@@ -3111,16 +4476,16 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
         else if (type == "FragmentList") {
             // Only enable this for mobile targets.
             this.memoryOptimizedMode = (asset["size"] > MAX_FRAGMENT_PACK_SIZE) &&
-            (isAndroidDevice() || isIOSDevice());
+            (av.isAndroidDevice() || av.isIOSDevice());
 
             var self = this;
             this.loadAsyncResource(loadContext, path, contents, function(data) {
-                var pfr = new PackFileReader(data);
+                var pfr = new lmv.PackFileReader(data);
 
                 //Use a single large blocks to store all fragment elements
                 //TODO: perhaps have a FragList per pack file to keep block size down?
-                var frags = svf.fragments = new FragList();
-                readFragments(pfr, frags, svf.globalOffset, loadContext.objectIds);
+                var frags = svf.fragments = new lmv.FragList();
+                lmv.readFragments(pfr, frags, svf.globalOffset, loadContext.placementTransform, loadContext.objectIds);
                 pfr = null;
 
                 // If there are any pending geometry metadata loading (as a result of enabled optimization
@@ -3128,9 +4493,8 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
                 // combine with fragments), load them and process them.
                 if (self.memoryOptimizedMode && pendingGeometryMetadataLoad.path) {
                     svf.loadAsyncResource(loadContext, pendingGeometryMetadataLoad.path, pendingGeometryMetadataLoad.contents, function(data) {
-                    pfr = new PackFileReader(data);
-                    svf.primitiveCount = readGeometryMetadataIntoFragments(pfr,
-                        svf.globalOffset, svf.fragments);
+                    pfr = new lmv.PackFileReader(data);
+                    svf.primitiveCount = lmv.readGeometryMetadataIntoFragments(pfr, svf.fragments);
                         pfr = null;
                         pendingGeometryMetadataLoad.contents = null;
                     });
@@ -3141,20 +4505,20 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
         else if (type == "GeometryMetadataList") {
             var self = this;
             this.loadAsyncResource(loadContext, path, contents, function(data) {
-                var pfr = new PackFileReader(data);
+                var pfr = new lmv.PackFileReader(data);
 
                 svf.geomMetadata = {};
 
                 if (self.memoryOptimizedMode) {
                     if (svf.fragments && svf.fragments.finishLoading) {
-                        svf.primitiveCount = readGeometryMetadataIntoFragments(pfr, svf.globalOffset, svf.fragments);
+                        svf.primitiveCount = lmv.readGeometryMetadataIntoFragments(pfr, svf.fragments);
                     } else {
                         pendingGeometryMetadataLoad.path = path;
                         pendingGeometryMetadataLoad.contents = contents;
                         contents = null;
                     }
                 } else {
-                    readGeometryMetadata(pfr, svf.geomMetadata);
+                    lmv.readGeometryMetadata(pfr, svf.geomMetadata);
                 }
             });
         }
@@ -3162,31 +4526,31 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
 
             if (path.indexOf("CameraDefinitions.bin") != -1) {
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    svf.camDefPack = new PackFileReader(data);
+                    svf.camDefPack = new lmv.PackFileReader(data);
                 });
             }
 
             else if (path.indexOf("CameraList.bin") != -1) {
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    svf.camInstPack = new PackFileReader(data);
+                    svf.camInstPack = new lmv.PackFileReader(data);
                 });
             }
 
             else if (path.indexOf("LightDefinitions.bin") != -1) {
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    svf.lightDefPack = new PackFileReader(data);
+                    svf.lightDefPack = new lmv.PackFileReader(data);
                 });
             }
 
             else if (path.indexOf("LightList.bin") != -1) {
                 this.loadAsyncResource(loadContext, path, contents, function(data) {
-                    svf.lightInstPack = new PackFileReader(data);
+                    svf.lightInstPack = new lmv.PackFileReader(data);
                 });
             }
         }
         else if (type == "Animations") {
             this.loadAsyncResource(loadContext, path, contents, function(data) {
-                var jdr = new InputStream(data);
+                var jdr = new lmv.InputStream(data);
                 var byteLength = data.byteLength;
                 if (0 < byteLength) {
                     svf.animations = JSON.parse(jdr.getString(byteLength));
@@ -3245,7 +4609,7 @@ Package.prototype.loadRemainingSvf = function(loadContext) {
         }
         else if (type == "Topology") {
             this.loadAsyncResource(loadContext, path, contents, function(data) {
-                var jdr = new InputStream(data);
+                var jdr = new lmv.InputStream(data);
                 var byteLength = data.byteLength;
                 if (0 < byteLength) {
                     svf.topology = JSON.parse(jdr.getString(byteLength));
@@ -3286,8 +4650,8 @@ Package.prototype.postLoad = function(loadContext) {
     //both to be loaded to get the camera list
     if (this.camDefPack && this.camInstPack) {
         for (var k = 0, kEnd = this.camInstPack.getEntryCounts(); k < kEnd; k++) {
-            var inst = readInstance(this.camInstPack, k, this.globalOffset);
-            var cam = readCameraDefinition(this.camDefPack, inst);
+            var inst = lmv.readInstance(this.camInstPack, k, this.globalOffset);
+            var cam = lmv.readCameraDefinition(this.camDefPack, inst);
 
             //Apply any instance transform to get the camera to world space.
             if (inst.transform) {
@@ -3309,8 +4673,8 @@ Package.prototype.postLoad = function(loadContext) {
     //Lights need the same thing as the cameras
     if (this.lightDefPack && this.lightInstPack) {
         for (var k = 0, kEnd = this.lightInstPack.getEntryCounts(); k < kEnd; k++) {
-            var inst = readInstance(this.lightInstPack, k);
-            this.lights.push(readLightDefinition(this.lightDefPack, inst.definition));
+            var inst = lmv.readInstance(this.lightInstPack, k);
+            this.lights.push(lmv.readLightDefinition(this.lightDefPack, inst.definition));
         }
 
         delete this.lightInstPack;
@@ -3391,7 +4755,7 @@ Package.prototype.postLoad = function(loadContext) {
 
     //if we don't know the overall scene bounds, compute them from the
     //fragment boxes
-    if (!this.bbox) {
+    if (!this.bbox || loadContext.placementTransform) {
         var totalbox = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
         var fragBoxes = frags.boxes;
 
@@ -3456,7 +4820,7 @@ Package.prototype.postLoad = function(loadContext) {
         }
         this.geompacks = packs;
 
-        var bb = filterFragments(this.fragments, fragIndexes);
+        var bb = lmv.filterFragments(this.fragments, fragIndexes);
         this.bbox = {
                         min: { x:bb[0], y:bb[1], z:bb[2] },
                         max: { x:bb[3], y:bb[4], z:bb[5]}
@@ -3475,10 +4839,10 @@ Package.prototype.postLoad = function(loadContext) {
         var mats = this.materials ? this.materials["materials"] : null;
         if (mats)
             this.addTransparencyFlagsToMaterials(mats);
-        this.bvh = new BVHBuilder(this.fragments, mats);
+        this.bvh = new avp.BVHBuilder(this.fragments, mats);
         this.bvh.build(loadContext.bvhOptions);
         var t1 = performance.now();
-        debug("BVH build time (worker thread):" + (t1 - t0));
+        loadContext.worker.debug("BVH build time (worker thread):" + (t1 - t0));
 
         if (this.memoryOptimizedMode) {
             // In memory optimized mode, delay posting SVF by waiting until BVH build finishes;
@@ -3494,10 +4858,19 @@ Package.prototype.postLoad = function(loadContext) {
     loadContext.loadDoneCB("done");
 };
 
+lmv.Package = Package;
 
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
 
 /** @constructor */
 function PropertyDatabase(dbjsons) {
+
+    "use strict";
 
     //The property db json arrays.
     //Some of them are held unparsed in blob form
@@ -3528,12 +4901,10 @@ function PropertyDatabase(dbjsons) {
     //array buffer corresponding to the respective property database constituent. In the current implementation
     //each array is expected to only have one name-value element.
 
-    function blobToJson(blob) {
-        var encodedString = "";
-        for (var i=0; i<blob.length; i++)
-            encodedString += String.fromCharCode(blob[i]);
 
-        var decodedString = decodeURIComponent(escape(encodedString));
+    function blobToJson(blob) {
+
+        var decodedString = lmv.utf8ArrayToString(blob, 0, blob.length);
 
         return JSON.parse(decodedString);
     }
@@ -3541,25 +4912,24 @@ function PropertyDatabase(dbjsons) {
     //parses a piece of json from a given blob (representing an array of json values)
     //up to the next comma+newline combo (i.e. array delimiter).
     function subBlobToJson(blob, startIndex) {
+
         var i = startIndex;
-        var encodedString = "";
 
         while (i<blob.length-1) {
             var c = blob[i];
-            if (c == 44 && (blob[i+1] == 10 || blob[i+1] == 13))
+            if (c == 44 && (blob[i+1] == 10 || blob[i+1] == 13)) //comma followed by newline?
                 break;
-            if (c == 10 || c == 13)
+            if (c == 10 || c == 13) //detect newline or line feed
                 break;
-            encodedString += String.fromCharCode(c);
             i++;
         }
 
+        var decodedString = lmv.utf8ArrayToString(blob, startIndex, i-startIndex);
         try {
-            var decodedString = decodeURIComponent(escape(encodedString));
             return JSON.parse(decodedString);
         } catch (e) {
             console.error("Error parsing property blob to JSON : " + encodedString);
-            return encodedString;
+            return decodedString;
         }
     }
 
@@ -3764,8 +5134,7 @@ function PropertyDatabase(dbjsons) {
     //=========================================================================
 
     this.getObjectCount = function() {
-        // Account for sentinel value at the end, thus using -2 instead of -1.
-        return _offsets.length-2;
+        return _offsets.length-1;
     };
 
     this.getValueAt = function(valId) {
@@ -3783,12 +5152,21 @@ function PropertyDatabase(dbjsons) {
         return subBlobToJson(_idsBlob, _idsOffsets[entId]);
     };
 
-    this.getObjectProperties = function(dbId) {
+    this.getObjectProperties = function(dbId, propFilter) {
         var result = {
-            "dbId":dbId, "name":"",
-            "externalId": this.getIdAt(dbId),
-            "properties":[]
+            "dbId":dbId,
+            "properties": []
         };
+
+        if (!propFilter || propFilter.indexOf("externalId") !== -1) {
+            result.externalId = this.getIdAt(dbId);
+
+            // If there are no other properties required, then just return
+            // Useful when we only care about fetching externalId-only data.
+            if (propFilter && propFilter.length === 1) {
+                return result;
+            }
+        }
 
         var parentProps = null;
 
@@ -3804,6 +5182,11 @@ function PropertyDatabase(dbjsons) {
         for (var i=propStart; i<propEnd; i+=2) {
             var attrId = _avs[i];
 
+            var attr = _attrs[attrId];
+
+            if (propFilter && propFilter.indexOf(attr[0]) === -1 )
+                continue;
+
             if (attrId == _nameAttrId) {
                 var val = this.getValueAt(_avs[i+1]);
                 result.name = val;
@@ -3816,7 +5199,6 @@ function PropertyDatabase(dbjsons) {
                 }
             }
             else {
-                var attr = _attrs[attrId];
                 var flags = (attr[6]) ? attr[6] : 0;
                 var displayName = (attr[5]) ? attr[5] : attr[0];
 
@@ -3859,6 +5241,9 @@ function PropertyDatabase(dbjsons) {
                 }
             }
         }
+
+        if (propFilter && !result.properties.length)
+            return null;
 
         return result;
     };
@@ -3968,41 +5353,71 @@ function PropertyDatabase(dbjsons) {
     };
 
 
+//Duplicated from InstanceTree.js
+var NODE_TYPE_ASSEMBLY   = 0x0,    // Real world object as assembly of sub-objects
+    NODE_TYPE_GEOMETRY   = 0x6;    // Leaf geometry node
+
     //Builds a tree of nodes according to the parent/child hierarchy
     //stored in the property database, starting at the node with the given dbId
-    this.buildObjectTree = function(node, //current node = { dbId:XXX }
+    this.buildObjectTreeFlat = function(dbId, //current node dbId
+                                    parent, //parent dbId
                                     dbToFrag, //map of dbId to fragmentIds
-                                    depth /* start at 0 */, maxDepth /* returns max tree depth */) {
+                                    depth, /* start at 0 */ 
+                                    maxDepth, /* returns max tree depth */
+                                    nodeStorage
+                                    ) {
 
         if (depth > maxDepth[0])
             maxDepth[0] = depth;
 
+        var node = {dbId : dbId};
         var children = this.getNodeNameAndChildren(node);
 
-        if (children) {
-            for (var j=0; j<children.length; j++) {
-                this.buildObjectTree(children[j], dbToFrag, depth+1, maxDepth);
-            }
-
-            //For display purposes, prune children that are leafs without graphics
-            //and add the rest to the node
-            for (j=0; j<children.length; j++) {
-                if (!dbToFrag || (children[j].children || (children[j].fragIds !== undefined))) {
-                    if (!node.children)
-                        node.children = [ children[j] ];
-                    else
-                        node.children.push(children[j]);
-                }
-            }
-        }
+        var childrenIds = [];
+        var isLeaf = false;
 
         //leaf node
         if (dbToFrag) {
-            var frags = dbToFrag[node.dbId];
+            var frags = dbToFrag[dbId];
             if (frags !== undefined) {
-                node.fragIds = frags;
+                if (children && children.length)
+                    console.error("Node that has both node children and fragment children! Not supported by flat storage");
+                if (!Array.isArray(frags))
+                    childrenIds = [frags];
+                else
+                    childrenIds = frags;
+                isLeaf = true;
             }
         }
+
+        //Use default node flags in case none are set
+        //This is not the best place to do this, but it's
+        //the last place where we can differentiate between "not set" and zero.
+        var flags = node.flags || 0;
+        if (flags === undefined) {
+            if (isLeaf)
+                flags = NODE_TYPE_GEOMETRY;
+            else if (children)
+                flags = NODE_TYPE_ASSEMBLY;
+            else
+                flags = 0; //??? Should not happen (those nodes are pruned below)
+        }
+
+        if (children) {
+            for (var j=0; j<children.length; j++) {
+                var childHasChildren = this.buildObjectTreeFlat(children[j].dbId, dbId, dbToFrag, depth+1, maxDepth, nodeStorage);
+                
+                //For display purposes, prune children that are leafs without graphics
+                //and add the rest to the node                
+                if (childHasChildren)
+                    childrenIds.push(children[j].dbId);
+            }
+        }
+
+        if (childrenIds.length)
+            nodeStorage.setNode(dbId, parent, node.name, flags, childrenIds, isLeaf);
+
+        return childrenIds.length; 
     };
 
 
@@ -4130,274 +5545,17 @@ function PropertyDatabase(dbjsons) {
     };
 }
 
+lmv.PropertyDatabase = PropertyDatabase;
 
-function F2D(metadata, manifest, basePath, options) {
-    this.metadata = metadata;
-    this.scaleX = 1;
-    this.scaleY = 1;
-    this.bbox = { min:{x:0,y:0,z:0}, max:{x:0,y:0,z:0} };
-    this.is2d = true;
-    this.layersMap = {};
-    this.layersRoot = {name: 'root', id: 'root', children: [], isLayer: false, childCount: 0};
-    this.fontDefs = {};
-    this.fontCount = 0;
-    this.fontId = 0;
-    this.manifestAvailable = false;
+})();
 
-    this.objectMemberQueue = [];
+(function() {
 
-    this.propertydb = {
-        attrs : [],
-        avs: [],
-        ids: [],
-        values: [],
-        offsets: [],
-        rcv_offsets: [],
-        rcvs : [],
-        viewables: []
-    };
+"use strict";
 
-    if (metadata) {
-
-        var dims = metadata.page_dimensions;
-
-        this.paperWidth = dims.page_width;
-        this.paperHeight = dims.page_height;
-
-        // TODO: scale parsing.
-        this.scaleX = this.paperWidth / dims.plot_width;
-        this.scaleY = this.paperHeight / dims.plot_height;
-
-        this.hidePaper = dims.hide_paper;
-
-        this.bbox.max.x = this.paperWidth;
-        this.bbox.max.y = this.paperHeight;
-
-        // Temporary: build the layers tree. Eventually the extractor
-        // should be the one doing this; we're incompletely faking it
-        // by looking at the layer names.
-        //
-        var layersRoot = this.layersRoot,
-            groupId = 0,
-            layerId = 0;
-
-        function findChild(item, name) {
-            var children = item.children;
-            for (var i = 0; i < children.length; ++i) {
-                var child = children[i];
-                if (child.name === name) {
-                    return child;
-                }
-            }
-            return null;
-        }
-
-        function insertLayer(path, name, index) {
-            var parent = layersRoot,
-                pathLength = path.length;
-
-            if (1 < pathLength) {
-                for (var i = 0; i < pathLength - 1; ++i) {
-                    var pathComponent = path[i];
-                    var item = findChild(parent, pathComponent);
-                    if (!item) {
-                        item = {
-                            name: pathComponent,
-                            id: 'group-' + groupId++,
-                            children: [],
-                            isLayer: false,
-                            childCount: 0};
-                        parent.children.push(item);
-                    }
-                    parent = item;
-                }
-            }
-
-            parent.children.push({
-                name: name,
-                index: index,
-                id: layerId++,
-                isLayer: true
-            });
-        }
-
-        var count = 0;
-        //Some geometry comes on null layer, and we reserve a spot for that one.
-        //For example, Revit plots have no layers at all.
-        this.layersMap[0] = count++;
-
-        for (var l in metadata.layers) {
-
-            var index = parseInt(l);
-            var layerDef = metadata.layers[l];
-
-            var name = (typeof layerDef === "string") ? layerDef : layerDef.name;
-
-            if (!name)
-                name = l; //won't get here...
-
-            insertLayer(name.split('|'), name, index);
-
-            //We store in a map in order to allow non-consecutive layer numbers,
-            //which does happen.
-            this.layersMap[index] = count++;
-        }
-
-        this.layerCount = count;
-    }
-
-    this.hidePaper = this.hidePaper || (options && options.modelSpace);
-
-
-
-    function sortLayers(parent) {
-        var children = parent.children;
-        if (children !== undefined) {
-            for (var i = 0; i < children.length; ++i) {
-                sortLayers(children[i]);
-            }
-            children.sort(function (a, b) {
-                var aIsLayer = a.isLayer,
-                    bIsLayer = b.isLayer;
-
-                if (aIsLayer && !bIsLayer) {
-                    return -1; // Layers before groups
-                } else if (!aIsLayer && bIsLayer) {
-                    return 1;
-                }
-                return a.name.localeCompare(b.name, undefined, {sensitivity: 'base', numeric: true}); // Sort layers and groups by name
-            });
-        }
-    }
-    sortLayers(this.layersRoot);
-
-    function countChildren(parent) {
-        var childCount = 0;
-
-        if (parent.isLayer) {
-            childCount = 1;
-        } else {
-            var children = parent.children;
-            for (var i = 0; i < children.length; ++i) {
-                var child = children[i];
-                childCount += countChildren(child);
-            }
-            parent.childCount = childCount;
-        }
-
-        return childCount;
-    }
-    countChildren(this.layersRoot);
-
-    // For debugging only. Could be removed.
-    this.opCount = 0;
-
-
-    this.fontFaces = [];
-    this.fontFamilies = [];
-    this.viewports = [];
-    this.currentVpId = 0; // current viewport index
-    this.clips = [];
-    this.objectNumber = 0;
-    this.imageNumber = 0;
-    this.maxObjectNumber = 0;
-
-    this.objectStack = [];
-    this.objectNameStack = [];
-    this.parseObjState = {
-        polyTriangle : {},
-        viewport : {},
-        clip : {},
-        raster : {},
-        text: {},
-        fontDef: {},
-        uknown: {}
-    };
-
-    this.layer = 0;
-
-    this.bgColor = options.bgColor? options.bgColor : 0xffffffff;
-    this.contrastColor = this.color = this.fillColor = 0xff000000;
-
-    this.currentVbb = new Autodesk.Viewing.Private.VertexBufferBuilder(false);
-    this.meshes = [];
-
-    this.numCircles = this.numEllipses = this.numPolylines = this.numLineSegs = 0;
-    this.numPolytriangles = this.numTriangles = 0;
-
-    // Newly added f2d pasing stuff.
-    this.error = false;
-
-    // Last absolute positions of point parsed so far.
-    // Used to decode relative positions parsed from points array.
-    this.offsetX = 0;
-    this.offsetY = 0;
-
-    // Parse manifest, do stuff.
-    // 1. Build image id to raster URI map used to assign values to texture path.
-    // 2. Acquire names of property database json streams.
-    if (manifest) {
-        this.manifestAvailable = true;
-        this.imageId2URI = {};
-        var assets = manifest.assets;
-        for (var i = 0, e = assets.length; i < e; ++i) {
-            var entry = assets[i];
-            var mime = entry.mime;
-            if (mime.indexOf('image/') != -1) {
-                var id = entry.id;
-                id = id.substr(0, id.indexOf('.'));
-                this.imageId2URI[id] = basePath + entry.URI;
-            }
-
-            if (entry.type == "Autodesk.CloudPlatform.PropertyAttributes")
-                this.propertydb.attrs.push(entry.URI);
-            if (entry.type == "Autodesk.CloudPlatform.PropertyValues")
-                this.propertydb.values.push(entry.URI);
-            if (entry.type == "Autodesk.CloudPlatform.PropertyIDs")
-                this.propertydb.ids.push(entry.URI);
-            if (entry.type == "Autodesk.CloudPlatform.PropertyViewables")
-                this.propertydb.viewables.push(entry.URI);
-            if (entry.type == "Autodesk.CloudPlatform.PropertyOffsets") {
-                if (entry.id.indexOf('rcv') != -1)
-                    this.propertydb.rcv_offsets.push(entry.URI);
-                else
-                    this.propertydb.offsets.push(entry.URI);
-            }
-            if (entry.type == "Autodesk.CloudPlatform.PropertyAVs")
-                this.propertydb.avs.push(entry.URI);
-            if (entry.type == "Autodesk.CloudPlatform.PropertyRCVs")
-                this.propertydb.rcvs.push(entry.URI);
-        }
-
-        debug(JSON.stringify(this.propertydb));
-    }
-}
-
-F2D.prototype.load = function(loadContext, fydoPack) {
-
-    if (fydoPack[0] == 31 && fydoPack[1] == 139) {
-        var gunzip = new Zlib.Gunzip(fydoPack);
-        fydoPack = gunzip.decompress();
-    }
-
-    this.data = fydoPack;
-    this.parse();
-
-    loadContext.loadDoneCB(true);
-};
-
-F2D.prototype.loadFrames = function(loadContext) {
-
-    if (loadContext.data) {
-        this.data = new Uint8Array(loadContext.data);
-    } else if (loadContext.finalFrame) {
-        this.data = null;
-    }
-
-    this.parseFrames(loadContext.finalFrame);
-
-    loadContext.loadDoneCB(true);
-};
+var av = Autodesk.Viewing,
+    avp = av.Private;
+var lmv = Autodesk.LMVTK;
 
 var F2dDataType = {
     //Fixed size types
@@ -4488,6 +5646,188 @@ var F2dSemanticType = {
 };
 
 
+
+function F2D(metadata, manifest, basePath, options) {
+    this.metadata = metadata;
+    this.scaleX = 1;
+    this.scaleY = 1;
+    this.bbox = { min:{x:0,y:0,z:0}, max:{x:0,y:0,z:0} };
+    this.is2d = true;
+    this.layersMap = {};
+    this.fontDefs = {};
+    this.fontCount = 0;
+    this.fontId = 0;
+    this.manifestAvailable = false;
+
+    this.objectMemberQueue = [];
+
+    this.propertydb = {
+        attrs : [],
+        avs: [],
+        ids: [],
+        values: [],
+        offsets: [],
+        rcv_offsets: [],
+        rcvs : [],
+        viewables: []
+    };
+
+    if (metadata) {
+
+        var dims = metadata.page_dimensions;
+
+        this.paperWidth = dims.page_width;
+        this.paperHeight = dims.page_height;
+
+        // TODO: scale parsing.
+        this.scaleX = this.paperWidth / dims.plot_width;
+        this.scaleY = this.paperHeight / dims.plot_height;
+
+        this.hidePaper = dims.hide_paper;
+
+        this.bbox.max.x = this.paperWidth;
+        this.bbox.max.y = this.paperHeight;
+
+        //Initialize mapping between layer index -> layer number to be used for rendering
+        var count = 0;
+        //Some geometry comes on null layer, and we reserve a spot for that one.
+        //For example, Revit plots have no layers at all.
+        this.layersMap[0] = count++;
+
+        for (var l in metadata.layers) {
+
+            var index = parseInt(l);
+
+            //We store in a map in order to allow non-consecutive layer numbers,
+            //which does happen.
+            this.layersMap[index] = count++;
+        }
+
+        this.layerCount = count;
+
+        //Create a layers tree to be used by the UI -- this splits AutoCAD style
+        //layer groups (specified using | character) into a tree of layers.
+        this.createLayerGroups(metadata.layers);
+    }
+
+    this.hidePaper = this.hidePaper || (options && options.modelSpace);
+
+    // For debugging only. Could be removed.
+    this.opCount = 0;
+
+
+    this.fontFaces = [];
+    this.fontFamilies = [];
+    this.viewports = [0]; // make viewport index start at 1, 0 as paper is used in LineShader
+    this.currentVpId = 0; // current viewport index
+    this.clips = [0]; // make clip index start at 1, matched with viewport index
+    this.strings = [];
+    this.stringDbIds = [];
+    this.currentStringNumber = -1;
+    this.objectNumber = 0;
+    this.currentFakeId = -2; //We tag certain objects that we care about (like strings) that have no ID with fake negative IDs instead of giving them default ID of 0.
+    this.imageNumber = 0;
+    this.maxObjectNumber = 0;
+
+    this.objectStack = [];
+    this.objectNameStack = [];
+    this.parseObjState = {
+        polyTriangle : {},
+        viewport : {},
+        clip : {},
+        raster : {},
+        text: {},
+        fontDef: {},
+        uknown: {}
+    };
+
+    this.layer = 0;
+
+    this.bgColor = options.bgColor? options.bgColor : 0xffffffff;
+    this.contrastColor = this.color = this.fillColor = 0xff000000;
+
+    this.currentVbb = new avp.VertexBufferBuilder(false);
+    this.meshes = [];
+
+    this.numCircles = this.numEllipses = this.numPolylines = this.numLineSegs = 0;
+    this.numPolytriangles = this.numTriangles = 0;
+
+    // Newly added f2d pasing stuff.
+    this.error = false;
+
+    // Last absolute positions of point parsed so far.
+    // Used to decode relative positions parsed from points array.
+    this.offsetX = 0;
+    this.offsetY = 0;
+
+    // Parse manifest, do stuff.
+    // 1. Build image id to raster URI map used to assign values to texture path.
+    // 2. Acquire names of property database json streams.
+    if (manifest) {
+        this.manifestAvailable = true;
+        this.imageId2URI = {};
+        var assets = manifest.assets;
+        for (var i = 0, e = assets.length; i < e; ++i) {
+            var entry = assets[i];
+            var mime = entry.mime;
+            if (mime.indexOf('image/') != -1) {
+                var id = entry.id;
+                id = id.substr(0, id.indexOf('.'));
+                this.imageId2URI[id] = basePath + entry.URI;
+            }
+
+            if (entry.type == "Autodesk.CloudPlatform.PropertyAttributes")
+                this.propertydb.attrs.push(entry.URI);
+            if (entry.type == "Autodesk.CloudPlatform.PropertyValues")
+                this.propertydb.values.push(entry.URI);
+            if (entry.type == "Autodesk.CloudPlatform.PropertyIDs")
+                this.propertydb.ids.push(entry.URI);
+            if (entry.type == "Autodesk.CloudPlatform.PropertyViewables")
+                this.propertydb.viewables.push(entry.URI);
+            if (entry.type == "Autodesk.CloudPlatform.PropertyOffsets") {
+                if (entry.id.indexOf('rcv') != -1)
+                    this.propertydb.rcv_offsets.push(entry.URI);
+                else
+                    this.propertydb.offsets.push(entry.URI);
+            }
+            if (entry.type == "Autodesk.CloudPlatform.PropertyAVs")
+                this.propertydb.avs.push(entry.URI);
+            if (entry.type == "Autodesk.CloudPlatform.PropertyRCVs")
+                this.propertydb.rcvs.push(entry.URI);
+        }
+
+        debug(JSON.stringify(this.propertydb));
+    }
+}
+
+F2D.prototype.load = function(loadContext, fydoPack) {
+
+    if (!(fydoPack instanceof Uint8Array))
+        fydoPack = new Uint8Array(fydoPack);
+    this.data = fydoPack;
+    this.parse();
+
+    loadContext.loadDoneCB(true);
+};
+
+F2D.prototype.loadFrames = function(loadContext) {
+
+    var data = loadContext.data;
+
+    if (data) {
+        if (!(data instanceof Uint8Array))
+            data = new Uint8Array(data);
+        this.data = data;
+    } else if (loadContext.finalFrame) {
+        this.data = null;
+    }
+
+    this.parseFrames(loadContext.finalFrame);
+
+    loadContext.loadDoneCB(true);
+};
+
+
 F2D.prototype.flushBuffer = function(addCount, force)
 {
     if (!this.currentVbb.vcount)
@@ -4500,7 +5840,7 @@ F2D.prototype.flushBuffer = function(addCount, force)
 
     if (flush) {
         var mesh = this.currentVbb.toMesh();
-        VBUtils.bboxUnion(this.bbox, mesh.boundingBox);
+        lmv.VBUtils.bboxUnion(this.bbox, mesh.boundingBox);
         this.meshes.push(mesh);
 
         mesh.material = {
@@ -4516,7 +5856,7 @@ F2D.prototype.flushBuffer = function(addCount, force)
             this.currentImage = null;
         }
 
-        this.currentVbb = new Autodesk.Viewing.Private.VertexBufferBuilder();
+        this.currentVbb = new avp.VertexBufferBuilder();
     }
 };
 
@@ -4630,6 +5970,9 @@ F2D.prototype.parseObject = function() {
             this.objectMemberQueue.unshift("position", "width", "height", "imageId");
             break;
         case F2dSemanticType.st_text:
+            this.currentStringNumber = this.strings.length;
+            if (this.objectNumber === 0)
+                this.objectNumber = this.currentFakeId--;
             this.objectNameStack.push("text");
             this.objectMemberQueue.unshift("string", "position", "height", "widthScale", "rotation", "oblique", "charWidths");
             break;
@@ -4688,9 +6031,6 @@ F2D.prototype.initSheet = function(paperColor) {
 
         var vbb = this.currentVbb;
 
-        //Put the paper the null layer so it won't
-        //get turned off.
-        var paperLayer = 0;
         var ss = pw * 0.0075;
         var shadowColor = 0xff555555;
 
@@ -4705,14 +6045,16 @@ F2D.prototype.initSheet = function(paperColor) {
                        4,5,6,4,6,7,
                        8,9,10,8,10,11];
 
-        this.addPolyTriangle(points, colors, indices, 0xffffffff, paperLayer, 0xffffffff, false);
+        var paperLayer = 0; //Put the paper the null layer so it won't get turned off.
+        var paperDbId = -1;
+
+        this.addPolyTriangle(points, colors, indices, 0xffffffff, paperDbId, paperLayer, false);
 
         //Page outline
-        vbb.addSegment(0,0,pw,0,   0, 1e-6, 0xff000000, 0xffffffff, 0, this.currentVpId);
-        vbb.addSegment(pw,0,pw,ph, 0, 1e-6, 0xff000000, 0xffffffff, 0, this.currentVpId);
-        vbb.addSegment(pw,ph,0,ph, 0, 1e-6, 0xff000000, 0xffffffff, 0, this.currentVpId);
-        vbb.addSegment(0,ph,0,0,   0, 1e-6, 0xff000000, 0xffffffff, 0, this.currentVpId);
-
+        vbb.addSegment(0,0,pw,0,   0, 1e-6, 0xff000000, paperDbId, paperLayer, this.currentVpId);
+        vbb.addSegment(pw,0,pw,ph, 0, 1e-6, 0xff000000, paperDbId, paperLayer, this.currentVpId);
+        vbb.addSegment(pw,ph,0,ph, 0, 1e-6, 0xff000000, paperDbId, paperLayer, this.currentVpId);
+        vbb.addSegment(0,ph,0,0,   0, 1e-6, 0xff000000, paperDbId, paperLayer, this.currentVpId);
 
 
         //Test pattern for line styles.
@@ -5112,7 +6454,7 @@ F2D.prototype.parseDataType = function() {
 };
 
 F2D.prototype.parse = function() {
-    var stream = this.stream = new InputStream(this.data);
+    var stream = this.stream = new lmv.InputStream(this.data);
 
     // "F2D"
     var header = stream.getString(3);
@@ -5155,7 +6497,7 @@ F2D.prototype.parse = function() {
 F2D.prototype.parseFrames = function(flush) {
 
     if (this.data) {
-        var stream = this.stream = new InputStream(this.data);
+        var stream = this.stream = new lmv.InputStream(this.data);
         while (stream.offset < stream.byteLength) {
             this.parseDataType();
             if (this.error)
@@ -5214,7 +6556,7 @@ F2D.prototype.actOnDot = function(points) {
 };
 
 
-F2D.prototype.actOnCompleteCircle = function(cx, cy, major) {
+F2D.prototype.actOnCompleteCircle = function(cx, cy, radius) {
     // Relative positions.
     this.flushBuffer();
     this.numCircles++;
@@ -5223,21 +6565,21 @@ F2D.prototype.actOnCompleteCircle = function(cx, cy, major) {
         //A simple filled circle can be handled
         //as degenerate thick line segment -- lots of these
         //in line style grass clippings
-        this.currentVbb.addSegment(cx, cy, cx, cy, 0, major * 2, this.color, this.objectNumber,
+        this.currentVbb.addSegment(cx, cy, cx, cy, 0, 2 * radius, this.color, this.objectNumber,
             this.layer, this.currentVpId, true, false, true);
     } else {
-        this.currentVbb.addCircularArc(cx, cy, 0, Math.PI * 2, major,
+        this.currentVbb.addArc(cx, cy, 0, 2 * Math.PI, /*major*/radius, /*minor*/radius, /*tilt*/0.0,
             this.lineWeight, this.color, this.objectNumber, this.layer, this.currentVpId);
     }
 };
 
-F2D.prototype.actOnCircularArc = function(cx, cy, start, end, major) {
+F2D.prototype.actOnCircularArc = function(cx, cy, start, end, radius) {
     this.numCircles++;
     this.flushBuffer();
 
 //    debug("circle " + start + " " + end + " c " + this.color.toString(16));
 
-    this.currentVbb.addCircularArc(cx, cy, start, end, major,
+    this.currentVbb.addArc(cx, cy, start, end, /*major*/radius, /*minor*/radius, /*tilt*/0.0,
         this.lineWeight, this.color, this.objectNumber, this.layer, this.currentVpId);
 };
 
@@ -5245,7 +6587,7 @@ F2D.prototype.actOnArc = function(cx, cy, start, end, major, minor, rotation) {
     this.numEllipses++;
     // TODO: need this?
     this.flushBuffer();
-    this.currentVbb.addEllipticalArc(cx, cy, start, end, major, minor, rotation,
+    this.currentVbb.addArc(cx, cy, start, end, major, minor, rotation,
         this.lineWeight, this.color, this.objectNumber, this.layer, this.currentVpId);
 };
 
@@ -5259,28 +6601,21 @@ F2D.prototype.actOnRaster = function() {
     var ps = this.parseObjState.raster;
 
     var position = ps.position,
-        width = ps.width,
-        height = ps.height,
-        imageId = ps.imageId;
+        imageId  = ps.imageId,
+        imageUri = this.imageId2URI[imageId];
 
-    var x = position[0],
-        y = position[1],
-        w = this.sx(width),
-        h = this.sy(height);
+    var width  = this.sx(ps.width),
+        height = this.sy(ps.height);
 
-    var texture = {
-        dataURI : this.imageId2URI[imageId],
-        width : w,
-        height: h
-    };
+    var centerX = position[0] + 0.5 * width,
+        centerY = position[1] - 0.5 * height;
 
-    this.currentVbb.addTexturedQuad(x, y - h, w, h, this.objectNumber, this.layer, this.currentVpId);
-    this.currentImage = texture;
+    this.currentVbb.addTexturedQuad(centerX, centerY, width, height, /*rotation*/0, 0xff00ffff, this.objectNumber, this.layer, this.currentVpId);
+    this.currentImage = { dataURI: imageUri };
 
     //We can do one image per Vertex Buffer, so flush the quad
     this.flushBuffer(0, true);
 };
-
 
 F2D.prototype.actOnClip = function() {
 
@@ -5291,7 +6626,13 @@ F2D.prototype.actOnClip = function() {
 };
 
 F2D.prototype.actOnText = function() {
-    //TODO: text not currently used
+    //TODO: text not currently used for rendering,
+    //but we collect the strings for search/lookup purposes
+    this.strings[this.currentStringNumber] = this.parseObjState.text.string;
+    this.stringDbIds[this.currentStringNumber] = this.objectNumber;
+    this.currentStringNumber = -1;
+    if (this.objectNumber < -1)
+        this.objectNumber = 0; //reset the current object ID in case we were using a fake one for the text object
 };
 
 
@@ -5300,7 +6641,7 @@ F2D.prototype.actOnText = function() {
 //hardware instancing or not, so it require a lot more
 //work than other geometries before sending raw primitives to the
 //vertex buffer.
-F2D.prototype.addPolyTriangle = function(points, colors, inds, color, layer, dbId, antialiasEdges) {
+F2D.prototype.addPolyTriangle = function(points, colors, inds, color, dbId, layer, antialiasEdges) {
     var me = this;
     var edgeMap = null;
 
@@ -5352,7 +6693,7 @@ F2D.prototype.addPolyTriangle = function(points, colors, inds, color, layer, dbI
                                              0,
                                              aaLineWeight,
                                              colors ? colors[i] : color,
-                                             dbId, layer, this.currentVpId);
+                                             dbId, layer, me.currentVpId);
 {
                     if (colors && (colors[i] != colors[iTo]))
                         debug("Gouraud triangle encountered. Will have incorrect antialiasing.");}
@@ -5381,7 +6722,7 @@ F2D.prototype.addPolyTriangle = function(points, colors, inds, color, layer, dbI
                                      0,
                                      aaLineWeight,
                                      colors ? colors[iFrom] : color,
-                                     dbId, layer, this.currentVpId);
+                                     dbId, layer, me.currentVpId);
 
             if (colors && (colors[iFrom] != colors[iTo]))
                 debug("Gouraud triangle encountered. Will have incorrect antialiasing.");
@@ -5433,13 +6774,10 @@ F2D.prototype.addPolyTriangle = function(points, colors, inds, color, layer, dbI
         for (var i = 0; i < count; ++i) {
             var x = points[2*i];
             var y = points[2*i+1];
-            vbb.addVertexPolytriangle(x, y, 0, 0, 0, colors ? colors[i] : color, dbId, layer, this.currentVpId);
+            vbb.addVertexPolytriangle(x, y, colors ? colors[i] : color, dbId, layer, this.currentVpId);
         }
 
-        count = inds.length;
-        for (var i = 0; i < count; i+=3) {
-            vbb.addTriangle(vbase + inds[i], vbase + inds[i+1], vbase + inds[i+2]);
-        }
+        vbb.addIndices(inds, vbase);
 
         if (antialiasEdges) {
             addAllAntialiasEdges();
@@ -5468,7 +6806,7 @@ F2D.prototype.actOnPolyTriangle = function() {
     this.numPolytriangles++;
     this.numTriangles += inds.length / 3;
 
-    this.addPolyTriangle(points, colors, inds, this.color, this.layer, this.objectNumber, true);
+    this.addPolyTriangle(points, colors, inds, this.color, this.objectNumber, this.layer, true);
 };
 
 F2D.prototype.actOnViewport = function() {
@@ -5479,6 +6817,95 @@ F2D.prototype.actOnViewport = function() {
     this.viewports.push(v);
     this.currentVpId = this.viewports.length - 1;
 };
+
+F2D.prototype.createLayerGroups = function(layers) {
+
+    // Temporary: build the layers tree. Eventually the extractor
+    // should be the one doing this; we're incompletely faking it
+    // by looking at the layer names.
+    //
+    var layersRoot = this.layersRoot = {name: 'root', id: 'root', childrenByName: {}, isLayer: false};
+    var groupId = 0, layerId = 0;
+
+    for (var l in layers) {
+
+        var index = parseInt(l);
+        var layerDef = layers[l];
+
+        var name = (typeof layerDef === "string") ? layerDef : layerDef.name;
+
+        if (!name)
+            name = l; //won't get here...
+
+        var path = name.split('|');
+        var parent = layersRoot;
+
+        if (path.length > 1) {
+            for (var i = 0; i < path.length - 1; ++i) {
+                var pathComponent = path[i];
+                var item = parent.childrenByName[pathComponent];
+                if (!item) {
+                    item = {
+                        name: pathComponent,
+                        id: 'group-' + groupId++,
+                        childrenByName: {},
+                        isLayer: false
+                    };
+                    parent.childrenByName[pathComponent] = item;
+                }
+                parent = item;
+            }
+        }
+
+        parent.childrenByName[name] = {
+            name: name,
+            index: index,
+            id: layerId++,
+            childrenByName: {},
+            isLayer: true
+        };
+    }
+
+    function sortLayers(parent) {
+        var children = Object.keys(parent.childrenByName).map(function(k) {return parent.childrenByName[k];});
+        delete parent.childrenByName;
+
+        if (children.length) {
+            parent.children = children;
+
+            parent.childCount = 0;
+
+            for (var i = 0; i < children.length; ++i) {
+                parent.childCount += sortLayers(children[i]);
+            }
+
+            children.sort(function (a, b) {
+                if (a.isLayer && !b.isLayer) {
+                    return -1; // Layers before groups
+                } else if (!a.isLayer && b.isLayer) {
+                    return 1;
+                }
+                return a.name.localeCompare(b.name, undefined, {sensitivity: 'base', numeric: true}); // Sort layers and groups by name
+            });
+        }
+
+        return parent.isLayer ? 1 : parent.childCount;
+    }
+    sortLayers(this.layersRoot);
+};
+
+lmv.F2D = F2D;
+lmv.F2dDataType = F2dDataType;
+lmv.F2dSemanticType = F2dSemanticType;
+
+})();
+
+
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
 
 function F2DProbe() {
     this.data = null;
@@ -5495,7 +6922,7 @@ F2DProbe.prototype.load = function(data) {
     this.frameStart = 0;
 
     if (!this.stream) {
-        this.stream = new CheckedInputStream(this.data);
+        this.stream = new lmv.CheckedInputStream(this.data);
         // Skip headers.
         this.stream.seek(8);
         this.frameStart = 8;
@@ -5513,93 +6940,8 @@ F2DProbe.prototype.load = function(data) {
     return this.marker;
 };
 
-var F2dProbeDataType = {
-    //Fixed size types
-    dt_object : 0,
-    dt_void : 1,
-    dt_byte : 2,
-    dt_int : 3,
-    dt_float : 4,
-    dt_double : 5,
-    dt_varint : 6,
-    dt_point_varint : 7,
-
-    //Variable size types
-    //Data bytes are prefixed by an integer
-    //representing the number of elements in the array.
-    dt_byte_array : 32,
-    dt_int_array : 33,
-    dt_float_array : 34,
-    dt_double_array : 35,
-    dt_varint_array : 36,
-    //Special variable int encoding for point data
-    dt_point_varint_array : 37,
-
-    //Well-known data types that help reduce output size for commonly
-    //encountered simple geometries
-    dt_arc : 38,
-    dt_circle : 39,
-    dt_circular_arc : 40,
-
-    dt_string : 63,
-    //do not want to go into varint range
-    dt_last_data_type : 127
-};
-
-var F2dProbeSemanticType = {
-    //For objects with fixed serialization (arc, raster) we don't bother having dedicated semantic for each member
-    //and assume the parsing application knows the order they appear. There is still an end-object tag of course
-    //which shows where the object ends.
-    st_object_member : 0,
-
-    //Simple / fixed size attributes
-    st_fill : 1,
-    st_fill_off : 2,
-    st_clip_off : 3,
-    st_layer : 4,
-    st_link : 5,
-    st_line_weight : 6,
-    st_miter_angle : 7,
-    st_miter_length : 8,
-    st_line_pattern_ref : 9,
-    st_back_color : 10,
-    st_color : 11,
-    st_markup : 12,
-    st_object_id : 13,
-    st_markup_id : 14,
-    st_reset_rel_offset : 15,
-    st_font_ref : 16,
-
-    //Compound object opcodes
-
-    //Begin a generic object opcode
-    st_begin_object : 32,
-
-    //Style attribute related opcodes. Those are compound objects
-    st_clip : 33,
-    st_line_caps : 34,
-    st_line_join : 35,
-    st_line_pattern_def : 36,
-    st_font_def : 37,
-    st_viewport : 38,
-
-    //Drawables are all objects-typed bounded by begin/end object opcodes
-
-    //Root level document begin
-    st_sheet : 42,
-    //Circle, Ellipse, Arcs
-    st_arc : 43,
-    //The grandfather of them all
-    st_polyline : 44,
-    st_raster : 45,
-    st_text : 46,
-    st_polytriangle : 47,
-    st_dot : 48,
-    //end object -- could be ending a generic object or drawable, etc.
-    st_end_object : 63,
-
-    st_last_semantic_type : 127
-};
+var F2dProbeDataType = lmv.F2dDataType;
+var F2dProbeSemanticType = lmv.F2dSemanticType;
 
 F2DProbe.prototype.readColor = function() {
     var s = this.stream;
@@ -5838,6 +7180,15 @@ F2DProbe.prototype.probe = function() {
     }
 };
 
+lmv.F2DProbe = F2DProbe;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
 // Similar as InputStream but with bounds checking.
 // Throw exception when out of bounds access is / to be made.
 function CheckedInputStream(buf) {
@@ -5973,6 +7324,290 @@ CheckedInputStream.prototype.reset = function (buf) {
     this.byteLength = buf.length;
 };
 
+lmv.CheckedInputStream = CheckedInputStream;
+
+})();
+
+
+
+//Implements runtime flat array storage for the node tree encoded by the property database
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+	
+	//
+	// struct Node {
+	//     int dbId;
+	//	   int parentDbId;
+	//	   int firstChild; //if negative it's a fragment list
+	//     int numChildren;
+	//     int flags;	
+	// };
+	// sizeof(Node) == 20
+	var SIZEOF_NODE = 5, //integers
+		OFFSET_DBID = 0,
+		OFFSET_PARENT = 1,
+		OFFSET_FIRST_CHILD = 2,
+		OFFSET_NUM_CHILD = 3,
+		OFFSET_FLAGS = 4;
+
+	// note: objectCount and fragmentCount are not used
+	function NodeArray(objectCount, fragmentCount) {
+
+		this.nodes = [];
+		this.nextNode = 0;
+		
+		this.children = [];
+		this.nextChild = 0;
+
+		this.dbIdToIndex = {};
+
+		this.names = [];
+		this.s2i = {}; //duplicate string pool
+		this.strings = [];
+		this.nameSuffixes = []; //integers
+
+		//Occupy index zero so that we can use index 0 as undefined
+		this.getIndex(0);
+	}
+
+	NodeArray.prototype.getIndex = function(dbId) {
+
+		var index = this.dbIdToIndex[dbId];
+
+		if (index)
+			return index;
+
+		index = this.nextNode++;
+
+		//Allocate space for new node
+		this.nodes.push(dbId); //store the dbId as first integer in the Node structure
+		//Add four blank integers to be filled by setNode
+		for (var i=1; i<SIZEOF_NODE; i++)
+			this.nodes.push(0);
+
+		this.dbIdToIndex[dbId] = index;
+
+		return index;
+	};
+
+	NodeArray.prototype.setNode = function(dbId, parentDbId, name, flags, childrenIds, isLeaf) {
+
+		var index = this.getIndex(dbId);
+
+		var baseOffset = index * SIZEOF_NODE;
+
+		this.nodes[baseOffset+OFFSET_PARENT] = parentDbId;
+		this.nodes[baseOffset+OFFSET_FIRST_CHILD] = this.nextChild;
+		this.nodes[baseOffset+OFFSET_NUM_CHILD] = isLeaf ? -childrenIds.length : childrenIds.length;
+		this.nodes[baseOffset+OFFSET_FLAGS] = flags;
+
+		for (var i=0; i<childrenIds.length; i++)
+			this.children[this.nextChild++] = isLeaf ? childrenIds[i] : this.getIndex(childrenIds[i]);
+
+		if (this.nextChild > this.children.length)
+			console.error("Child index out of bounds -- should not happen");
+	
+		this.processName(index, name);
+	};
+
+	NodeArray.prototype.processName = function(index, name) {
+
+		//Attempt to decompose the name into a base string + integer,
+		//like for example "Base Wall [12345678]" or "Crank Shaft:1"
+		//We will try to reduce memory usage by storing "Base Wall" just once.
+		var base;
+		var suffix;
+
+		//Try Revit style [1234] first
+		var iStart = -1;
+		var iEnd = -1;
+
+		if (name) { //name should not be empty, but hey, it happens.
+			iEnd = name.lastIndexOf("]");
+			iStart = name.lastIndexOf("[");
+
+			//Try Inventor style :1234
+			if (iStart === -1 || iEnd === -1) {
+				iStart = name.lastIndexOf(":");
+				iEnd = name.length;
+			}		
+		}
+
+		//TODO: Any other separators? What does AutoCAD use?
+
+		if (iStart >= 0 && iEnd > iStart) {
+			base = name.slice(0, iStart+1);
+			var ssuffix = name.slice(iStart+1, iEnd);
+			suffix = parseInt(ssuffix, 10);
+			
+			//make sure we get the same thing back when
+			//converting back to string, otherwise don't 
+			//decompose it.
+			if (!suffix || suffix+"" !== ssuffix) {
+				base = name;
+				suffix = 0;
+			}
+		} else {
+			base = name;
+			suffix = 0;
+		}
+
+
+		var idx = this.s2i[base];
+		if (idx === undefined) {
+			this.strings.push(base);
+			idx = this.strings.length-1;
+			this.s2i[base] = idx;
+		}
+
+		this.names[index] = idx;
+		this.nameSuffixes[index] = suffix;
+	};
+
+
+	function arrayToBuffer(a) {
+		var b = new Int32Array(a.length);
+		b.set(a);
+		return b;
+	}
+
+    // note none of these arguments are used
+	NodeArray.prototype.flatten = function(dbId, parentDbId, name, flags, childrenIds, isLeaf) {
+		this.nodes = arrayToBuffer(this.nodes);
+		this.children = arrayToBuffer(this.children);
+		this.names = arrayToBuffer(this.names);
+		this.nameSuffixes = arrayToBuffer(this.nameSuffixes);
+		this.s2i = null; //we don't need this temporary map once we've built the strings list
+	};
+
+
+
+	function InstanceTreeAccess(nodeArray, rootId, nodeBoxes) {
+		this.nodes = nodeArray.nodes;
+		this.children = nodeArray.children;
+		this.dbIdToIndex = nodeArray.dbIdToIndex;
+		this.names = nodeArray.names;
+		this.nameSuffixes = nodeArray.nameSuffixes;
+		this.strings = nodeArray.strings;
+		this.rootId = rootId;
+		this.numNodes = this.nodes.length / SIZEOF_NODE;
+		this.visibleIds = null;
+
+
+		this.nodeBoxes = nodeBoxes || new Float32Array(6 * this.numNodes);
+	}
+
+    // note dbId is not used
+	InstanceTreeAccess.prototype.getNumNodes = function(dbId) {
+		return this.numNodes;
+	};
+
+	InstanceTreeAccess.prototype.getIndex = function(dbId) {
+		return this.dbIdToIndex[dbId];
+	};
+
+	InstanceTreeAccess.prototype.name = function(dbId) {
+		var idx = this.dbIdToIndex[dbId];
+		var base = this.strings[this.names[idx]];
+		var suffix = this.nameSuffixes[idx];
+		if (suffix) {
+			//NOTE: update this logic if more separators are supported in processName above
+			var lastChar = base.charAt(base.length-1);
+			if (lastChar === "[")
+				return base + suffix + "]";
+			else
+				return base + suffix;
+		} else {
+			return base;
+		}
+	};
+
+	InstanceTreeAccess.prototype.getParentId = function(dbId) {
+		return this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_PARENT];
+	};
+
+	InstanceTreeAccess.prototype.getNodeFlags = function(dbId) {
+		return this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_FLAGS];
+	};
+
+	InstanceTreeAccess.prototype.setNodeFlags = function(dbId, flags) {
+		this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_FLAGS] = flags;
+	};
+
+	InstanceTreeAccess.prototype.getNumChildren = function(dbId) {
+		var numChildren = this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_NUM_CHILD];
+		if (numChildren > 0)
+			return numChildren;
+		return 0;		
+	};
+
+	InstanceTreeAccess.prototype.getNumFragments = function(dbId) {
+		var numChildren = this.nodes[this.dbIdToIndex[dbId] * SIZEOF_NODE + OFFSET_NUM_CHILD];
+		if (numChildren < 0)
+			return -numChildren;
+		return 0;		
+	};
+
+	InstanceTreeAccess.prototype.getNodeBox = function(dbId, dst) {
+		var off = this.getIndex(dbId) * 6;
+		for (var i=0; i<6; i++)
+			dst[i] = this.nodeBoxes[off+i];
+	};
+
+	//Returns an array containing the dbIds of all objects
+	//that are physically represented in the scene. Not all
+	//objects in the property database occur physically in each graphics viewable.
+	InstanceTreeAccess.prototype.getVisibleIds = function() {
+		if (!this.visibleIds) {
+			this.visibleIds = Object.keys(this.dbIdToIndex).map(function(k) { return parseInt(k); });
+		}
+
+		return this.visibleIds;
+	};
+
+
+	InstanceTreeAccess.prototype.enumNodeChildren = function(dbId, callback) {
+		var idx = this.dbIdToIndex[dbId];
+		var firstChild = this.nodes[idx * SIZEOF_NODE + OFFSET_FIRST_CHILD];
+		var numChildren = this.nodes[idx * SIZEOF_NODE + OFFSET_NUM_CHILD];
+
+		if (numChildren > 0) {
+			for (var i=0; i<numChildren; i++) {
+				var childDbId = this.nodes[this.children[firstChild+i] * SIZEOF_NODE];
+				callback(childDbId, dbId, idx);
+			}
+		}
+	};
+
+	InstanceTreeAccess.prototype.enumNodeFragments = function(dbId, callback) {
+		var idx = this.dbIdToIndex[dbId];
+		var firstChild = this.nodes[idx * SIZEOF_NODE + OFFSET_FIRST_CHILD];
+		var numChildren = this.nodes[idx * SIZEOF_NODE + OFFSET_NUM_CHILD];
+
+		//If numChildren is negative, it means leaf node and children are fragments
+		if (numChildren < 0) {
+			numChildren = -numChildren;
+			for (var i=0; i<numChildren; i++) {
+				callback(this.children[firstChild+i], dbId, idx);
+			}
+		}
+	};
+
+	avp.InstanceTreeStorage = NodeArray;
+	avp.InstanceTreeAccess = InstanceTreeAccess;
+
+
+})();
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 
 /**
@@ -6012,6 +7647,7 @@ CheckedInputStream.prototype.reset = function (buf) {
  * @param {boolean} useLeanNode Use minimal node structure size. Currently this parameter must be set to false.
  */
 function NodeArray(initialData, useLeanNode) {
+    'use strict';
 
     if (useLeanNode) {
         this.bytes_per_node = 32;
@@ -6242,12 +7878,13 @@ function box_get_size(dst, dst_off, src, src_off) {
     }
 }
 
-function box_copy(dst, dst_off, src, src_off) {
-    for (var i=0; i<6; i++) {
-        dst[dst_off+i] = src[src_off+i];
-    }
-}
+//function box_copy(dst, dst_off, src, src_off) {
+//    for (var i=0; i<6; i++) {
+//        dst[dst_off+i] = src[src_off+i];
+//    }
+//}
 
+// unwound version of box_copy
 function box_copy_00(dst, src) {
     dst[0] = src[0];
     dst[1] = src[1];
@@ -6259,14 +7896,14 @@ function box_copy_00(dst, src) {
 
 var dbl_max = Infinity;
 
-function box_make_empty(dst, dst_off) {
-        dst[dst_off]   =  dbl_max;
-        dst[dst_off+1] =  dbl_max;
-        dst[dst_off+2] =  dbl_max;
-        dst[dst_off+3] = -dbl_max;
-        dst[dst_off+4] = -dbl_max;
-        dst[dst_off+5] = -dbl_max;
-}
+//function box_make_empty(dst, dst_off) {
+//        dst[dst_off]   =  dbl_max;
+//        dst[dst_off+1] =  dbl_max;
+//        dst[dst_off+2] =  dbl_max;
+//        dst[dst_off+3] = -dbl_max;
+//        dst[dst_off+4] = -dbl_max;
+//        dst[dst_off+5] = -dbl_max;
+//}
 
 function box_make_empty_0(dst) {
     dst[0] =  dbl_max;
@@ -6355,13 +7992,14 @@ accum_bin_info.prototype.reset = function() {
 //Scratch variables used by bvh_bin_axis
 //TODO: can be replaced by a flat ArrayBuffer
 var bins = [];
-for (var i=0; i<MAX_BINS; i++) {
+var i;
+for (i=0; i<MAX_BINS; i++) {
     bins.push(new bvh_bin());
 }
 
 //TODO: can be replaced by a flat ArrayBuffer
 var ai = [];
-for (var i=0; i<MAX_BINS-1; i++)
+for (i=0; i<MAX_BINS-1; i++)
     ai.push(new accum_bin_info());
 
 var BR = new Float32Array(6);
@@ -6427,10 +8065,11 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
     if (num_bins > end-start+1)
         num_bins = end-start+1;
 
-    for (var i=0; i<num_bins; i++)
+    var i;
+    for (i=0; i<num_bins; i++)
         bins[i].reset();
 
-    for (var i=0; i<num_bins-1; i++)
+    for (i=0; i<num_bins-1; i++)
         ai[i].reset();
 
     split_info.num_bins = num_bins;
@@ -6443,9 +8082,10 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
     box_copy_00(ai[0].CL, bins[0].box_centroid);
     ai[0].AL = box_area_0(ai[0].BL);
     ai[0].NL = bins[0].num_prims;
+    var bin;
     for (i=1; i<num_bins-1; i++)
     {
-        var bin = bins[i];
+        bin = bins[i];
         var aii = ai[i];
         box_copy_00(aii.BL, ai[i-1].BL);
         box_add_box_00(aii.BL, bin.box_bbox);
@@ -6474,7 +8114,7 @@ function bvh_bin_axis(bvh, start, end, axis, cb, cbdiag, split_info) {
 
     for (i=i-1; i>=1; i--)
     {
-        var bin = bins[i];
+        bin = bins[i];
         box_add_box_00(BR, bin.box_bbox);
         box_add_box_00(CR, bin.box_centroid);
         AR = box_area_0(BR);
@@ -6631,13 +8271,13 @@ function bvh_subdivide(bvh,
 
     var prim_count = end - start + 1;
 
-    var isSmall = ((prim_count <= frags_per_leaf) && (poly_count < polys_per_node))
-                  || (prim_count === 1);
+    var isSmall = ((prim_count <= frags_per_leaf) && (poly_count < polys_per_node)) ||
+                  (prim_count === 1);
 
     //Decide whether to terminate recursion
-    if (isSmall
-      || depth > MAX_DEPTH //max recusrion depth
-      || cbdiag[axis] < bvh.scene_epsilon) //node would be way too tiny for math to make sense (a point)
+    if (isSmall ||
+      depth > MAX_DEPTH || //max recusrion depth
+      cbdiag[axis] < bvh.scene_epsilon) //node would be way too tiny for math to make sense (a point)
     {
         nodes.setLeftChild(nodeidx, -1);
         nodes.setPrimStart(nodeidx, start);
@@ -6820,7 +8460,8 @@ BVHBuilder.prototype.sortPrimitives = function() {
     var primitives = this.primitives;
     var numTransparent = 0;
 
-    for (var i=0, iEnd=this.prim_count; i<iEnd; i++) {
+    var i, iEnd;
+    for (i=0, iEnd=this.prim_count; i<iEnd; i++) {
 
         //Start with trivial 1:1 order of the indices array
         primitives[i] = i;
@@ -6863,7 +8504,7 @@ BVHBuilder.prototype.sortPrimitives = function() {
             var tmpTransparent = new Int32Array(numTransparent);
             var oidx = 0, tidx = 0;
 
-            for (var i=0, iEnd = this.prim_count; i<iEnd; i++) {
+            for (i=0, iEnd = this.prim_count; i<iEnd; i++) {
                 if (prim_sizes[i] >= 0)
                     primitives[oidx++] = primitives[i];
                 else
@@ -6883,22 +8524,33 @@ BVHBuilder.prototype.build = function(options) {
 
     var useSlimNodes = options && !!options.useSlimNodes;
 
+    var self = this;
+    function assign_option(name, defaultVal) {
+        if (options.hasOwnProperty(name))
+            self[name] = options[name];
+        else
+            self[name] = defaultVal;
+    }
+
     //options for build optimized for rasterization renderer scenes
     if (useSlimNodes) {
-        this.frags_per_leaf_node = 1;
-        this.frags_per_inner_node = 0;
-        this.frags_per_leaf_node_transparent = 1;
-        this.frags_per_inner_node_transparent = 0;
-        this.max_polys_per_node = Infinity;
+        assign_option("frags_per_leaf_node", 1);
+        assign_option("frags_per_inner_node", 0);
+        assign_option("frags_per_leaf_node_transparent", 1);
+        assign_option("frags_per_inner_node_transparent", 0);
+        assign_option("max_polys_per_node", Infinity);
     } else {
         var multiplier = options.isWeakDevice ? 0.5 : 1.0;
 
         //TODO: tune these constants
-        this.frags_per_leaf_node = 0 | ((this.polygonCounts ? 32 : 32) * multiplier);
-        this.frags_per_inner_node = 0 | (this.frags_per_leaf_node);
-        this.frags_per_leaf_node_transparent = this.frags_per_leaf_node;
-        this.frags_per_inner_node_transparent = 0;
-        this.max_polys_per_node = 0 | (10000 * multiplier);
+        assign_option("frags_per_leaf_node", 0 | (32 * multiplier));
+        //Placing fragments at inner nodes places more emphasis on bigger objects during tree traversal
+        //but it can only be done for opaque objects. Transparent objects have to be strictly back to front
+        //traversal regardless of size, unless a unified traversal
+        assign_option("frags_per_inner_node", 0|(this.frags_per_leaf_node) );
+        assign_option("frags_per_leaf_node_transparent", this.frags_per_leaf_node);
+        assign_option("frags_per_inner_node_transparent", 0);
+        assign_option("max_polys_per_node", 0 | (10000 * multiplier));
     }
 
     //Reuse existing node array if there
@@ -6926,8 +8578,9 @@ BVHBuilder.prototype.build = function(options) {
     //Opaque
     BVHModule.bvh_subdivide(this, root, 0, this.first_transparent - 1, this.boxv_o, this.boxc_o, false, 0);
 
+    var a;
     while(this.recursion_stack.length) {
-        var a = this.recursion_stack.pop();
+        a = this.recursion_stack.pop();
         BVHModule.bvh_subdivide(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
     }
 
@@ -6935,19 +8588,28 @@ BVHBuilder.prototype.build = function(options) {
     BVHModule.bvh_subdivide(this, root+1, this.first_transparent, this.prim_count-1, this.boxv_t, this.boxc_t, true, 0);
 
     while(this.recursion_stack.length) {
-        var a = this.recursion_stack.pop();
+        a = this.recursion_stack.pop();
         BVHModule.bvh_subdivide(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
     }
 };
-AutodeskNamespace('Autodesk.Viewing.Private');
+
+avp.NodeArray = NodeArray;
+avp.BVHBuilder = BVHBuilder;
+
+})();
 
 (function() {
 
-    var avp = Autodesk.Viewing.Private;
+    "use strict";
+
+    var av = Autodesk.Viewing,
+        avp = av.Private;
 
     avp.inWorkerThread = (typeof self !== 'undefined') && (typeof window === 'undefined');
 
-    avp.ViewingService = {};
+    var ViewingService = {};
+
+    var warnedGzip = false;
 
     // Simplify Unix style file path. For example, turn '/a/./b/../../c/' into "/c".
     // Required to deal with OSS crappy URNs where there are embedded '..'.
@@ -6976,29 +8638,41 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         return ret;
     };
 
-    /**
-     * Construct full URL given a potentially partial viewing service "urn:" prefixed resource
-     * @returns {string}
-     */
-    avp.ViewingService.generateUrl = function (baseUrl, api, path, options) {
+    function textToArrayBuffer(textBuffer, startOffset) {
+        var len = textBuffer.length - startOffset;
+        var arrayBuffer = new ArrayBuffer(len);
+        var ui8a = new Uint8Array(arrayBuffer, 0);
+        for (var i = 0, j = startOffset; i < len; i++, j++)
+            ui8a[i] = (textBuffer.charCodeAt(j) & 0xff);
+        return ui8a;
+    }
 
-        /*
+
+    ViewingService.OSS_PREFIX = "urn:adsk.objects:os.object:";
+
+    ViewingService.getDirectOSSUrl = function(options, path) {
         // When we see a resource is hosted on OSS (by checking the urn prefix where it contain a specific signature),
         // we'll construct the full OSS url that can be used to call the OSS GET object API.
         // The construction process will extract the OSS bucket name (which is the payload between the signature and the first forward slash first enoutered afterwards),
         // and then the object name (which is the payload left). The object name has to be URL encoded because OSS will choke on forward slash.
-        var ossPrefix = "urn:adsk.objects:os.object:";
-        var ossIndex = path.indexOf(ossPrefix);
+        var ossIndex = path.indexOf(ViewingService.OSS_PREFIX);
         if (ossIndex !== -1) {
-            var ossPath = path.substr(ossIndex + ossPrefix.length);
+            var ossPath = path.substr(ossIndex + ViewingService.OSS_PREFIX.length);
             var bucket = ossPath.substr(0, ossPath.indexOf("/"));
             var object = ossPath.substr(ossPath.indexOf("/") + 1);
             object = simplifyPath(object);
             var ret = options.oss_url + "/buckets/" + bucket + "/objects/" + encodeURIComponent(decodeURIComponent(object));
             return ret;
         }
-        */
+    };
 
+    /**
+     * Construct full URL given a potentially partial viewing service "urn:" prefixed resource
+     * @returns {string}
+     */
+    ViewingService.generateUrl = function (baseUrl, api, path) {
+
+        //Check if it's a viewing service item path
         if (path.indexOf('urn:') !== 0)
             return path;
 
@@ -7009,6 +8683,8 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             path = path.substr(4);
         }
 
+        //TODO: WTF... we should not be checking the env parameter like this.
+        //Check the endpoint URL for being raw viewing service or something....
         if (api === "bubbles" && avp.env.indexOf('Autodesk') == 0) {
             // The bubbles API for PAAS endpoint (where environment is prefixed with 'Autodesk')
             // has no explicit 'bubble' in the URL path.
@@ -7020,6 +8696,25 @@ AutodeskNamespace('Autodesk.Viewing.Private');
         return res;
     };
 
+    function loadLocalFile(url, onSuccess, onFailure) {
+        //Always use async on Node
+        require('fs').readFile(url, function(error, data) {
+            if (error) {
+                onFailure(error);
+            } else {
+                if (data[0] == 31 && data[1] == 139) {
+                    require('zlib').gunzip(data, null, function(error, data) {
+                        if (error)
+                            onFailure(error);
+                        else
+                            onSuccess(data);
+                    });
+                } else {
+                    onSuccess(data);
+                }
+            }
+        });
+    }
 
     /**
      *  Performs a GET/HEAD request to Viewing Service.
@@ -7040,11 +8735,23 @@ AutodeskNamespace('Autodesk.Viewing.Private');
      *                               {boolean} [encodeUrn] - when true, encodes the document urn if found.
      *                               {boolean} [noBody] - when true, will perform a HEAD request
      */
-    avp.ViewingService.get = function (viewingServiceBaseUrl, api, url, onSuccess, onFailure, options) {
+    ViewingService.get = function (viewingServiceBaseUrl, api, url, onSuccess, onFailure, options) {
 
         var options = options ? options : {};
 
-        var url = avp.ViewingService.generateUrl(viewingServiceBaseUrl, api, url, options);
+        //NODE
+        if (options.useLocalFileSystem) {
+            loadLocalFile(url, onSuccess, onFailure);
+            return;
+        }
+
+        //See if it can be mapped to a direct OSS path
+        var ossUrl = ViewingService.getDirectOSSUrl(options, url);
+
+        if (ossUrl)
+            url = ossUrl;
+        else
+            url = ViewingService.generateUrl(viewingServiceBaseUrl, api, url);
 
         if (options.queryParams) {
             url = url + "?" + options.queryParams;
@@ -7052,9 +8759,46 @@ AutodeskNamespace('Autodesk.Viewing.Private');
 
         var request = new XMLHttpRequest();
 
+        function onError(e) {
+            onFailure(request.status, request.statusText, {url: url});
+        }
+
+        function onLoad(e) {
+            if (request.status === 200) {
+
+                if (request.response
+                    && request.response instanceof ArrayBuffer) {
+                    var rawbuf = new Uint8Array(request.response);
+                    //It's possible that if the Content-Encoding header is set,
+                    //the browser unzips the file by itself, so let's check if it did.
+                    if (rawbuf[0] == 31 && rawbuf[1] == 139) {
+                        if (!warnedGzip) {
+                            warnedGzip = true;
+                            console.warn("An LMV resource (" + url + ") was not uncompressed by the browser. This hurts performance. Check the Content-Encoding header returned by the server and check whether you're getting double-compressed streams. The warning prints only once but it's likely the problem affects multiple resources.");
+                        }
+                        try {
+                            rawbuf = new Zlib.Gunzip(rawbuf).decompress();
+                        } catch (e) {
+                            onFailure(av.ErrorCodes.BAD_DATA,
+                                      "Malformed data received when requesting file",
+                                      { "url": url, "exception": e.toString(), "stack": e.stack });
+                        }
+                    }
+
+                    onSuccess(rawbuf);
+                }
+                else {
+                    onSuccess(request.response || request.responseText);
+                }
+            }
+            else {
+                onError(e);
+            }
+        }
+
         try {
-            var asynchronous = options.hasOwnProperty('asynchronous') ? options.asynchronous : true;
-            request.open(options.noBody ? 'HEAD' : 'GET', url, asynchronous);
+            var async = options.hasOwnProperty('asynchronous') ? options.asynchronous : true;
+            request.open(options.noBody ? 'HEAD' : 'GET', url, async);
 
             if (options.hasOwnProperty('responseType')) {
                 request.responseType = options.responseType;
@@ -7067,26 +8811,50 @@ AutodeskNamespace('Autodesk.Viewing.Private');
             if (options.headers) {
                 for (var header in options.headers) {
                     request.setRequestHeader(header, options.headers[header]);
+
+                    // Disable withCredentials if header is Authorization type
+                    // NOTE: using withCredentials attaches cookie data to request
+                    if (header.toLocaleLowerCase() === "authorization") {
+                        request.withCredentials = false;
+                    }
                 }
             }
 
-            function onError(e) {
-                onFailure(request.status, request.statusText, {url: url});
-            }
-
-            function onLoad(e) {
-                if (request.status === 200) {
-                    onSuccess(request.response ? request.response : request.responseText);
-                }
-                else {
-                    onError(e);
-                }
-            }
-
-            if (asynchronous) {
+            if (async) {
                 request.onload = onLoad;
                 request.onerror = onError;
                 request.ontimeout = onError;
+
+                if (options.ondata) {
+
+                    //Set up incremental progress notification
+                    //if needed. We have to do some magic in order
+                    //to get the received data progressively.
+                    //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/Using_XMLHttpRequest
+                    request.overrideMimeType('text/plain; charset=x-user-defined');
+                    options._dlProgress = {
+                        streamOffset: 0,
+                        counter: 0
+                    };
+
+                    request.onreadystatechange = function() {
+
+                        if (request.readyState > 2) {
+
+                            var textBuffer = request.responseText;
+
+                            // No new data coming in.
+                            if (options._dlProgress.streamOffset >= textBuffer.length)
+                                return;
+
+                            var arrayBuffer = textToArrayBuffer(textBuffer, options._dlProgress.streamOffset);
+
+                            options._dlProgress.streamOffset = textBuffer.length;
+
+                            options.ondata(arrayBuffer);
+                        }
+                    };
+                }
             }
 
             request.send();
@@ -7100,8 +8868,8 @@ AutodeskNamespace('Autodesk.Viewing.Private');
                 }
             }
 
-            if (!asynchronous) {
-                onLoad(null);
+            if (!async) {
+                onLoad();
             }
         }
         catch (e) {
@@ -7110,271 +8878,107 @@ AutodeskNamespace('Autodesk.Viewing.Private');
     };
 
 
-
-})();
-
-
-
-
-
-var Xhr = (function () {
-    var Xhr = function(errorHandler, auth, viewing_url) {
-        this.xhr = new XMLHttpRequest();
-        this.errorHandler = errorHandler;
-        this.success = false;
-        this.viewing_url = viewing_url;
-        this.auth = auth;
-    };
-
-    Xhr.prototype.generateUrl = function(url, queryParams, options) {
-        var index = url.indexOf('urn:');
-        if (index === 0 && this.viewing_url) {
-            var feature = (options && options.feature) ? options.feature : null;
-            if (feature) {
-                if (feature == 'render') {
-                    // remove urn: prefix. We probably want to fix this on server side to avoid
-                    // such UGLY code on client side.
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url);
-                } else if (feature == 'bubbles') {
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url);
-                } else if (feature == 'comments') {
-                    url = url.substr(4);
-                    url = this.viewing_url + "/" + feature + "/file/" + encodeURIComponent(url);
-                } else {
-                    url = this.viewing_url + "/" + feature + "/" + encodeURIComponent(url.substr(index));
-                }
-            } else {
-                url = this.viewing_url + "/items/" + encodeURIComponent(url.substr(index));
-            }
-        }
-
-        /*
-        var ossPrefix = "urn:adsk.objects:os.object:";
-        var ossIndex = url.indexOf(ossPrefix);
-        if (ossIndex !== -1) {
-            var ossPath = url.substr(ossIndex + ossPrefix.length);
-            var bucket = ossPath.substr(0, ossPath.indexOf("/"));
-            var object = ossPath.substr(ossPath.indexOf("/") + 1);
-            url = options.oss_url + "/buckets/" + bucket + "/objects/" + encodeURIComponent(object);
-        }
-        */
-
-        if (queryParams) {
-            url = url + "?" + queryParams;
-        }
-        return url;
-    };
-
-    Xhr.prototype.addHeaders = function(headers) {
-        // Add the defaults.
-        //
-        //headers["Access-Control-Allow-Credentials"] = true;
-        //headers["Access-Control-Allow-Origin"] = "*";
-
-        // Add the rest.
-        //
-        for(var header in headers) {
-            this.xhr.setRequestHeader(header, headers[header]);
-        }
-    };
-
-    // Perform a synchronous get.
-    Xhr.prototype.get = function(path, headers, responseType, loadCB, feature, queryParams, oss_url) {
-        var url = this.generateUrl(path, queryParams, {feature: feature, oss_url : oss_url});
-
-        try {
-            this.xhr.open('GET', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous post.
-    Xhr.prototype.post = function(path, headers, body, responseType, loadCB, feature) {
-        var url = this.generateUrl(path, null, {feature: feature});
-
-        if (!headers["Content-Type"])
-            headers["Content-Type"] = "application/json";
-
-        try {
-            this.xhr.open('POST', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send(body);
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200, 201);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous ranged get.
-    // rangeBegin and rangeEnd are inclusive bounds that mark the start / end of the range.
-    // Require server side support of ranged get. Caller's job to make sure this invariant holds.
-    // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
-    Xhr.prototype.getRange = function(url, headers, responseType, rangeBegin, rangeEnd, loadCB) {
-        var url = this.generateUrl(path);
-
-        headers["Range"] = "bytes=" + rangeBegin + "-" + rangeEnd;
-
-        try {
-            this.xhr.open('GET', url, !!loadCB);
-            this.xhr.responseType = responseType;
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-            if (loadCB)
-                this.xhr.onload = loadCB;
-
-            this.addHeaders(headers);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 206);
-        return this.xhr.response;
-    };
-
-    // Perform a synchronous head request.
-    // Return the headers of response.
-    Xhr.prototype.head = function(url) {
-        var url = this.generateUrl(path);
-
-        try {
-            this.xhr.open('GET', url, false);
-            this.success = false;
-            if (this.auth)
-                this.xhr.withCredentials = true;
-
-            this.addHeaders([]);
-
-            this.xhr.send();
-        }
-        catch (e) {
-            if (this.errorHandler) {
-                this.errorHandler.networkFailure(url, e);
-            }
-            return null;
-        }
-
-        this.errorCheck(url, 200);
-
-        var responseHeaders = [];
-        responseHeaders["Accept-Ranges"] = this.xhr.getResponseHeader("Accept-Ranges");
-        responseHeaders["Content-Length"] = this.xhr.getResponseHeader("Content-Length");
-        return responseHeaders;
-    };
-
-    // Changed it to support more than one status code
-    Xhr.prototype.errorCheck = function(url, expectedStatusCode) {
-        if (this.xhr.readyState === 4 && this.xhr.status) {
-            var i;
-            for (i = 1; i < arguments.length; i++) {
-                if (this.xhr.status === arguments[i])
-                    break;
-            }
-            if (i === arguments.length && this.errorHandler) {
-                this.errorHandler.unsuccessfulResponse(url, this.xhr.status, this.xhr.statusText);
-            } else {
-                this.success = true;
-            }
-        } else {
-            this.success = true;
-        }
-    };
-
-    return Xhr;
-})();
-
-// A default Xhr error handler that will pass errors to raiseError
-var XhrErrorHandler = (function() {
-    // host will be whatever object is hosting the raiseError function,
-    // usually Viewer3DImpl from the main thread or "self" from a worker
-    var XhrErrorHandler = function(host) {
-        this.host = host;
-        this.ignoreFileNotFound = false;
-    }
-
-    // Xhr failed outright (timeout, host unreachable, etc.)
-    XhrErrorHandler.prototype.networkFailure = function(url, exc) {
-        this.host.raiseError(
-            Autodesk.Viewing.ErrorCodes.NETWORK_FAILURE,
-            "Network failure",
-            { "url": url, "exception": exc.toString(), "stack": exc.stack });
-    };
-
-    // Response to Xhr was "unsuccessful" (non-200 status code)
-    XhrErrorHandler.prototype.unsuccessfulResponse = function(url, httpStatus, httpStatusText) {
+    // Create the default failure callback.
+    //
+    ViewingService.defaultFailureCallback = function (httpStatus, httpStatusText, data) {
         if (httpStatus == 403) {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_ACCESS_DENIED,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_ACCESS_DENIED,
                 "Access denied to remote resource",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
         else if (httpStatus == 404) {
-            if (!this.ignoreFileNotFound) {
-                this.host.raiseError(
-                    Autodesk.Viewing.ErrorCodes.NETWORK_FILE_NOT_FOUND,
-                    "Remote resource not found",
-                    { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-            }
+            this.raiseError(
+                av.ErrorCodes.NETWORK_FILE_NOT_FOUND,
+                "Remote resource not found",
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
         else if (httpStatus >= 500 && httpStatus < 600) {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_SERVER_ERROR,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_SERVER_ERROR,
                 "Server error when accessing resource",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+        }
+        else if (data.exception) {
+            this.raiseError(
+                av.ErrorCodes.NETWORK_FAILURE,
+                "Network failure",
+                { "url": data.url, "exception": data.exception.toString(), "stack": data.exception.stack});
         }
         else {
-            this.host.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_UNHANDLED_RESPONSE_CODE,
+            this.raiseError(
+                av.ErrorCodes.NETWORK_UNHANDLED_RESPONSE_CODE,
                 "Unhandled response code from server",
-                { "url": url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
+                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
         }
     };
 
-    return XhrErrorHandler;
+
+
+    function copyOptions(loadContext, options) {
+
+        //Those are the usual defaults when called from the LMV worker
+        if (!options.hasOwnProperty("asynchronous"))
+            options.asynchronous = true;
+        else if (!options.asynchronous)
+            console.warn("LMV: Sync XHR used. Performance warning.");
+
+        if (!options.hasOwnProperty("responseType"))
+            options.responseType = "arraybuffer";
+
+        //Add options junk we got from the main thread context
+        options.withCredentials = !!loadContext.auth;
+        options.useLocalFileSystem = loadContext.useLocalFileSystem;
+        options.headers = loadContext.headers;
+        options.queryParams = loadContext.queryParams;
+        options.oss_url = loadContext.oss_url;
+    }
+
+    //Utility function called from the web worker to set up the options for a get request,
+    //then calling ViewingService.get internally
+    ViewingService.getItemWorker = function (loadContext, url, onSuccess, onFailure, options) {
+
+        options = options || {};
+
+        copyOptions(loadContext, options);
+
+        ViewingService.get(loadContext.viewing_url, 'items', url, onSuccess, onFailure, options);
+
+    };
+
+    //Utility function called from the web worker to set up the options for a get request,
+    //then calling ViewingService.get internally
+    ViewingService.getThumbnailWorker = function (loadContext, url, onSuccess, onFailure, options) {
+
+        options = options || {};
+
+        copyOptions(loadContext, options);
+
+        var role = options.role || "rendered";
+        var sz = options.size || 400;
+        //This will override any incoming query params, but in this case they are expected to be empty
+        options.queryParams = "guid=" + encodeURIComponent(options.guid) + "&role=" + role + "&width=" + sz + "&height=" + sz;
+
+        ViewingService.get(loadContext.viewing_url, 'thumbnails', url, onSuccess, onFailure, options);
+
+    };
+
+
+    avp.ViewingService = ViewingService;
+
 })();
 
 
-function doGeomLoad(_this, loadContext) {
+(function() {
+
+var av = Autodesk.Viewing,
+    lmv = Autodesk.LMVTK,
+    avp = av.Private;
+
+
+function doGeomLoad(loadContext) {
+
+    var _this = loadContext.worker;
 
     //Make a blocking request -- it's ok, because
     //we are in a worker thread.
@@ -7387,11 +8991,11 @@ function doGeomLoad(_this, loadContext) {
         }); //rough progress reporting -- can do better
 
         try {
-            var pfr = new PackFileReader(new Uint8Array(arrayBuffer));
+            var pfr = new lmv.PackFileReader(arrayBuffer);
         }
         catch (exc) {
             _this.raiseError(
-                Autodesk.Viewing.ErrorCodes.BAD_DATA, "Unhandled exception while reading pack file",
+                av.ErrorCodes.BAD_DATA, "Unhandled exception while reading pack file",
                 { "url": loadContext.url, "exception": exc.toString(), "stack": exc.stack });
             _this.postMessage(null);
             return;
@@ -7410,12 +9014,12 @@ function doGeomLoad(_this, loadContext) {
         for (var i = 0, iEnd = pfr.getEntryCounts(); i<iEnd; i++)
         {
             try {
-                var mesh = readGeometry(pfr, i, null /*TODO geom type*/);
+                var mesh = lmv.readGeometry(pfr, i, null /*TODO geom type*/);
             }
             catch (exc) {
                 if (!raisedException) {
                     _this.raiseError(
-                        Autodesk.Viewing.ErrorCodes.BAD_DATA, "Unhandled exception while reading geometry",
+                        av.ErrorCodes.BAD_DATA, "Unhandled exception while reading geometry",
                         { "url": loadContext.url, "exception": exc.toString(), "stack": exc.stack });
                     raisedException = true;
                     raisedError = true;
@@ -7440,7 +9044,7 @@ function doGeomLoad(_this, loadContext) {
                 // first bad one.
                 if (!raisedError) {
                     _this.raiseError(
-                        Autodesk.Viewing.ErrorCodes.BAD_DATA, "Unable to load geometry",
+                        av.ErrorCodes.BAD_DATA, "Unable to load geometry",
                         { "url": loadContext.url });
                     raisedError = true;
                 }
@@ -7451,33 +9055,43 @@ function doGeomLoad(_this, loadContext) {
             }
         }
     }
-    
-    Autodesk.Viewing.Private.ViewingService.get(loadContext.viewing_url, 'items', loadContext.url, onSuccess, loadContext.onFailureCallback, 
-                                                    {withCredentials:!!loadContext.auth, 
-                                                    responseType:'arraybuffer', 
-                                                    asynchronous:false, 
-                                                    headers:loadContext.headers, 
-                                                    queryParams:loadContext.queryParams,
-                                                    oss_url : loadContext.oss_url});
+
+    avp.ViewingService.getItemWorker(loadContext, loadContext.url, onSuccess, loadContext.onFailureCallback);
+
 }
 
-function guardFunction(_this, loadContext, func)
+lmv.doGeomLoad = doGeomLoad;
+
+})();
+
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+var lmv = Autodesk.LMVTK;
+
+
+function guardFunction(loadContext, func)
 {
     try {
         func();
     }
     catch (exc) {
-        _this.raiseError(
-            Autodesk.Viewing.ErrorCodes.BAD_DATA, "Unhandled exception while loading SVF",
+        loadContext.worker.raiseError(
+            av.ErrorCodes.BAD_DATA, "Unhandled exception while loading SVF",
             { "url": loadContext.url, "exception": exc.toString(), "stack": exc.stack });
-        _this.postMessage(null);
+        loadContext.worker.postMessage(null);
     }    
 }
 
-function doLoadSvfContinued(_this, loadContext)
+function doLoadSvfContinued(loadContext)
 {
-    guardFunction(_this, loadContext, function(){
-        var svf = _this.svf;
+    var _this = loadContext.worker;
+
+    guardFunction(loadContext, function(){
+        var svf = loadContext.svf;
         function loadDoneCallback(type) {
             if (type == "svf") {
 
@@ -7486,7 +9100,7 @@ function doLoadSvfContinued(_this, loadContext)
                     frags.transforms.buffer,
                     frags.packIds.buffer,
                     frags.entityIndexes.buffer,
-                    frags.fragId2dbId.buffer,
+                    frags.fragId2dbId.buffer
                 ];
 
                 if (svf.bvh) {
@@ -7526,7 +9140,7 @@ function doLoadSvfContinued(_this, loadContext)
             }
             else {
                 _this.raiseError(
-                    Autodesk.Viewing.ErrorCodes.BAD_DATA, "Failure while loading SVF",
+                    av.ErrorCodes.BAD_DATA, "Failure while loading SVF",
                     { "url": loadContext.url });
                 _this.postMessage(null);
             }
@@ -7534,45 +9148,54 @@ function doLoadSvfContinued(_this, loadContext)
 
         loadContext.loadDoneCB = loadDoneCallback;
         
-        _this.svf.loadRemainingSvf(loadContext);
+        svf.loadRemainingSvf(loadContext);
     });
 }
 
-function doLoadSvf(_this, loadContext) {
+function doLoadSvf(loadContext) {
+
+    var _this = loadContext.worker;
 
     function onSuccess(arrayBuffer) {
 
         _this.postMessage({progress:0.5}); //rough progress reporting -- can do better
 
-        guardFunction(_this, loadContext, function() {
-            _this.svf = new Package(new Uint8Array(arrayBuffer));
-            _this.svf.loadManifest(loadContext);
+        guardFunction(loadContext, function() {
+            var svf = loadContext.svf = new lmv.Package(arrayBuffer);
+            svf.loadManifest(loadContext);
             if(loadContext.interceptManifest) {
                 _this.postMessage({"manifest" : svf.manifest});
             } else {
-                loadContext.manifest = _this.svf.manifest;
-                doLoadSvfContinued(_this, loadContext);
+                loadContext.manifest = svf.manifest;
+                doLoadSvfContinued(loadContext);
             }
         });
     }
 
-    Autodesk.Viewing.Private.ViewingService.get(loadContext.viewing_url, 'items', loadContext.url, onSuccess, loadContext.onFailureCallback, 
-                        {withCredentials:!!loadContext.auth, 
-                        responseType:'arraybuffer', 
-                        asynchronous:false, 
-                        headers:loadContext.headers, 
-                        queryParams:loadContext.queryParams,
-                        oss_url: loadContext.oss_url});
-                        
+    avp.ViewingService.getItemWorker(loadContext, loadContext.url, onSuccess, loadContext.onFailureCallback);
+
 }
 
+lmv.doLoadSvf = doLoadSvf;
+lmv.doLoadSvfContinued = doLoadSvfContinued;
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 //The property database instance
 var propdb = null;
 var propdbFailed = false;
 var propdbURL = "";
+var idroots, objCount, rootsDone = false;
 
 function loadPropertyPacks(loadContext, dbId, onPropertyPackLoadComplete) {
+
     if (propdb) {
         onPropertyPackLoadComplete(propdb);
         return;
@@ -7651,7 +9274,7 @@ function loadPropertyPacks(loadContext, dbId, onPropertyPackLoadComplete) {
         // property database.  Otherwise, request the next required file.
         //
         if (filesToRequest.length === 0) {
-            propdb = new PropertyDatabase(loadedDbFiles);
+            propdb = new lmv.PropertyDatabase(loadedDbFiles);
             onPropertyPackLoadComplete(propdb);
             propdbFailed = false;
             propdbURL = loadContext.url;
@@ -7667,72 +9290,110 @@ function loadPropertyPacks(loadContext, dbId, onPropertyPackLoadComplete) {
     requestFile(nextFile.filename, loadContext, onRequestCompletion, nextFile.storage);
 };
 
-function doPropertyGet(_this, loadContext) {
+
+function requestFile(filename, loadContext, onRequestCompletion, storage) {
+
+    function onFailure(status, statusText, data) {
+        // We're explicitly ignoring missing property files.
+        if (status !== 404) {
+            loadContext.onFailureCallback(status, statusText, data);
+        }
+        onRequestCompletion(null);
+    }
+
+    var url = loadContext.url + filename;
+    var onSuccess = function(response)
+    {
+        storage[filename] = response;
+        onRequestCompletion(response);
+    };
+
+    avp.ViewingService.getItemWorker(loadContext, url, onSuccess, onFailure);
+
+}
+
+
+function doPropertyGet(loadContext) {
     var dbId = loadContext.dbId;
+    var dbIds = loadContext.dbIds;
+    var propFilter = loadContext.propFilter;
+
     function onPropertyPackLoadComplete(propertyDb) {
         if (propertyDb) {
-            var result = propertyDb.getObjectProperties(dbId);
-            _this.postMessage({cbId:loadContext.cbId, result: result, dbId: dbId});
+            if (Array.isArray(dbIds)) {
+                var results = [];
+                for (var i=0; i<dbIds.length; i++) {
+                    var result = propertyDb.getObjectProperties(dbIds[i], propFilter);
+                    if (result)
+                        results.push(result);
+                }
+                loadContext.worker.postMessage({cbId:loadContext.cbId, result: results});
+            } else {
+                var result = propertyDb.getObjectProperties(dbId, propFilter);
+                loadContext.worker.postMessage({cbId:loadContext.cbId, result: result});
+            }
         }
     }
 
     loadPropertyPacks(loadContext, dbId, onPropertyPackLoadComplete);
 };
 
-function computeTreeBBoxes(node, nodeBoxes, fragBoxes) {
+function computeTreeBBoxes(nodeAccess, dbId, fragBoxes) {
 
-    var box_offset = node.dbId * 6;
-    nodeBoxes[box_offset]   = nodeBoxes[box_offset+1] = nodeBoxes[box_offset+2] =  Infinity;
-    nodeBoxes[box_offset+3] = nodeBoxes[box_offset+4] = nodeBoxes[box_offset+5] = -Infinity;
+    var idx = nodeAccess.getIndex(dbId);
+    var nodeBoxes = nodeAccess.nodeBoxes;
 
-    var children = node.children;
-    if (children) {
+    function traverseChildren(child_dbId, parentDbID, parentIdx) {
+
+        var childIdx = nodeAccess.getIndex(child_dbId);
+
         //Recurse, then add all child boxes to make this node's box
-        for (var i= 0, iEnd=children.length; i<iEnd; i++) {
+        computeTreeBBoxesRec(child_dbId, childIdx);
 
-            computeTreeBBoxes(children[i], nodeBoxes, fragBoxes);
-
-            var child_box_offset = (children[i].dbId | 0) * 6;
-            for (var k=0; k<3; k++) {
-                if (nodeBoxes[box_offset+k] > nodeBoxes[child_box_offset+k])
-                    nodeBoxes[box_offset+k] = nodeBoxes[child_box_offset+k];
-                if (nodeBoxes[box_offset+k+3] < nodeBoxes[child_box_offset+k+3])
-                    nodeBoxes[box_offset+k+3] = nodeBoxes[child_box_offset+k+3];
-            }
+        var box_offset = parentIdx * 6;
+        var child_box_offset = childIdx * 6;
+        for (var k=0; k<3; k++) {
+            if (nodeBoxes[box_offset+k] > nodeBoxes[child_box_offset+k])
+                nodeBoxes[box_offset+k] = nodeBoxes[child_box_offset+k];
+            if (nodeBoxes[box_offset+k+3] < nodeBoxes[child_box_offset+k+3])
+                nodeBoxes[box_offset+k+3] = nodeBoxes[child_box_offset+k+3];
         }
     }
 
-    //Leaf node -- don't know if it's possible for a node to have
-    //both children and leaf fragments, but we do handle that here.
-    if (node.fragIds !== undefined) {
-        if (!Array.isArray(node.fragIds)) {
-            //Common case where the node only has one fragment
-            var frag_box_offset = (node.fragIds | 0) * 6;
-            for (var k=0; k<3; k++) {
-                if (nodeBoxes[box_offset+k] > fragBoxes[frag_box_offset+k])
-                    nodeBoxes[box_offset+k] = fragBoxes[frag_box_offset+k];
-                if (nodeBoxes[box_offset+k+3] < fragBoxes[frag_box_offset+k+3])
-                    nodeBoxes[box_offset+k+3] = fragBoxes[frag_box_offset+k+3];
-            }
-        }
-        else if (node.fragIds.length) {
-            //Case where the node has multiple fragments
-            //In LMV this only happens when a mesh was too big
-            //and was split, otherwise at the leaf level it is
-            //one node per one mesh instance.
+    function traverseFragments(fragId, dbId, idx){
+        var frag_box_offset = fragId * 6;
+        var box_offset = idx * 6;
 
-            for (var j=0; j<node.fragIds.length; j++) {
-                frag_box_offset = (node.fragIds[j] | 0) * 6;
-                for (var k=0; k<3; k++) {
-                    if (nodeBoxes[box_offset+k] > fragBoxes[frag_box_offset+k])
-                        nodeBoxes[box_offset+k] = fragBoxes[frag_box_offset+k];
-                    if (nodeBoxes[box_offset+k+3] < fragBoxes[frag_box_offset+k+3])
-                        nodeBoxes[box_offset+k+3] = fragBoxes[frag_box_offset+k+3];
-                }
-            }
+        for (var k=0; k<3; k++) {
+            if (nodeBoxes[box_offset+k] > fragBoxes[frag_box_offset+k])
+                nodeBoxes[box_offset+k] = fragBoxes[frag_box_offset+k];
+            if (nodeBoxes[box_offset+k+3] < fragBoxes[frag_box_offset+k+3])
+                nodeBoxes[box_offset+k+3] = fragBoxes[frag_box_offset+k+3];
         }
     }
-};
+
+    function computeTreeBBoxesRec(dbId, idx) {
+
+        var box_offset = idx * 6;
+        nodeBoxes[box_offset]   = nodeBoxes[box_offset+1] = nodeBoxes[box_offset+2] =  Infinity;
+        nodeBoxes[box_offset+3] = nodeBoxes[box_offset+4] = nodeBoxes[box_offset+5] = -Infinity;
+
+        if (nodeAccess.getNumChildren(dbId)) {
+            nodeAccess.enumNodeChildren(dbId, traverseChildren, true);
+        }
+
+        //Leaf node -- don't think it's possible for a node to have
+        //both children and leaf fragments, but we do handle that here.
+        if (nodeAccess.getNumFragments(dbId)) {
+            nodeAccess.enumNodeFragments(dbId, traverseFragments);
+        }
+
+    }
+
+
+    computeTreeBBoxesRec(dbId, idx);
+
+}
 
 
 function buildDbIdToFragMap(fragToDbId) {
@@ -7768,10 +9429,13 @@ function buildDbIdToFragMap(fragToDbId) {
     }
 
     return ret;
-};
+}
 
 
-function doObjectTreeParse(_this, loadContext) {
+function doObjectTreeParse(loadContext) {
+
+    var _this = loadContext.worker;
+
     function onPropertyPackLoadComplete(propertyDb) {
         if(!propertyDb) {
             _this.postMessage({
@@ -7785,118 +9449,77 @@ function doObjectTreeParse(_this, loadContext) {
         if (loadContext.fragToDbId)
             dbToFrag = buildDbIdToFragMap(loadContext.fragToDbId);
 
-        //TODO: we should get the root node from the instance
-        //tree in the SVF, and go from there, so this logic
-        //is a temporary thing to get work on the tree view moving
         //Find the root object:
-        var idroots = propertyDb.findRootNodes();
-        var root;
+        if (!rootsDone) {
+            idroots = propertyDb.findRootNodes();
+            objCount = propertyDb.getObjectCount();
+            rootsDone = true;
+        }
+
+        var rootId;
         var maxDepth = [0];
-        var objCount = propertyDb.getObjectCount();
+
+        var transferList = [];
+        var storage;
 
         //In the cases of 2D drawings, there is no meaningful
         //object hierarchy, so we don't build a tree.
         if (idroots && idroots.length)
         {
+            storage = new avp.InstanceTreeStorage(propertyDb.getObjectCount(), loadContext.fragToDbId.length);
+
             if (idroots.length == 1) {
                 //Case of a single root in the property database,
                 //use that as the document root.
-                root = { dbId: idroots[0] };
-                propertyDb.buildObjectTree(root, dbToFrag, 0, maxDepth);
+                rootId = idroots[0];
+                propertyDb.buildObjectTreeFlat(rootId, 0, dbToFrag, 0, maxDepth, storage);                
             }
             else {
                 //Case of multiple nodes at the root level
                 //This happens in DWFs coming from Revit.
                 //Create a dummy root and add all the other roots
                 //as its children.
-                root = { dbId: 0, children:[] };
-                for (var i=0; i<idroots.length; i++) {
-                    var child = {dbId:idroots[i]};
-                    root.children.push(child);
-                    propertyDb.buildObjectTree(child, dbToFrag, 0, maxDepth);
+                rootId = 0;
+                var childrenIds = [];
+
+                for (var i=0; i<idroots.length; i++) {                    
+                    propertyDb.buildObjectTreeFlat(idroots[i], 0, dbToFrag, 0, maxDepth, storage);                
+                    childrenIds.push(idroots[i]);                    
                 }
+
+                storage.setNode(0, 0, "", 0, childrenIds, false);
             }
-        }
+
+            storage.flatten();
+            transferList.push(storage.nodes.buffer);
+            transferList.push(storage.children.buffer);
         
-        var nodeBoxes;
-        
-        //Now compute the bounding boxes for instance tree nodes
-        if (loadContext.fragBoxes) {
-            nodeBoxes = new Float32Array(6 * propertyDb.getObjectCount());
-            computeTreeBBoxes(root, nodeBoxes, loadContext.fragBoxes);
-        }
+            //Now compute the bounding boxes for instance tree nodes
+            if (loadContext.fragBoxes) {
+                var nodeAccess = new avp.InstanceTreeAccess(storage, rootId);
+                computeTreeBBoxes(nodeAccess, rootId, loadContext.fragBoxes);
+                transferList.push(nodeAccess.nodeBoxes.buffer);
+            }
+        } 
         
         _this.postMessage({ cbId:loadContext.cbId,
                             result : {
-                               instanceTree:root, 
-                               instanceBoxes:nodeBoxes,
+                               rootId: rootId,
+                               instanceTreeStorage: storage,
+                               instanceBoxes: (!!nodeAccess) ? nodeAccess.nodeBoxes : undefined,
                                maxTreeDepth:maxDepth[0], 
                                objectCount:objCount
                                }
-                          });
+                          }, transferList);
     }
 
     loadPropertyPacks(loadContext, null, onPropertyPackLoadComplete);
-};
+}
 
-function requestFile(filename, loadContext, onRequestCompletion, storage) {
-    function onFailure(status, statusText, data) {
-        // We're explicitly ignoring missing property files.
-        if (status !== 404) {
-            loadContext.onFailureCallback(status, statusText, data);
-        }
-        onRequestCompletion(null);
-    }
+function doPropertySearch(loadContext) {
 
-    var url = loadContext.url + filename;
-    var onSuccess = null;
+    var _this = loadContext.worker;
 
-    if (url.indexOf(".gz", url.length - 3) !== -1) {
-        onSuccess = function(gzbuf)
-        {
-            try {
-                var rawbuf = new Uint8Array(gzbuf);
-                //It's possible that if the Content-Encoding header is set,
-                //the browser unzips the file by itself, so let's check if it did.
-                if (rawbuf[0] == 31 && rawbuf[1] == 139) {
-                    rawbuf = new Zlib.Gunzip(rawbuf).decompress();
-                }
-
-                storage[filename] = rawbuf;
-                onRequestCompletion(rawbuf);
-            }
-            catch (e) {
-                self.raiseError(
-                    Autodesk.Viewing.ErrorCodes.BAD_DATA,
-                    "Malformed data received when requesting file",
-                    { "url": url, "exception": e.toString(), "stack": e.stack });
-                onRequestCompletion(null);
-            }
-        };
-    }
-    else {
-        //NOTE: For property database requests, we do not want to
-        //parse the JSON up front, because it may be too big. The
-        //property database does its own parsing.
-
-        onSuccess = function(json)
-        {
-            var buff = new Uint8Array(json);
-            storage[filename] = buff;
-            onRequestCompletion(buff);
-        };
-    }
-
-    Autodesk.Viewing.Private.ViewingService.get(loadContext.viewing_url, 'items', url, onSuccess, onFailure,
-                {withCredentials:!!loadContext.auth, 
-                responseType:'arraybuffer', 
-                asynchronous:false, 
-                headers:loadContext.headers, 
-                queryParams:loadContext.queryParams,
-                oss_url: loadContext.oss_url});
-};
-
-function doPropertySearch(_this, loadContext) {
     function onPropertyPackLoadComplete(propertyDb) {
         if (propertyDb) {
             var result = propertyDb.bruteForceSearch(loadContext.searchText, loadContext.attributeNames);
@@ -7905,9 +9528,11 @@ function doPropertySearch(_this, loadContext) {
     }
 
     loadPropertyPacks(loadContext, null, onPropertyPackLoadComplete);
-};
+}
 
-function doBuildExternalIdMapping(_this, loadContext) {
+function doBuildExternalIdMapping(loadContext) {
+
+    var _this = loadContext.worker;
 
     function onPropertyPackLoadComplete(propertyDb) {
         if (propertyDb) {
@@ -7919,7 +9544,10 @@ function doBuildExternalIdMapping(_this, loadContext) {
     loadPropertyPacks(loadContext, null, onPropertyPackLoadComplete);
 }
 
-function doAttributeToIdMap(_this, loadContext) {
+function doAttributeToIdMap(loadContext) {
+
+    var _this = loadContext.worker;
+
 	function onPropertyPackLoadComplete(propertyDb) {
 		if (propertyDb) {
 			var result = propertyDb.getAttributeToIdMap();
@@ -7930,9 +9558,27 @@ function doAttributeToIdMap(_this, loadContext) {
 	loadPropertyPacks(loadContext, null, onPropertyPackLoadComplete);
 }
 
+
+lmv.doAttributeToIdMap = doAttributeToIdMap;
+lmv.doBuildExternalIdMapping = doBuildExternalIdMapping;
+lmv.doPropertyGet = doPropertyGet;
+lmv.doPropertySearch = doPropertySearch;
+lmv.doObjectTreeParse = doObjectTreeParse;
+
+
+})();
+(function() {
+
+"use strict";
+
+var lmv = Autodesk.LMVTK;
+
 //FUSION SPECIFIC
 
-function doDecompressDelta(_this, loadContext) {
+function doDecompressDelta(loadContext) {
+
+    var _this = loadContext.worker;
+
     // Step1:decode the compressed data
     var compressData = base64.decode(loadContext.delta);
     compressData = compressData.split('').map(function(e) {
@@ -7952,55 +9598,71 @@ function doDecompressDelta(_this, loadContext) {
     //Step4:parse scene json
     json = JSON.parse(json);
     _this.postMessage({cbId:loadContext.cbId, index:loadContext.index,res:json});
-};
+}
 
+lmv.doDecompressDelta = doDecompressDelta;
 
+})();
 
-function doParseF2D(_this, loadContext) {
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing;
+var lmv = Autodesk.LMVTK;
+
+function tryCatch(_this, f) {
+    try {
+        f();
+    }
+    catch (exc) {
+        _this.raiseError(
+            av.ErrorCodes.BAD_DATA, "",
+            { "exception": exc.toString(), "stack": exc.stack });
+        _this.postMessage(null);
+    }
+}
+
+function doParseF2D(loadContext) {
+
+    var _this = loadContext.worker;
 
     if (loadContext.data) {
 
         _this.postMessage({progress:0.5}); //rough progress reporting -- can do better
 
-        var f2d = new F2D(loadContext.metadata, loadContext.manifest, loadContext.basePath, loadContext.f2dLoadOptions);
+        var f2d = new lmv.F2D(loadContext.metadata, loadContext.manifest, loadContext.basePath, loadContext.f2dLoadOptions);
 
-        function loadDoneCallback(success) {
+        loadContext.loadDoneCB = function(success) {
             if (success) {
                 var msg = { "f2d" : f2d };
                 _this.postMessage(msg );
             }
             else {
-                _this.raiseError(
-                    Autodesk.Viewing.ErrorCodes.BAD_DATA, "",
-                    {});
+                _this.raiseError(av.ErrorCodes.BAD_DATA, "", {});
                 _this.postMessage(null);
             }
-        }
+        };
 
-        loadContext.loadDoneCB = loadDoneCallback;
-
-        try {
-            f2d.load(loadContext, new Uint8Array(loadContext.data));
-        }
-        catch (exc) {
-            _this.raiseError(
-                Autodesk.Viewing.ErrorCodes.BAD_DATA, "",
-                { "exception": exc.toString(), "stack": exc.stack });
-            _this.postMessage(null);
-            return;
-        }
+        tryCatch(_this, function() {
+            f2d.load(loadContext, loadContext.data);
+        });
     }
     else {
         _this.postMessage(null);
     }
 }
 
-function doParseF2DFrame(_this, loadContext) {
+function doParseF2DFrame(loadContext) {
+
+    var _this = loadContext.worker;
+
+    var f2d = _this.f2d;
 
     if (!f2d) {
         _this.postMessage({progress:0.5}); //rough progress reporting -- can do better
 
-        f2d = new F2D(loadContext.metadata, loadContext.manifest, loadContext.basePath, loadContext.f2dLoadOptions);
+        f2d = _this.f2d = new lmv.F2D(loadContext.metadata, loadContext.manifest, loadContext.basePath, loadContext.f2dLoadOptions);
 
         f2d.F2D_MESH_COUNT_OLD = 0;
 
@@ -8021,14 +9683,23 @@ function doParseF2DFrame(_this, loadContext) {
                 var msg = { "f2dframe" : true,
                     "meshes" : f2d.meshes,
                     "baseIndex" : f2d.F2D_MESH_COUNT_OLD,
-                    "maxObjectNumber" : f2d.maxObjectNumber,
-                    "bbox" : f2d.bbox,
-                    "viewports" : f2d.viewports,
-                    "currentVpId" : f2d.currentVpId,
-                    "clips" : f2d.clips};
+                    "bbox" : f2d.bbox
+                 };
 
-                if (loadContext.finalFrame)
+                if (loadContext.finalFrame) {
+
+                    //Add f2d properties which are cumulative and their
+                    //final values are not known until the end
+                    msg.cumulativeProps = {
+                        maxObjectNumber : f2d.maxObjectNumber,
+                        viewports : f2d.viewports,
+                        clips : f2d.clips,
+                        strings: f2d.strings,
+                        stringDbIds: f2d.stringDbIds
+                    };
+
                     msg.finalFrame = true;
+                }
 
                 // User transferable objects to pass the array buffers used by mesh without deep copying.
                 var transferList = [];
@@ -8044,7 +9715,7 @@ function doParseF2DFrame(_this, loadContext) {
         }
         else {
             _this.raiseError(
-                Autodesk.Viewing.ErrorCodes.BAD_DATA, "",
+                av.ErrorCodes.BAD_DATA, "",
                 {});
             _this.postMessage(null);
         }
@@ -8052,147 +9723,82 @@ function doParseF2DFrame(_this, loadContext) {
 
     loadContext.loadDoneCB = loadDoneCallback;
 
-    try {
-
+    tryCatch(_this, function() {
         f2d.loadFrames(loadContext);
-
-    }
-    catch (exc) {
-        _this.raiseError(
-            Autodesk.Viewing.ErrorCodes.BAD_DATA, "",
-            { "exception": exc.toString(), "stack": exc.stack });
-        _this.postMessage(null);
-        return;
-    }
-
+    });
 }
+
+lmv.doParseF2D = doParseF2D;
+lmv.doParseF2DFrame = doParseF2DFrame;
+
+
+})();
+
+(function() {
+
+"use strict";
+
+var av = Autodesk.Viewing,
+    avp = av.Private;
+var lmv = Autodesk.LMVTK;
+
 
 var ENABLE_F2D_STREAMING_MODE = true;
 
-
-// TODO: Change this to use the same load startegy as the property and svf workers.
-function requestFileF2D(url, loadContext) {
-
-    loadContext.errorHandler.ignoreFileNotFound = true;
-    var xhr = new Xhr(loadContext.errorHandler, loadContext.auth, loadContext.viewing_url);
-
-    if (url.indexOf(".gz", url.length - 3) !== -1) {
-
-        var gzbuf = xhr.get(url, loadContext.headers, "arraybuffer", null, null, loadContext.queryParams, loadContext.oss_url);
-
-        if (xhr.success) {
-            // Catch errors from Gunzip, JSON.parse, etc.
-            try {
-                var rawbuf = new Uint8Array(gzbuf);
-                //It's possible that if the Content-Encoding header is set,
-                //the browser unzips the file by itself, so let's check if it did.
-                if (rawbuf[0] == 31 && rawbuf[1] == 139) {
-                    rawbuf = new Zlib.Gunzip(rawbuf).decompress();
-                }
-
-                return rawbuf;
-            }
-            catch (e) {
-                self.raiseError(
-                    Autodesk.Viewing.ErrorCodes.BAD_DATA,
-                    "Malformed data received when requesting file",
-                    { "url": url, "exception": e.toString(), "stack": e.stack });
-                return null;
-            }
-        }
-        else {
-            // xhr already raised an error; no need to raise another
-            return null;
-        }
-    }
-    else {
-        //NOTE: For property database requests, we do not want to
-        //parse the JSON up front, because it may be too big. The
-        //property database does its own parsing.
-        var json = xhr.get(url, loadContext.headers, "arraybuffer");
-        if (xhr.success) {
-            return new Uint8Array(json);
-        }
-        else {
-            // xhr already raised an error; no need to raise another
-            return null;
-        }
-    }
+function requestFileF2D(loadContext, filename, onSuccess) {
+    var url = loadContext.basePath + filename;
+    avp.ViewingService.getItemWorker(loadContext, url, onSuccess, null);
 }
 
-// Generate direct OSS URL when applicable.
-function generateOSSURL(path, oss_base_url) {
-    var ossPrefix = "urn:adsk.objects:os.object:";
-    var decodedPath = decodeURIComponent(path)
-    var ossIndex = decodedPath.indexOf(ossPrefix);
-    if (ossIndex !== -1) {
-        var ossPath = decodedPath.substr(ossIndex + ossPrefix.length);
-        var bucket = ossPath.substr(0, ossPath.indexOf("/"));
-        var object = ossPath.substr(ossPath.indexOf("/") + 1);
-        var queryStringIndex = object.indexOf('?');
-        if (queryStringIndex !== -1) {
-            object = encodeURIComponent(object.substr(0, queryStringIndex)) + object.substr(queryStringIndex);
-        }
-        path = oss_base_url + "/buckets/" + bucket + "/objects/" + object;
-    }
-
-    return path;
-}
 
 // Stream loading f2d data and prepare parseable data frames.
-function doStreamF2D(worker, loadContext) {
+function doStreamF2D(loadContext) {
+
+    //Get the metadata and manifest first.
+    var metadata;
+    var manifest;
+    var doneFiles = 0;
+
+    requestFileF2D(loadContext, "metadata.json.gz", function(data) {
+        try {
+            metadata = JSON.parse(lmv.utf8ArrayToString(data));
+            doneFiles++;
+        } catch (e) {
+            self.raiseError(
+                av.ErrorCodes.BAD_DATA,
+                "" /* does not matter what strings we put here since the final user facing error message is solely decided
+                by ErrorCodes. Invent another code if we want a specific error message for this error. */
+            );
+        }
+
+        if (doneFiles === 2)
+            doStreamF2D_Continued(loadContext, manifest, metadata);
+    });
+    requestFileF2D(loadContext, "manifest.json.gz", function(data) {
+        try {
+            if (data)
+                manifest = JSON.parse(lmv.utf8ArrayToString(data));
+            //The F2D does not necessarily need a manifest file to load (some old F2Ds don't have that)
+            doneFiles++;
+        } catch (e) {}
+
+        if (doneFiles === 2)
+            doStreamF2D_Continued(loadContext, manifest, metadata);
+    });
+}
+
+//Loads the F2D stream once the metadata and manifest files are fetched
+function doStreamF2D_Continued(loadContext, manifest, metadata) {
+
+    var _this = loadContext.worker;
+
     var url = loadContext.url;
 
     if (loadContext.queryParams)
         url += "?" + loadContext.queryParams;
 
-
-    function blobToJson(blob) {
-        var encodedString = "";
-        for (var i=0; i<blob.length; i++)
-            encodedString += String.fromCharCode(blob[i]);
-        var decodedString = decodeURIComponent(escape(encodedString));
-        return JSON.parse(decodedString);
-    }
-
-    function textToArrayBuffer(textBuffer, startOffset) {
-        var len = textBuffer.length - startOffset;
-        var arrayBuffer = new ArrayBuffer(len);
-        var ui8a = new Uint8Array(arrayBuffer, 0);
-        for (var i = 0, j = startOffset; i < len; i++, j++)
-            ui8a[i] = (textBuffer.charCodeAt(j) & 0xff);
-        return arrayBuffer;
-    }
-
-    //Get the metadata and manifest.
-    var metadataURL = loadContext.basePath + "metadata.json.gz";
-    var manifestURL = loadContext.basePath + "manifest.json.gz";
-    var metadata = requestFileF2D(metadataURL, loadContext);
-    var manifest = requestFileF2D(manifestURL, loadContext);
     // Collect asset urls that to be send to main thread for mobile usage.
     var assets = [];
-    assets.push([manifestURL, loadContext.headers, null]);
-    assets.push([metadataURL, loadContext.headers, null]);
-
-    try {
-        if (metadata)
-            metadata = blobToJson(metadata);
-        if (manifest)
-            manifest = blobToJson(manifest);
-    } catch (e) {
-        metadata = null;
-        manifest = null;
-    }
-
-    if (!metadata) {
-        self.raiseError(
-            Autodesk.Viewing.ErrorCodes.BAD_DATA,
-            "" /* does not matter what strings we put here since the final user facing error message is solely decided
-            by ErrorCodes. Invent another code if we want a specific error message for this error. */
-        );
-
-        return;
-    }
 
     var f2dSize;
     if (manifest && manifest.assets) {
@@ -8205,171 +9811,146 @@ function doStreamF2D(worker, loadContext) {
         }
     }
 
-    // TODO: reuse Xhr abstraction.
-    var xhr = new XMLHttpRequest();
-    xhr.withCredentials = !!loadContext.auth;
+    var probe = new lmv.F2DProbe();
 
-    var probe = new F2DProbe();
-
-    var counter = 0;
+    var first = true;
+    var accumulatedStream = new Uint8Array(65536);
+    var accumulatedBytes = 0;
     var streamOffset = 0;
     var sentMetadata = false;
 
-    xhr.onreadystatechange = function () {
+    function onSuccess(responseData) {
+        // Send collected f2d resource urls to main thread.
+        _this.postMessage({"type" : "F2DAssetURL", "urls" : assets});
+        assets = null;
+
+        if (ENABLE_F2D_STREAMING_MODE) {
+
+            var  msg = {
+                "type" : "F2DSTREAM",
+                "finalFrame" : true,
+                "finished" : true,
+                "progress" : 1
+            };
+
+            if (!sentMetadata) {
+                msg.manifest = manifest;
+                msg.metadata = metadata;
+                msg.basePath = loadContext.basePath;
+                sentMetadata = true;
+            }
+
+            debug("Total text bytes count : " + responseData.length);
+
+            _this.postMessage(msg);
+
+            //Streaming code path ends here -- we have already sent
+            //the data back from the progress callback
+            return;
+        }
+
+        //Non-streaming code path here
+        if (accumulatedStream.length > accumulatedBytes)
+            accumulatedStream = new Uint8Array(accumulatedStream.buffer.slice(0, accumulatedBytes));
+
+        var view;
+        if (accumulatedStream[0] == 31 && accumulatedStream[1] == 139) {
+            try {
+                view = new Uint8Array(accumulatedStream.buffer, 0, accumulatedBytes);
+                view = new Zlib.Gunzip(view).decompress();
+            } catch (e) {
+
+            }
+        }
+
+        var msg = { "type" : "F2DBLOB",
+            "metadata" : metadata,
+            "manifest" : manifest,
+            "basePath" : loadContext.basePath, // TODO: we might be able to infer this elsewhere.
+            "progress" : 1,
+            "buffer" : view.buffer};
+        var transferList = [];
+        transferList.push(view.buffer);
+        _this.postMessage(msg, transferList);
+    }
+
+    function onData(partial) {
+
+        //Add the new bytes to the accumulation buffer
+        if (accumulatedStream.length < partial.length + accumulatedBytes) {
+            var newlen = Math.max(accumulatedStream.length * 2, partial.length + accumulatedBytes);
+            var ns = new Uint8Array(newlen);
+            ns.set(accumulatedStream);
+            accumulatedStream = ns;
+        }
+        accumulatedStream.set(partial, accumulatedBytes);
+        accumulatedBytes += partial.length;
+
+        if (!ENABLE_F2D_STREAMING_MODE)
+            return;
+
+        if (first) {
+            first = false;
+
+            // If the very first two bytes of the entire stream is GZIP magic number,
+            // then we fall back on none streaming mode, because streaming mode only
+            // work with browser decompression, and the presence of such magic number
+            // implies browser decompression fails, for whatever reasons.
+            if (accumulatedStream[0] == 31 && accumulatedStream[1] == 139) {
+                console.error("F2D streaming broken by non-streaming unzip!");
+                ENABLE_F2D_STREAMING_MODE = false;
+                return;
+            }
+        }
+
+        var view = new Uint8Array(accumulatedStream.buffer, streamOffset, accumulatedBytes - streamOffset);
 
         try {
-            if (xhr.readyState == 4) {
-                // Send collected f2d resource urls to main thread.
-                worker.postMessage({"type" : "F2DAssetURL", "urls" : assets});
-                assets = null;
+            var marker = probe.load(view);
 
-                if (ENABLE_F2D_STREAMING_MODE && streamOffset > 0) {
+            if (marker.frameEnd > marker.frameStart) {
+                var frames = accumulatedStream.buffer.slice(streamOffset + marker.frameStart, streamOffset + marker.frameEnd);
+                streamOffset += marker.frameEnd;
 
-                    var textBuffer = xhr.responseText;
-
-                    var  msg = {
-                        "type" : "F2DSTREAM",
-                        "finalFrame" : true,
-                        "finished" : true,
-                        "progress" : 1
-                    };
-
-                    var transferList = [];
-
-                    if (!sentMetadata) {
-                        msg.manifest = manifest;
-                        msg.metadata = metadata;
-                        msg.basePath = loadContext.basePath;
-                        sentMetadata = true;
-                    }
-
-                    if (textBuffer.length > streamOffset)
-                    {
-                        var arrayBuffer = textToArrayBuffer(textBuffer, streamOffset);
-                        var view = new Uint8Array(arrayBuffer);
-
-                        var marker = probe.load(view);
-
-                        var frames = arrayBuffer.slice(marker.frameStart, marker.frameEnd);
-
-                        if (marker.frameEnd > marker.frameStart) {
-
-                            //streamOffset += marker.frameEnd;
-
-                            transferList.push(frames);
-
-                            msg.frames = frames;
-                        }
-                    }
-
-                    debug("Total text bytes count : " + xhr.responseText.length);
-
-                    worker.postMessage(msg, transferList);
-
-                    //Streaming code path ends here
-                    return;
-                }
-
-                //Non-streaming code path here
-                var textBuffer = xhr.responseText;
-                var arrayBuffer = textToArrayBuffer(textBuffer, 0);
-
-                //var view = new Uint8Array(arrayBuffer);
-                //var marker = probe.load(view);
-
-
-                var msg = { "type" : "F2DBLOB",
-                    "metadata" : metadata,
-                    "manifest" : manifest,
-                    "basePath" : loadContext.basePath, // TODO: we might be able to infer this elsewhere.
-                    "progress" : 1,
-                    "buffer" : arrayBuffer};
                 var transferList = [];
-                transferList.push(arrayBuffer);
-                worker.postMessage(msg, transferList);
+                transferList.push(frames);
 
-            }
+                var msg = { "type" : "F2DSTREAM",
+                    "frames" : frames,
+                    "finalFrame" : false
+                };
 
-            if (xhr.readyState > 2) {
-                if (!ENABLE_F2D_STREAMING_MODE) return;
+                if (f2dSize)
+                    msg.progress = streamOffset / f2dSize;
 
-                var textBuffer = xhr.responseText;
-
-                // No new data coming in.
-                if (streamOffset + 65536 > textBuffer.length)
-                    return;
-
-                var arrayBuffer = textToArrayBuffer(textBuffer, streamOffset);
-
-                if (!counter) {
-                    ++counter;
-
-                    // If the very first two bytes of the entire stream is GZIP magic number,
-                    // then we fall back on none streaming mode, because streaming mode only
-                    // work with browser decompression, and the presence of such magic number
-                    // implies browser decompression fails, for whatever reasons.
-                    var byteView = new Uint8Array(arrayBuffer);
-                    if (byteView[0] == 31 && byteView[1] == 139) {
-                        ENABLE_F2D_STREAMING_MODE = false;
-                        return;
-                    }
+                if (!sentMetadata) {
+                    msg.manifest = manifest;
+                    msg.metadata = metadata;
+                    msg.basePath = loadContext.basePath;
+                    sentMetadata = true;
                 }
 
-                var view = new Uint8Array(arrayBuffer);
-                var marker = probe.load(view);
+                _this.postMessage(msg, transferList);
 
-                if (marker.frameEnd > marker.frameStart) {
-                    var frames = arrayBuffer.slice(marker.frameStart, marker.frameEnd);
-                    streamOffset += marker.frameEnd;
-
-                    var transferList = [];
-                    transferList.push(frames);
-
-                    var msg = { "type" : "F2DSTREAM",
-                        "frames" : frames,
-                        "finalFrame" : false
-                    };
-
-                    if (f2dSize)
-                        msg.progress = streamOffset / f2dSize;
-
-                    if (!sentMetadata) {
-                        msg.manifest = manifest;
-                        msg.metadata = metadata;
-                        msg.basePath = loadContext.basePath;
-                        sentMetadata = true;
-                    }
-
-                    worker.postMessage(msg, transferList);
-
-                }
             }
-
         } catch (e) {
-            debug(e.message);
+            debug(e);
         }
-    };
-
-    //Send the request now
-    try {
-        //var url = generateOSSURL(url, loadContext.oss_url);
-        xhr.open("GET", url, true);
-
-        if (loadContext.headers) {
-            for (var header in loadContext.headers) {
-                xhr.setRequestHeader(header, loadContext.headers[header]);
-            }
-        }
-
-        xhr.overrideMimeType('text/plain; charset=x-user-defined');
-        xhr.send();
-        assets.push([url, loadContext.headers, null]);
-    } catch (e) {
-        debug(e.message);
     }
+
+    avp.ViewingService.getItemWorker(loadContext, url, onSuccess, loadContext.onFailureCallback, {
+        ondata: onData,
+        responseType: ""
+    });
+
 }
 
 
+lmv.doStreamF2D = doStreamF2D;
+
+})();
+
+var av = Autodesk.Viewing;
 
 /**
  * Error code constants
@@ -8379,7 +9960,7 @@ function doStreamF2D(worker, loadContext) {
  * @enum {number}
  * @readonly
  */
-Autodesk.Viewing.ErrorCodes = {
+av.ErrorCodes = {
     /** An unknown failure has occurred. */
     UNKNOWN_FAILURE: 1,
 
@@ -8415,81 +9996,15 @@ Autodesk.Viewing.ErrorCodes = {
 
 };
 
-/** @define {boolean} */
-var ENABLE_OCTM_MG2 = false;
+(function() {
 
-//This magic defines the worker stuff only
-//if this javascript is executed in a worker.
-//This way we can use a single compacted javascript file
-//as both the main viewer and its workers.
-//I think of it as fork() on Unix.
-var IS_WORKER = (typeof self !== 'undefined') && (typeof window === 'undefined');
-if (IS_WORKER)
-{
-
-var IS_CONCAT_BUILD;
-
-var f2d = null;
-
-if (!IS_CONCAT_BUILD)
-{
-    //Everything below will get compiled into the worker JS during build
-
-    importScripts("../AutodeskNamespace.js");
-    importScripts("../compatibility.js"); //browser compatibility polyfills, etc.
-
-    importScripts("../../thirdparty/three.js/LmvMatrix4.js"); //Vector math
-
-    //TODO: This means two copies of the inflate algorithm
-    //will get included -- we can do a custom build of zlib
-    //to avoid this.
-    importScripts("../lmvtk/gunzip.min.js"); //For RAW compressed pack files
-    importScripts("../lmvtk/unzip.min.js"); //for SVF packages
-
-    //MG2 compression -- disabled by default.
-    if (ENABLE_OCTM_MG2) {
-        importScripts("../lmvtk/inflate.min.js"); //for OCTM MG2 compression
-        importScripts("../lmvtk/octm_mg2.js"); //for OCTM MG2 compression
-    }
-
-    importScripts("../scene/BVHBuilder.js");
-    importScripts("../lmvtk/InputStream.js");
-    importScripts("../lmvtk/VbUtils.js");
-    importScripts("../lmvtk/VertexBufferBuilder.js");
-    importScripts("../lmvtk/PackReader.js");
-    importScripts("../lmvtk/Geoms.js");
-    importScripts("../lmvtk/Lights.js");
-    importScripts("../lmvtk/Cameras.js");
-    importScripts("../lmvtk/Fragments.js");
-    importScripts("../lmvtk/Instances.js");
-    importScripts("../lmvtk/Package.js");
-    importScripts("../lmvtk/PackReader.js");
-    importScripts("../lmvtk/Propdb.js");
-    importScripts("../lmvtk/F2d.js");
-    importScripts("../lmvtk/F2dProbe.js");
-    importScripts("../lmvtk/CheckedInputStream.js");
-    importScripts("../lmvtk/base64.js"); //FUSION SPECIFIC
-    importScripts("../lmvtk/inflate.min.js"); //FUSION SPECIFIC
-    importScripts("../net/Xhr.js");
-    importScripts("GeomWorker.js");
-    importScripts("SvfWorker.js");
-    importScripts("PropWorker.js");
-    importScripts("DecompressWorker.js");
-    importScripts("F2dParseWorker.js");
-    importScripts("F2dStreamWorker.js");
-    importScripts("PopulateCacheWorker.js");
-
-    // TODO: Look into moving these out
-    importScripts("../ErrorCodes.js");
-
-}
+var lmv = Autodesk.LMVTK;
+var av = Autodesk.Viewing,
+    avp = av.Private;
 
 
-//Web worker dispatcher function -- received a message
-//from the main thread and calls the appropriate handler
-self.addEventListener('message', function(e) {
+avp.workerMain = function(loadContext) {
 
-    var loadContext = e.data;
     if(!loadContext.hasOwnProperty('operation')) {
         return;
     }
@@ -8504,64 +10019,113 @@ self.addEventListener('message', function(e) {
             loadContext.basePath = loadContext.url.substr(0, lastSlash+1);
     }
 
-
     // Create the default failure callback.
     //
-    loadContext.onFailureCallback = function (httpStatus, httpStatusText, data) {
-        if (httpStatus == 403) {
-            self.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_ACCESS_DENIED,
-                "Access denied to remote resource",
-                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-        }
-        else if (httpStatus == 404) {
-            self.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_FILE_NOT_FOUND,
-                "Remote resource not found",
-                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-        }
-        else if (httpStatus >= 500 && httpStatus < 600) {
-            self.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_SERVER_ERROR,
-                "Server error when accessing resource",
-                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-        }
-        else if (data.exception) {
-            self.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_FAILURE,
-                "Network failure",
-                { "url": data.url, "exception": data.exception.toString(), "stack": data.exception.stack});
-        }
-        else {
-            self.raiseError(
-                Autodesk.Viewing.ErrorCodes.NETWORK_UNHANDLED_RESPONSE_CODE,
-                "Unhandled response code from server",
-                { "url": data.url, "httpStatus": httpStatus, "httpStatusText": httpStatusText });
-        }
+    loadContext.raiseError = function() {
+        loadContext.worker.raiseError.apply(loadContext.worker, arguments);
     };
+    loadContext.onFailureCallback = avp.ViewingService.defaultFailureCallback.bind(loadContext);
 
-    // Create the XhrErrorHandler for backwards compatibility until all
-    // of the Xhr calls are through the ViewingServiceXhr.
-    //
-    loadContext.errorHandler = new XhrErrorHandler(self);
-
-    var op = e.data.operation;
+    var op = loadContext.operation;
     switch (op) {
 
-        case "LOAD_GEOMETRY":       doGeomLoad(self, loadContext);              break;
-        case "LOAD_SVF":            doLoadSvf(self, loadContext);               break;
-        case "LOAD_SVF_CONTD":      doLoadSvfContinued(self, loadContext);      break;
-        case "GET_PROPERTIES":      doPropertyGet(self, loadContext);           break;
-        case "SEARCH_PROPERTIES":   doPropertySearch(self, loadContext);        break;
-        case "BUILD_EXTERNAL_ID_MAPPING": doBuildExternalIdMapping(self, loadContext); break;
-        case "GET_OBJECT_TREE":     doObjectTreeParse(self, loadContext);       break;
-        case "PARSE_F2D":           doParseF2D(self, loadContext);              break;
-        case "PARSE_F2D_FRAME":     doParseF2DFrame(self, loadContext);         break;
-        case "STREAM_F2D":          doStreamF2D(self, loadContext);             break;
-        case "DECOMPRESS_DELTA":    doDecompressDelta(self, loadContext);       break; //FUSION_SPECIFIC
-        case "ATTRIBUTES_MAP":      doAttributeToIdMap(self, loadContext);      break;
-        case "POPULATE_CACHE":      doPopulateCache(self, loadContext);         break;
+        case "LOAD_GEOMETRY":       lmv.doGeomLoad(loadContext);          break;
+        case "LOAD_SVF":            lmv.doLoadSvf(loadContext);           break;
+        case "LOAD_SVF_CONTD":      lmv.doLoadSvfContinued(loadContext);  break;
+        case "GET_PROPERTIES":      lmv.doPropertyGet(loadContext);       break;
+        case "SEARCH_PROPERTIES":   lmv.doPropertySearch(loadContext);    break;
+        case "BUILD_EXTERNAL_ID_MAPPING": lmv.doBuildExternalIdMapping(loadContext); break;
+        case "GET_OBJECT_TREE":     lmv.doObjectTreeParse(loadContext);   break;
+        case "PARSE_F2D":           lmv.doParseF2D(loadContext);          break;
+        case "PARSE_F2D_FRAME":     lmv.doParseF2DFrame(loadContext);     break;
+        case "STREAM_F2D":          lmv.doStreamF2D(loadContext);         break;
+        case "DECOMPRESS_DELTA":    lmv.doDecompressDelta(loadContext);   break; //FUSION_SPECIFIC
+        case "ATTRIBUTES_MAP":      lmv.doAttributeToIdMap(loadContext);  break;
+        case "POPULATE_CACHE":      lmv.doPopulateCache(loadContext);     break;
     }
+
+}
+
+
+})();
+
+/** @define {boolean} */
+var ENABLE_OCTM_MG2 = false;
+
+//This magic defines the worker stuff only
+//if this javascript is executed in a worker.
+//This way we can use a single compacted javascript file
+//as both the main viewer and its workers.
+//I think of it as fork() on Unix.
+var IS_WORKER = (typeof self !== 'undefined') && (typeof window === 'undefined');
+if (IS_WORKER)
+{
+
+var IS_CONCAT_BUILD;
+
+if (!IS_CONCAT_BUILD)
+{
+    //Everything below will get compiled into the worker JS during build
+
+    importScripts("../AutodeskNamespace.js");
+    importScripts("../compatibility.js"); //browser compatibility polyfills, etc.
+
+    importScripts("../../thirdparty/three.js/LmvMatrix4.js"); //Vector math
+
+    //TODO: This means three copies of the inflate algorithm
+    //will get included -- we can do a custom build of zlib
+    //to avoid this.
+    importScripts("../lmvtk/zlib/gunzip.min.js"); //For RAW compressed pack files
+    importScripts("../lmvtk/zlib/unzip.min.js"); //for SVF packages
+    importScripts("../lmvtk/zlib/inflate.min.js"); //FUSION SPECIFIC
+    importScripts("../lmvtk/fusion/base64.js"); //FUSION SPECIFIC
+
+    //MG2 compression -- disabled by default.
+    if (ENABLE_OCTM_MG2) {
+        importScripts("../lmvtk/zlib/inflate.min.js"); //for OCTM MG2 compression
+        importScripts("../lmvtk/svf/octm_mg2.js"); //for OCTM MG2 compression
+    }
+
+    importScripts("../scene/BVHBuilder.js");
+    importScripts("../scene/InstanceTreeStorage.js");
+    importScripts("../lmvtk/common/InputStream.js");
+    importScripts("../lmvtk/common/VbUtils.js");
+    importScripts("../lmvtk/common/VertexBufferBuilder.js");
+    importScripts("../lmvtk/svf/PackReader.js");
+    importScripts("../lmvtk/svf/Geoms.js");
+    importScripts("../lmvtk/svf/Lights.js");
+    importScripts("../lmvtk/svf/Cameras.js");
+    importScripts("../lmvtk/svf/Fragments.js");
+    importScripts("../lmvtk/svf/Instances.js");
+    importScripts("../lmvtk/svf/Package.js");
+    importScripts("../lmvtk/svf/PackReader.js");
+    importScripts("../lmvtk/common/Propdb.js");
+    importScripts("../lmvtk/f2d/F2d.js");
+    importScripts("../lmvtk/f2d/F2dProbe.js");
+    importScripts("../lmvtk/f2d/CheckedInputStream.js");
+    importScripts("../net/Xhr.js");
+    importScripts("GeomWorker.js");
+    importScripts("SvfWorker.js");
+    importScripts("PropWorker.js");
+    importScripts("DecompressWorker.js");
+    importScripts("F2dParseWorker.js");
+    importScripts("F2dStreamWorker.js");
+    importScripts("PopulateCacheWorker.js");
+
+    // TODO: Look into moving these out
+    importScripts("../ErrorCodes.js");
+
+    importScripts("MainWorker.js");
+}
+
+//Web worker dispatcher function -- received a message
+//from the main thread and calls the appropriate handler
+self.addEventListener('message', function(e) {
+
+    var loadContext = e.data;
+    loadContext.worker = self;
+
+    avp.workerMain(loadContext);
 
 }, false);
 
@@ -8572,7 +10136,9 @@ self.raiseError = function(code, msg, args) {
 
 // Shared by all workers to output debug message on console of main thread.
 function debug(msg) {
-    self.postMessage({debug : 1, message : msg});
+//    self.postMessage({debug : 1, message : msg});
 }
+
+self.debug = debug;
 
 } //IS_WORKER
