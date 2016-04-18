@@ -252,6 +252,10 @@ function initializeRoutes(app, server) {
         authenticateAPI,
         LmvAPI(svcManager));
 
+      app.use('/data',
+        express.static(path.resolve(
+          __dirname, '../../data')));
+
       //Web Pages
       app.use('/login',
         express.static(path.resolve(

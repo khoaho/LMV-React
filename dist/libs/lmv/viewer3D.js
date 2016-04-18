@@ -17201,7 +17201,6 @@ function MultiModelSelector(viewer) {
             selections: perModel
         };
         viewer.api.fireEvent(event);
-
     }
 
 
@@ -58349,6 +58348,7 @@ var ExtensionManager = function () {
      * @returns {boolean} - True if the extension was successfully registered.
      */
     function registerExtension(extensionId, extension) {
+
         if (!extensions.hasOwnProperty(extensionId)) {
             extensions[extensionId] = extension;
             return true;

@@ -78,18 +78,18 @@ module.exports = function(svcManager) {
   });
 
   //////////////////////////////////////////////////////////////////////////////
-  // return all sequences and all states (only for debug)
+  // return states sequence
   //
   ///////////////////////////////////////////////////////////////////////////////
-  router.get('/:modelId/states/sequences/all', async (req, res)=> {
+  router.get('/:modelId/states/sequence', async(req, res)=> {
 
     try {
 
       var modelSvc = svcManager.getService(
         'ModelSvc');
 
-      var response = await modelSvc.getSequences(
-        req.params.modelId, true);
+      var response = await modelSvc.getSequence(
+        req.params.modelId);
 
       res.json(response);
     }
@@ -103,21 +103,23 @@ module.exports = function(svcManager) {
   });
 
   //////////////////////////////////////////////////////////////////////////////
-  // returns sequence map
+  // save states sequence
   //
   ///////////////////////////////////////////////////////////////////////////////
-  router.get('/:modelId/states/sequences', async (req, res)=> {
+  router.post('/:modelId/states/sequence', async(req, res)=> {
 
     try {
+
+      var sequence = JSON.parse(req.body.sequence);
 
       var modelSvc = svcManager.getService(
         'ModelSvc');
 
-      var sequences = await modelSvc.getSequences(
-        req.params.modelId
-      );
+      var response = await modelSvc.setSequence(
+        req.params.modelId,
+        sequence);
 
-      res.json(sequences);
+      res.json(response);
     }
     catch (error) {
 
@@ -129,22 +131,20 @@ module.exports = function(svcManager) {
   });
 
   //////////////////////////////////////////////////////////////////////////////
-  // returns sequence and associated states
+  // return all states
   //
   ///////////////////////////////////////////////////////////////////////////////
-  router.get('/:modelId/states/sequences/:sequenceId', async (req, res)=> {
+  router.get('/:modelId/states', async(req, res)=> {
 
     try {
 
       var modelSvc = svcManager.getService(
         'ModelSvc');
 
-      var sequences = await modelSvc.getSequence(
-        req.params.modelId,
-        req.params.sequenceId
-      );
+      var response = await modelSvc.getStates(
+        req.params.modelId);
 
-      res.json(sequences);
+      res.json(response);
     }
     catch (error) {
 
@@ -154,6 +154,61 @@ module.exports = function(svcManager) {
       res.json(error);
     }
   });
+
+  //////////////////////////////////////////////////////////////////////////////
+  // remove state
+  //
+  ///////////////////////////////////////////////////////////////////////////////
+  router.post('/:modelId/states/:stateId/remove', async(req, res)=> {
+
+    try {
+
+      var modelSvc = svcManager.getService(
+        'ModelSvc');
+
+      var response = await modelSvc.removeState(
+        req.params.modelId,
+        req.params.stateId);
+
+      res.json(response);
+    }
+    catch (error) {
+
+      debug(error);
+
+      res.status(error.statusCode || 404);
+      res.json(error);
+    }
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  // adds new state
+  //
+  ///////////////////////////////////////////////////////////////////////////////
+  router.post('/:modelId/states', async(req, res)=> {
+
+    try {
+
+      var state = JSON.parse(req.body.state);
+
+      var modelSvc = svcManager.getService(
+        'ModelSvc');
+
+      var response = await modelSvc.addState(
+        req.params.modelId,
+        state);
+
+      res.json(response);
+    }
+    catch (error) {
+
+      debug(error);
+
+      res.status(error.statusCode || 404);
+      res.json(error);
+    }
+  });
+
 
   return router;
 }

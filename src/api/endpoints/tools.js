@@ -44,5 +44,30 @@ module.exports = function(svcManager) {
     }
   });
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  ///////////////////////////////////////////////////////////////////////////////
+  router.get('/models/:modelId', async (req, res)=> {
+
+    try {
+
+      var modelSvc = svcManager.getService(
+        'ModelSvc');
+
+      var response = await modelSvc.getById(
+        req.params.modelId);
+
+      res.json(response);
+    }
+    catch (error) {
+
+      debug(error);
+
+      res.status(error.statusCode || 404);
+      res.json(error);
+    }
+  });
+
   return router;
 }

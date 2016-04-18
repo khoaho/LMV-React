@@ -59,19 +59,19 @@ export default class EmbedPage extends React.Component {
 
     viewerToolbar.addControl(ctrlGroup);
 
-    const { extIds } = getUrlParams();
+    let { extIds, options } = getUrlParams();
 
     var enabledExtensions = [
       '_Viewing.Extension.ControlSelector',
       ...(extIds ? extIds : '').split(';')
     ];
 
-    viewer.loadExtension('_Viewing.Extension.ExtensionManager', {
+    var _options = {
       waitEventsList: [
         Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
         Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT
       ],
-      enabledList: enabledExtensions,
+        enabledList: enabledExtensions,
       showHidden: env == 'development',
       parentControl: ctrlGroup,
       visible: false,
@@ -79,9 +79,23 @@ export default class EmbedPage extends React.Component {
       model: model,
       storage:{
         enabled: false,
-        Lockr: Lockr
+          Lockr: Lockr
       }
-    });
+    };
+
+    if(options) {
+
+      options = Autodesk.Viewing.Private.getParameterByName("options");
+
+      options = replaceAll(options, "'", "");
+
+      Object.assign(_options,
+        JSON.parse(options));
+    }
+
+    viewer.loadExtension(
+      '_Viewing.Extension.ExtensionManager',
+      _options);
 
     viewer.load(path);
   }
@@ -124,3 +138,13 @@ function getModel(id){
     }
   });
 }
+
+///////////////////////////////////////////////////////////////////
+//
+//
+///////////////////////////////////////////////////////////////////
+function replaceAll (str, find, replace) {
+  return str.replace(new RegExp(
+      find.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'),
+    replace);
+};

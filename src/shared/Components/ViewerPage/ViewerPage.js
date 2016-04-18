@@ -25,24 +25,29 @@ export default class ViewerPage extends React.Component {
   /////////////////////////////////////////////////////////////////
   async componentDidMount() {
 
-    const { id } = getUrlParams();
+    const { id, pathIdx, path } = getUrlParams();
 
     var model = await getModel(id);
 
-    var LMVDocument = await ViewerToolkit.loadDocument(
-      model.urn, '/api/lmv/token');
+    if(path){
 
-    var pathCollection = await ViewerToolkit.getViewablePath(
-      LMVDocument);
+      Autodesk.Viewing.Initializer ({env: 'Local'}, ()=> {
 
-    var path = pathCollection[0].path;
+        this.loadViewable(model, path);
+      });
+    }
+    else {
 
-    this.loadViewable(model, path);
+      var LMVDocument = await ViewerToolkit.loadDocument(
+        model.urn, '/api/lmv/token');
 
-    //var path = '/models/prelude/prelude.svf';
-    //Autodesk.Viewing.Initializer ({env: 'Local'}, ()=> {
-    //  this.loadViewable(path);
-    //});
+      var pathCollection = await ViewerToolkit.getViewablePath(
+        LMVDocument);
+
+      var _path = pathCollection[pathIdx || 0].path;
+
+      this.loadViewable(model, _path);
+    }
   }
 
   /////////////////////////////////////////////////////////////////
@@ -81,7 +86,7 @@ export default class ViewerPage extends React.Component {
       model: model,
       storage:{
         key: 'ExtensionManager.' + this.props.user.login,
-        enabled: false,
+        enabled: env == 'development',
         Lockr:  Lockr
       }
     });

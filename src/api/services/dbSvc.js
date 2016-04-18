@@ -276,7 +276,41 @@ export default class MongoDbSvc {
   //
   //
   /////////////////////////////////////////////////////////////////
-  updateItem(collectionName, item) {
+  update(collectionName, query, opts) {
+
+    var _thisSvc = this;
+
+    return new Promise(async(resolve, reject)=> {
+
+      try{
+
+        var collection = await _thisSvc.getCollection(
+          collectionName);
+
+        collection.update(
+          query,
+          opts,
+          (err, res)=> {
+
+            if(err){
+              return reject(err);
+            }
+
+            return resolve(res);
+          });
+      }
+      catch(ex){
+
+        reject(ex);
+      }
+    });
+  }
+
+  /////////////////////////////////////////////////////////////////
+  //
+  //
+  /////////////////////////////////////////////////////////////////
+  updateItem(collectionName, item, opts) {
 
     var _thisSvc = this;
 
@@ -293,13 +327,14 @@ export default class MongoDbSvc {
 
         collection.update(
           {_id: item._id},
-          item, (err, res)=> {
+          item, opts,
+          {safe: true}, (err, res)=> {
 
-          if(err){
-            return reject(err);
-          }
+            if(err){
+              return reject(err);
+            }
 
-          return resolve(res);
+            return resolve(res);
         });
       }
       catch(ex){

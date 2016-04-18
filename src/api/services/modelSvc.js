@@ -121,11 +121,11 @@ export default class ModelSvc {
     });
   }
 
-  //////////////////////////////////////////////////////////////////////////////
-  // returns sequence map
+  ///////////////////////////////////////////////////////////////////
+  // returns states sequence
   //
-  ///////////////////////////////////////////////////////////////////////////////
-  getSequences(modelId, full = false) {
+  ///////////////////////////////////////////////////////////////////
+  getSequence(modelId) {
 
     var _thisSvc = this;
 
@@ -141,29 +141,15 @@ export default class ModelSvc {
         };
 
         var fields = {
-          sequenceMap: 1
+          sequence: 1
         };
-
-        if(full){
-          fields['stateMap'] = 1;
-        }
 
         var model = await dbSvc.findOne(
           _thisSvc._config.collections.models,
           query,
           fields);
 
-        if(full) {
-
-          var response = {
-            stateMap: model.stateMap,
-            sequenceMap: model.sequenceMap
-          };
-
-          return resolve(response);
-        }
-
-        return resolve(model.sequenceMap);
+        return resolve(model.sequence);
       }
       catch(ex){
 
@@ -172,11 +158,50 @@ export default class ModelSvc {
     });
   }
 
-  //////////////////////////////////////////////////////////////////////////////
-  // returns sequence and associated states
+  ///////////////////////////////////////////////////////////////////
+  // set states sequence
   //
-  ///////////////////////////////////////////////////////////////////////////////
-  getSequence(modelId, sequenceId) {
+  ///////////////////////////////////////////////////////////////////
+  setSequence(modelId, sequence) {
+
+    var _thisSvc = this;
+
+    return new Promise(async(resolve, reject)=> {
+
+      try {
+
+        var dbSvc = _thisSvc._svcManager.getService(
+          'MongoDbSvc');
+
+        var query = {
+          _id: new mongo.ObjectId(modelId)
+        };
+
+        var opts = {
+          $set: {
+            sequence: sequence
+          }
+        };
+
+        await dbSvc.update(
+          _thisSvc._config.collections.models,
+          query,
+          opts);
+
+        return resolve(sequence);
+      }
+      catch(ex){
+
+        return reject(ex);
+      }
+    });
+  }
+
+  ///////////////////////////////////////////////////////////////////
+  // returns states
+  //
+  ///////////////////////////////////////////////////////////////////
+  getStates(modelId) {
 
     var _thisSvc = this;
 
@@ -192,8 +217,7 @@ export default class ModelSvc {
         };
 
         var fields = {
-          stateMap: 1,
-          sequenceMap: 1
+          states: 1
         };
 
         var model = await dbSvc.findOne(
@@ -201,24 +225,87 @@ export default class ModelSvc {
           query,
           fields);
 
-        if(!model.sequenceMap[sequenceId]){
-          return reject('Not found');
-        }
+        return resolve(model.states);
+      }
+      catch(ex){
 
-        var sequence = model.sequenceMap[sequenceId];
+        return reject(ex);
+      }
+    });
+  }
 
-        var response = {
-          stateMap: {},
-          sequence: sequence
+  ///////////////////////////////////////////////////////////////////
+  // adds new state
+  //
+  ///////////////////////////////////////////////////////////////////
+  addState(modelId, state) {
+
+    var _thisSvc = this;
+
+    return new Promise(async(resolve, reject)=> {
+
+      try {
+
+        var dbSvc = _thisSvc._svcManager.getService(
+          'MongoDbSvc');
+
+        var query = {
+          _id: new mongo.ObjectId(modelId)
         };
 
-        sequence.stateIds.forEach(function(stateId) {
+        var opts = {
+          $push: {
+            states: state,
+            sequence: state.guid
+          }
+        };
 
-          response.stateMap[stateId] =
-            model.stateMap[stateId];
-        });
+        await dbSvc.update(
+          _thisSvc._config.collections.models,
+          query,
+          opts);
 
-        return resolve(response);
+        return resolve(state);
+      }
+      catch(ex){
+
+        return reject(ex);
+      }
+    });
+  }
+
+  ///////////////////////////////////////////////////////////////////
+  // remove state
+  //
+  ///////////////////////////////////////////////////////////////////
+  removeState(modelId, stateId) {
+
+    var _thisSvc = this;
+
+    return new Promise(async(resolve, reject)=> {
+
+      try {
+
+        var dbSvc = _thisSvc._svcManager.getService(
+          'MongoDbSvc');
+
+        var query = {
+          _id: new mongo.ObjectId(modelId)
+        };
+
+        var opts = {
+          $pull: {
+            sequence: stateId,
+            states: {guid: stateId}
+          }
+        };
+
+      await dbSvc.update(
+        _thisSvc._config.collections.models,
+        query,
+        opts);
+
+        return resolve(stateId);
       }
       catch(ex){
 

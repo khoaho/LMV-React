@@ -34,7 +34,7 @@ export default class AppNavbar extends React.Component {
           <Nav pullRight>
             <NavItem eventKey={1} onSelect={this.logout}>
               <span className="glyphicon glyphicon-user" aria-hidden="true"></span>
-               &nbsp; You are Logged in as {appState.user.name} (Lougout)
+               &nbsp; Logged in as {appState.user.name} (Lougout)
             </NavItem>
           </Nav>
 
