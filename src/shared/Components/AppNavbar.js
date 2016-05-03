@@ -24,7 +24,7 @@ export default class AppNavbar extends React.Component {
         <Navbar.Header>
           <Navbar.Brand>
             <img height="32" width="32" src="img/brand.png"/>
-             <b></b>
+             <b>Autodesk</b> View & Data API
           </Navbar.Brand>
           <Navbar.Toggle />
         </Navbar.Header>

@@ -44,9 +44,9 @@ export default class ViewerPage extends React.Component {
       var pathCollection = await ViewerToolkit.getViewablePath(
         LMVDocument);
 
-      var _path = pathCollection[pathIdx || 0].path;
-
-      this.loadViewable(model, _path);
+      this.loadViewable(
+        model,
+        pathCollection[pathIdx || 0].path);
     }
   }
 

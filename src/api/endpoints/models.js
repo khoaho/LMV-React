@@ -110,7 +110,7 @@ module.exports = function(svcManager) {
 
     try {
 
-      var sequence = JSON.parse(req.body.sequence);
+      var sequence = req.body.sequence;
 
       var modelSvc = svcManager.getService(
         'ModelSvc');
@@ -189,7 +189,7 @@ module.exports = function(svcManager) {
 
     try {
 
-      var state = JSON.parse(req.body.state);
+      var state = req.body.state;
 
       var modelSvc = svcManager.getService(
         'ModelSvc');
@@ -208,7 +208,6 @@ module.exports = function(svcManager) {
       res.json(error);
     }
   });
-
 
   return router;
 }

@@ -1,6 +1,7 @@
-var path = require('path');
-var webpack = require('webpack');
-var htmlWebpackPlugin = require('html-webpack-plugin');
+var combineLoaders = require('webpack-combine-loaders')
+var htmlWebpackPlugin = require('html-webpack-plugin')
+var webpack = require('webpack')
+var path = require('path')
 
 module.exports = {
 
@@ -58,15 +59,23 @@ module.exports = {
   },
 
   module: {
+
     loaders: [
       {
         test: /\.jsx?$/,
-        loader: 'babel',
         exclude: /node_modules/,
-        query: {
-          cacheDirectory: true,
-          presets: ['es2015', 'stage-0', 'react']
-        }
+        loader: combineLoaders([
+          {
+            loader: 'react-hot'
+          },
+          {
+            loader: 'babel',
+            query: {
+              cacheDirectory: true,
+              presets: ['es2015', 'stage-0', 'react']
+            }
+          }
+        ])
       },
       {
         test: /\.css$/,
