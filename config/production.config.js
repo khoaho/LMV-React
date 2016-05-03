@@ -21,7 +21,7 @@ module.exports = {
     collections: {
       users: 'gallery.users',
       models: 'gallery.models',
-      extensions: 'gallery.extensions'
+      extensions: 'react-gallery.extensions'
     }
   }
 }
