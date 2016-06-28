@@ -259,7 +259,12 @@ function initializeRoutes(app, server) {
       //Web Pages
       app.use('/login',
         express.static(path.resolve(
-          __dirname, '../../dist/login')));
+          __dirname, '../../login')));
+
+      app.use(
+        '/resources',
+        express.static(path.resolve(
+          __dirname, '../../resources')));
 
       app.use(
         authenticatePage,
@@ -316,7 +321,7 @@ function createServer() {
         setWebpackHotReloading(app);
 
       var faviconPath = path.resolve(
-        __dirname, '../../dist/img/favicon.png');
+        __dirname, '../../resources/img/favicon.png');
 
       app.use(favicon(faviconPath));
       app.use(bodyParser.urlencoded({ limit: '20mb', extended: true }));

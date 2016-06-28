@@ -23,8 +23,8 @@ export default class AppNavbar extends React.Component {
       <Navbar className="navbar-lmv">
         <Navbar.Header>
           <Navbar.Brand>
-            <img height="32" width="32" src="img/brand.png"/>
-             <b>Autodesk</b> View & Data API
+            <img height="32" width="32" src="/resources/img/brand.png"/>
+             <b>Autodesk</b> | Viewer Gallery
           </Navbar.Brand>
           <Navbar.Toggle />
         </Navbar.Header>

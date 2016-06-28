@@ -52,6 +52,10 @@ export default class EmbedPage extends React.Component {
 
     viewer.initialize();
 
+    viewer.addEventListener(
+      Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
+      this.onGeometryLoaded)
+
     var viewerToolbar = viewer.getToolbar(true);
 
     var ctrlGroup =  new Autodesk.Viewing.UI.ControlGroup(
@@ -98,6 +102,27 @@ export default class EmbedPage extends React.Component {
       _options);
 
     viewer.load(path);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // geometry loaded callback
+  //
+  //////////////////////////////////////////////////////////////////////////
+  onGeometryLoaded (e) {
+
+    var viewer = e.target
+
+    viewer.setLightPreset(1)
+
+    setTimeout(()=> {
+
+      viewer.setLightPreset(0)
+
+      viewer.setBackgroundColor(
+        122, 198, 255,
+        219, 219, 219)
+
+    }, 100)
   }
 }
 

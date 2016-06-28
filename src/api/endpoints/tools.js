@@ -69,5 +69,53 @@ module.exports = function(svcManager) {
     }
   });
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  ///////////////////////////////////////////////////////////////////////////////
+  router.get('/models/save/:modelId', async (req, res)=> {
+
+    try {
+
+      var modelSvc = svcManager.getService(
+        'ModelSvc');
+
+      var model = await modelSvc.getById(
+        req.params.modelId);
+
+      fs.writeFile('tmp/' + model._id + '.json',
+        JSON.stringify(model, null, 2), (err)=>{
+
+          res.json(model);
+        });
+    }
+    catch (error) {
+
+      debug(error);
+
+      res.status(error.statusCode || 404);
+      res.json(error);
+    }
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  ///////////////////////////////////////////////////////////////////////////////
+  router.get('/models/load/:modelId', async (req, res)=> {
+
+    try {
+
+
+    }
+    catch (error) {
+
+      debug(error);
+
+      res.status(error.statusCode || 404);
+      res.json(error);
+    }
+  });
+
   return router;
 }

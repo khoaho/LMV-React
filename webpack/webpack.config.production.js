@@ -1,6 +1,6 @@
-var path = require('path');
-var webpack = require('webpack');
-var htmlWebpackPlugin = require('html-webpack-plugin');
+var path = require('path')
+var webpack = require('webpack')
+var htmlWebpackPlugin = require('html-webpack-plugin')
 
 module.exports = {
 
@@ -10,7 +10,7 @@ module.exports = {
 
   output: {
     path: path.join(__dirname, '../dist'),
-    filename: "js/[name].min.js"
+    filename: "[name].min.js"
   },
 
   plugins: [
@@ -45,9 +45,9 @@ module.exports = {
     }),
 
     new htmlWebpackPlugin({
-      viewer3D: '/libs/lmv/viewer3D.min.js',
+      viewer3D: '/resources/libs/lmv/viewer3D.min.js',
       template: './layout/index.ejs',
-      bundle: '/js/bundle.min.js',
+      bundle: 'bundle.min.js',
       title: 'LMV React',
       minify: {
         removeComments: true,

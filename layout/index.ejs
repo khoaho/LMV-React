@@ -2,16 +2,12 @@
 <html>
 
 <head>
-    <link type='image/x-icon'rel='shortcut icon' href='img/favicon.png'/>
+    <link type='image/x-icon'rel='shortcut icon' href='/resources/img/favicon.png'/>
     <meta name="viewport" content="width=device-width, height=device-height, minimal-ui">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
 
     <title><%=htmlWebpackPlugin.options.title%></title>
-
-    <link type="text/css" rel="stylesheet" href="libs/bootstrap/dist/css/bootstrap.min.css"/>
-    <link type="text/css" rel="stylesheet" href="libs/lmv/style.min.css"/>
-    <link type="text/css" rel="stylesheet" href="css/app.css"/>
 
 </head>
 
@@ -20,7 +16,7 @@
     <div id="root">
     </div>
 
-    <script src="libs/systemjs/system.src.js"></script>
+    <script src="/resources/libs/systemjs/system.src.js"></script>
     <script src="<%=htmlWebpackPlugin.options.viewer3D%>"></script>
     <script src="<%=htmlWebpackPlugin.options.bundle%>"></script>
     <script src="/api/extensions/script/_Viewing.Extension.ExtensionManager"></script>

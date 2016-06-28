@@ -20,20 +20,24 @@ export default class ViewerToolkit {
           env: 'AutodeskProduction',
           refreshToken: tokenFunc,
           getAccessToken: tokenFunc
-        };
+        }
 
         Autodesk.Viewing.Initializer (options, ()=> {
 
           Autodesk.Viewing.Document.load(
-            (urn.indexOf('urn:') == 0 ? '' : 'urn:') + urn,
+            (urn.indexOf('urn:') === 0 ? '' : 'urn:') + urn,
             (LMVDocument)=> {
 
               return resolve(LMVDocument);
-            });
+            }, (error) => {
+
+              console.log(error)
+            })
         });
       }
       catch (ex){
 
+        console.log(ex)
         return reject('ex');
       }
     });

@@ -18,7 +18,7 @@ module.exports = {
   output: {
     path: path.join(__dirname, '../dist'),
     filename: "[name].js",
-    publicPath: '/'
+    publicPath: './'
   },
 
   plugins: [
@@ -29,9 +29,9 @@ module.exports = {
     new webpack.NoErrorsPlugin(),
 
     new webpack.ProvidePlugin({
-      _ : "underscore",
-      jQuery: "jquery",
-      $: "jquery"
+      _: 'underscore',
+      jQuery: 'jquery',
+      $: 'jquery'
     }),
 
     new webpack.DefinePlugin({
@@ -39,7 +39,7 @@ module.exports = {
     }),
 
     new htmlWebpackPlugin({
-      viewer3D: 'libs/lmv/viewer3D.js',
+      viewer3D: '/resources/libs/lmv/viewer3D.min.js',
       template: './layout/index.ejs',
       title: 'LMV-React | DEV',
       bundle: 'bundle.js',
@@ -64,30 +64,27 @@ module.exports = {
       {
         test: /\.jsx?$/,
         exclude: /node_modules/,
-        loader: combineLoaders([
-          {
-            loader: 'react-hot'
-          },
-          {
-            loader: 'babel',
-            query: {
-              cacheDirectory: true,
-              presets: ['es2015', 'stage-0', 'react']
-            }
+        loader: combineLoaders([{
+          loader: 'react-hot'
+        }, {
+          loader: 'babel',
+          query: {
+            cacheDirectory: true,
+            presets: ['es2015', 'stage-0', 'react']
           }
-        ])
+        }])
       },
       {
         test: /\.css$/,
-        loader: "style-loader!css-loader"
+        loader: 'style-loader!css-loader'
       },
       {
         test: /\.woff(2)?(\?v=[0-9]\.[0-9]\.[0-9])?$/,
-        loader: "url-loader?limit=10000&minetype=application/font-woff"
+        loader: 'url-loader?limit=10000&minetype=application/font-woff'
       },
       {
         test: /\.(ttf|eot|svg)(\?v=[0-9]\.[0-9]\.[0-9])?$/,
-        loader: "file-loader"
+        loader: 'file-loader'
       }
     ]
   }

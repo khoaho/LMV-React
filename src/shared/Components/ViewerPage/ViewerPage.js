@@ -25,11 +25,24 @@ export default class ViewerPage extends React.Component {
   /////////////////////////////////////////////////////////////////
   async componentDidMount() {
 
-    const { id, pathIdx, path } = getUrlParams();
+    const { id, pathIdx, path, urn } = getUrlParams();
 
-    var model = await getModel(id);
+    var model = null
+
+    if(urn) {
+
+      model = {
+        urn: urn
+      }
+    }
+    else {
+
+      model = await getModelById(id);
+    }
 
     if(path){
+
+      console.log('local')
 
       Autodesk.Viewing.Initializer ({env: 'Local'}, ()=> {
 
@@ -61,9 +74,13 @@ export default class ViewerPage extends React.Component {
 
     viewer.initialize();
 
+    viewer.addEventListener(
+      Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
+      this.onGeometryLoaded)
+
     var viewerToolbar = viewer.getToolbar(true);
 
-    var ctrlGroup =  new Autodesk.Viewing.UI.ControlGroup(
+    var ctrlGroup = new Autodesk.Viewing.UI.ControlGroup(
       'LMV-React');
 
     viewerToolbar.addControl(ctrlGroup);
@@ -93,6 +110,27 @@ export default class ViewerPage extends React.Component {
 
     viewer.load(path);
   }
+
+  //////////////////////////////////////////////////////////////////////////
+  // geometry loaded callback
+  //
+  //////////////////////////////////////////////////////////////////////////
+  onGeometryLoaded (e) {
+
+    var viewer = e.target
+
+    viewer.setLightPreset(1)
+
+    setTimeout(()=> {
+
+      viewer.setLightPreset(0)
+
+      viewer.setBackgroundColor(
+        122, 198, 255,
+        219, 219, 219)
+
+    }, 100)
+  }
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -115,7 +153,7 @@ function getUrlParams() {
 //
 //
 ///////////////////////////////////////////////////////////////////
-function getModel(id){
+function getModelById(id){
 
   return new Promise((resolve, reject)=> {
 
