@@ -12,12 +12,14 @@ module.exports = {
     LMV_CONSUMERSECRET: process.env.LMV_CONSUMERSECRET
   },
 
-  dbConfig:{
+  dbConfig: {
+
     user: process.env.DB_USER,
     pwd: process.env.DB_PWD,
     port: process.env.DB_PORT,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
+
     collections: {
       users: 'gallery.users',
       models: 'gallery.models',

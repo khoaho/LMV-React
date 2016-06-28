@@ -1,6 +1,6 @@
 # LMV React
 
-A React-based integration with Autodesk View & Data API (LMV)
+A React-based integration with Autodesk Viewer
 
 ## Setup/Usage Instructions
  
@@ -38,5 +38,5 @@ A React-based integration with Autodesk View & Data API (LMV)
 
 ## Written by 
 
-Written by [Philippe Leefsma](http://adndevblog.typepad.com/cloud_and_mobile/philippe-leefsma.html)<br>
-Autodesk Developer Network
+Written by [Philippe Leefsma](http://twiter.com/F3lipek)<br>
+Forge Partner Development
