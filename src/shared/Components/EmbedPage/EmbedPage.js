@@ -23,45 +23,83 @@ export default class EmbedPage extends React.Component {
   //
   //
   /////////////////////////////////////////////////////////////////
-  async componentDidMount() {
+  componentDidMount() {
 
-    const { id } = getUrlParams();
+    const { id, controls } = getUrlParams();
 
-    var model = await getModel(id);
+    var ids = id.split(';')
 
-    var LMVDocument = await ViewerToolkit.loadDocument(
-      model.urn,
-      '/api/lmv/token');
+    ids.forEach(async(modelId) => {
 
-    var pathCollection = await ViewerToolkit.getViewablePath(
-      LMVDocument);
+      var model = await getModel(modelId);
 
-    var path = pathCollection[0].path;
+      var LMVDocument = await ViewerToolkit.loadDocument(
+        model.urn, '/api/lmv/token');
 
-    this.loadViewable(model, path);
+      var pathCollection = await ViewerToolkit.getViewablePath(
+        LMVDocument);
+
+      var path = pathCollection[0].path;
+
+      this.loadViewable(model, path, {
+        controls
+      });
+    })
   }
 
   /////////////////////////////////////////////////////////////////
   //
   //
   /////////////////////////////////////////////////////////////////
-  async loadViewable(model, path) {
+  async loadViewable(model, path, viewerOptions) {
 
-    var viewer = new Autodesk.Viewing.Private.GuiViewer3D(
-      this.viewerContainer);
+    var viewer = null, ctrlGroup = null
+
+    if (viewerOptions.controls) {
+
+      viewer = new Autodesk.Viewing.Private.GuiViewer3D(
+        this.viewerContainer)
+
+      var viewerToolbar = viewer.getToolbar(true);
+
+      var ctrlGroup = new Autodesk.Viewing.UI.ControlGroup(
+        'lmv-react-ctrl-group');
+
+      viewerToolbar.addControl(ctrlGroup);
+
+    } else {
+
+      viewer = new Autodesk.Viewing.Viewer3D(
+        this.viewerContainer)
+
+      var html = `
+        <div id="lmv-react-toolbar-container">
+        </div>
+        `
+      $(viewer.container).append(html)
+
+      $('#lmv-react-toolbar-container').css({
+        bottom: '0px',
+        left: '50%',
+        position: 'absolute'
+      })
+
+      var toolbar = new Autodesk.Viewing.UI.ToolBar(true)
+
+      ctrlGroup = new Autodesk.Viewing.UI.ControlGroup(
+        'lmv-react-ctrl-group')
+
+      toolbar.addControl(ctrlGroup)
+
+      $('#lmv-react-toolbar-container').append(
+        toolbar.container)
+    }
 
     viewer.initialize();
 
     viewer.addEventListener(
       Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
       this.onGeometryLoaded)
-
-    var viewerToolbar = viewer.getToolbar(true);
-
-    var ctrlGroup =  new Autodesk.Viewing.UI.ControlGroup(
-      'LMV-React');
-
-    viewerToolbar.addControl(ctrlGroup);
 
     let { extIds, options } = getUrlParams();
 
@@ -71,13 +109,16 @@ export default class EmbedPage extends React.Component {
     ];
 
     var _options = {
+
       waitEventsList: [
         Autodesk.Viewing.GEOMETRY_LOADED_EVENT,
         Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT
       ],
-        enabledList: enabledExtensions,
+
+      enabledList: enabledExtensions,
       showHidden: env == 'development',
       parentControl: ctrlGroup,
+      autoLoad: true,
       visible: false,
       apiUrl: '/api',
       model: model,
@@ -93,8 +134,7 @@ export default class EmbedPage extends React.Component {
 
       options = replaceAll(options, "'", "");
 
-      Object.assign(_options,
-        JSON.parse(options));
+      Object.assign(_options, JSON.parse(options));
     }
 
     viewer.loadExtension(

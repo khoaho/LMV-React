@@ -45,6 +45,7 @@ module.exports = {
     }),
 
     new htmlWebpackPlugin({
+      threeJS: '/resources/libs/lmv/three.min.js',
       viewer3D: '/resources/libs/lmv/viewer3D.min.js',
       template: './layout/index.ejs',
       bundle: 'bundle.min.js',
