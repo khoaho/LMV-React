@@ -104,7 +104,7 @@ export default class EmbedPage extends React.Component {
     let { extIds, options } = getUrlParams();
 
     var enabledExtensions = [
-      '_Viewing.Extension.ControlSelector',
+      '_Viewing.Extension.Embed',
       ...(extIds ? extIds : '').split(';')
     ];
 
@@ -140,6 +140,14 @@ export default class EmbedPage extends React.Component {
     viewer.loadExtension(
       '_Viewing.Extension.ExtensionManager',
       _options);
+
+    this.extensionManager = viewer.getExtension(
+      '_Viewing.Extension.ExtensionManager')
+
+    this.extensionManager.on('allExtensionsLoaded', (results) => {
+      
+      //'_Viewing.Extension.ControlSelector'
+    })
 
     viewer.load(path);
   }
